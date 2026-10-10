@@ -31,8 +31,10 @@
 //   $.ui.status is not used, since it draws as a warning notice.
 // - above: a colored band above the prompt. The engine gives that space to
 //   the spinner during a turn. The band is shared: this hook asks the plugins
-//   beneath it first and draws only when none of them drew, so a mod such as
-//   replay-theater takes the band while it has something to show.
+//   beneath it first. A tree whose root Box is keyed `band-beside:<mod>` (a
+//   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
+//   keyed `band-under:<mod>` (a card) under them, and any other tree takes
+//   the band, as replay-theater's does while it has something to show.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -203,15 +205,33 @@ export const register: Register = (on, options) => {
     const isBand = placement === 'above' || e.surface === 'desktop'
     if (!isBand || e.props.hasSurvey) return next(e)
     const below = await next(e)
-    if (!isFree(below) || data === null) return below
+    const share = bandShare(below)
+    if (share === 'taken' || data === null) return below
     const { Box, Text, Link } = $.ui.resolve(e)
     // The desktop app shows the model and effort in its own picker.
     const showModel = e.surface !== 'desktop'
-    return (
-      <Box flexDirection="column" paddingX={1}>
+    const ours = (
+      <Box flexDirection="column" paddingX={1} flexGrow={1}>
         {lines(Box, Text, Link, data, await $.clock.now(), showModel)}
       </Box>
     )
+    if (share === 'beside') {
+      return (
+        <Box flexDirection="row" alignItems="flex-start">
+          {ours}
+          {below}
+        </Box>
+      )
+    }
+    if (share === 'under') {
+      return (
+        <Box flexDirection="column">
+          {ours}
+          {below}
+        </Box>
+      )
+    }
+    return ours
   })
 
   // The hint line under the prompt stays up while a turn runs. The engine's own
@@ -236,6 +256,17 @@ export const register: Register = (on, options) => {
 function isFree(node: unknown): boolean {
   if (node === null || node === undefined || node === false || node === '') return true
   return typeof node === 'object' && (node as { type?: unknown }).type === 'engine'
+}
+
+// How a tree a plugin beneath drew shares the band, read from its root Box's
+// key: `band-beside:` at the right of the lines, `band-under:` under them.
+export function bandShare(node: unknown): 'free' | 'beside' | 'under' | 'taken' {
+  if (isFree(node)) return 'free'
+  const root = node as { type?: unknown; props?: { key?: unknown } }
+  const key = root.type === 'Box' && typeof root.props?.key === 'string' ? root.props.key : ''
+  if (key.startsWith('band-beside:')) return 'beside'
+  if (key.startsWith('band-under:')) return 'under'
+  return 'taken'
 }
 
 async function refreshAll($: EngineInterface, withGit = true) {
