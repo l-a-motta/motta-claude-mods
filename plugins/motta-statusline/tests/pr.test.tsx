@@ -4,7 +4,7 @@ import { answerSession, BAND_PROPS, PR_JSON } from './session.tsx'
 
 // The mod keeps its readings in module state, so the two surfaces are drawn
 // in one test, the terminal first, reading the PR afresh.
-test("draws the branch's PR with its CI and conflicts, in the terminal and on the desktop", async ($, on) => {
+test("draws the branch's PR with its CI and conflicts in the terminal, and leaves it to the desktop's PR bar", async ($, on) => {
   const clock = answerSession(on, PR_JSON)
   const terminal = await $.ui.mount({
     plugin: 'motta-statusline',
@@ -18,7 +18,8 @@ test("draws the branch's PR with its CI and conflicts, in the terminal and on th
   await terminal.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
-  expect(await desktop.find({ type: 'Text', text: /CI 1 failed/ })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: /CI / })).toBeUndefined()
   await desktop.unmount()
 })
 
