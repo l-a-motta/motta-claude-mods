@@ -28,10 +28,15 @@ export const PR_JSON = JSON.stringify({
 // call answer `{ value }`. `gh pr view` answers `prJson` (a function is asked
 // on each call), that the branch has no PR when it is null, or fails with the
 // `stderr` given. The ui.render stand-ins are the engine beneath the plugin:
-// its hint line, and the opaque reference it hands back for an empty band.
+// its hint line, and the opaque reference it hands back for an empty band;
+// with `beneath`, what a plugin beneath draws in the band instead:
+// prompt-enhancer's chip or card, or a tree that takes the band, as
+// replay-theater's does.
 type GhAnswer = string | null | { stderr: string }
 
-export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null) {
+export type Beneath = 'nothing' | 'chip' | 'card' | 'taken'
+
+export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing') {
   const clock = mock.clock(on)
   on('session.cwd', () => ({ value: 'C:/code/vtex-copilot-fse' }))
   on('session.repo', () => ({
@@ -69,7 +74,29 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
     const { Text } = $.ui.resolve(e)
     return <Text key="engine-hint">esc to interrupt</Text>
   })
-  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 1 }) as never)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    if (beneath === 'nothing') return { type: 'engine', ref: 1 } as never
+    const { Box, Text, Button } = $.ui.resolve(e)
+    if (beneath === 'chip') {
+      return (
+        <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" paddingX={1}>
+          <Button key="enhance" plain label="✦ enhance" onPress={() => undefined} />
+        </Box>
+      )
+    }
+    if (beneath === 'card') {
+      return (
+        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1}>
+          <Text>✦ Enhanced</Text>
+        </Box>
+      )
+    }
+    return (
+      <Box flexDirection="column">
+        <Text>Edit 1 of 3</Text>
+      </Box>
+    )
+  })
   return clock
 }
 
