@@ -1,0 +1,114 @@
+// The engine beneath the mod: a prompt box (or none), the model calls
+// answered from a queue of replies, and a record of what the mod filled,
+// submitted, copied and toasted.
+
+import { mock } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
+
+export const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
+
+export const BAND = {
+  hasSurvey: false,
+  isWorking: false,
+  maxRows: 40,
+  bodyColumns: 100,
+  scroll: { offset: 0, bodyRows: 39 },
+  view: {},
+}
+
+export const command = (args: string) => ({
+  command: 'enhance',
+  args,
+  origin: { kind: 'composer' as const },
+  presentation: { isFullscreen: true, columns: 160 },
+})
+
+export const DRAFT = 'fix the flaky test in @tests/checkout.spec.ts, it fails sometimes on CI'
+
+export const VARIANTS = [
+  '=== TIGHT ===',
+  'Fix the flaky @tests/checkout.spec.ts.',
+  '=== BALANCED ===',
+  '<task>',
+  'Fix the flaky test in @tests/checkout.spec.ts.',
+  '</task>',
+  '=== THOROUGH ===',
+  'You are a senior engineer. Fix @tests/checkout.spec.ts and say when to stop.',
+].join('\n')
+
+export const BALANCED = '<task>\nFix the flaky test in @tests/checkout.spec.ts.\n</task>'
+
+export const MESSAGES = [
+  { role: 'user', content: [{ type: 'text', text: 'why is checkout slow?' }] },
+  {
+    role: 'assistant',
+    content: [
+      { type: 'text', text: 'The cart loads every item.' },
+      { type: 'tool_use', id: 't1', name: 'Read', input: {} },
+    ],
+  },
+]
+
+const USAGE = { input_tokens: 200, output_tokens: 300, cache_read_input_tokens: 1_000, cache_creation_input_tokens: 0 }
+
+type Setup = {
+  box?: string
+  hasComposer?: boolean
+  canFork?: boolean
+  // Each model call takes the next one: a reply's text, or `fail` for a 529.
+  replies?: string[]
+}
+
+export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
+  const seen = {
+    forked: [] as string[],
+    completed: [] as { model: string; prompt: string; effort?: string }[],
+    filled: [] as string[],
+    submitted: [] as string[],
+    copied: [] as string[],
+    toasts: [] as string[],
+  }
+  const replies = [...(setup.replies ?? [])]
+  const hasComposer = setup.hasComposer ?? true
+  const answer = () => {
+    const next = replies.shift() ?? ''
+    return next === 'fail'
+      ? { isAnswered: false as const, reason: 'api-error' as const, status: 529, error: 'overloaded' as const, usage: { ...USAGE, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 } }
+      : { isAnswered: true as const, text: next, usage: USAGE }
+  }
+
+  const clock = mock.clock(on)
+  // The engine's own band, empty: the opaque reference it hands back.
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 1 }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('prompt.read', () => ({ value: { text: hasComposer ? (setup.box ?? '') : '', cursor: 0 } }))
+  on('prompt.fill', ($, e) => {
+    if (!hasComposer) return { isFilled: false, refusal: 'no_composer' as const }
+    seen.filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('prompt.submit', ($, e) => {
+    seen.submitted.push(e.text)
+    return { text: e.text }
+  })
+  on('model.fork', ($, e) => {
+    seen.forked.push(e.prompt)
+    if (setup.canFork === false) return { value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }
+    return { value: answer() }
+  })
+  on('model.complete', ($, e) => {
+    seen.completed.push({ model: e.model, prompt: e.prompt, ...(e.effort ? { effort: e.effort } : {}) })
+    return { value: answer() }
+  })
+  on('session.messages', () => ({ value: MESSAGES as never }))
+  on('ui.copy', ($, e) => {
+    seen.copied.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  on('ui.toast', ($, e) => {
+    seen.toasts.push(e.text)
+    return { value: undefined }
+  })
+  return Object.assign(seen, { settle: () => clock.settle() })
+}
