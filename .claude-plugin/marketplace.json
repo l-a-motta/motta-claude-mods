@@ -10,12 +10,31 @@
     {
       "name": "motta-statusline",
       "source": "./plugins/motta-statusline",
-      "description": "Two-line status band above the prompt: folder, repo link, git state, model and effort, context, rate limits and tokens."
+      "description": "Two-line status line: folder, repo link, git state, model and effort, context, rate limits and tokens. Under the prompt in the CLI, or as a band above it."
     },
     {
       "name": "replay-theater",
       "source": "./plugins/replay-theater",
       "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); the band hint lasts one prompt."
+    },
+    {
+      "name": "filetree",
+      "source": {
+        "source": "github",
+        "repo": "data-goblin/claude-code-filetree",
+        "sha": "bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5"
+      },
+      "description": "IDE-style file tree with git status that shimmers on files Claude reads and writes. Third-party (MIT), pinned to the reviewed commit."
+    },
+    {
+      "name": "savvy-progress",
+      "source": {
+        "source": "git-subdir",
+        "url": "JohnnyVizz/claude-kit",
+        "path": "plugins/savvy-progress",
+        "sha": "272a877f39b6971690e087b16a7cc3951b811e39"
+      },
+      "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time. Third-party (MIT), pinned to the reviewed commit."
     }
   ]
 }
