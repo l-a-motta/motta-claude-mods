@@ -32,8 +32,13 @@
 // Cancel drops the result: a completion is aborted; a fork cannot be, so its
 // late answer is ignored.
 //
-// The band is shared: this hook draws its row under whatever the plugins
-// beneath it drew, and nothing while idle during a turn or under a survey.
+// The band is shared, and the hooks on it run in an order no mod picks, so
+// each tree says how it shares: the chip's root Box is keyed
+// `band-beside:prompt-enhancer`, the cards' `band-under:prompt-enhancer`.
+// Beneath motta-statusline, the status line reads the key and draws the chip
+// at the right of its lines, a card under them. Above it, this hook does the
+// same with what the plugins beneath drew. Nothing is drawn while idle during
+// a turn or under a survey.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -420,13 +425,13 @@ export const register: Register = (on, options) => {
     let ours
     if (now === 'idle') {
       ours = (
-        <Box flexDirection="row" justifyContent="flex-end" paddingX={1}>
+        <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" paddingX={1}>
           {hasBox ? <Button key="enhance" plain label="✦ enhance" onPress={() => void chip($)} /> : <Text dimColor>{'✦ /enhance <your prompt>'}</Text>}
         </Box>
       )
     } else if (now === 'asking' || now === 'writing') {
       ours = (
-        <Box flexDirection="row" gap={1} paddingX={1}>
+        <Box key="band-under:prompt-enhancer" flexDirection="row" gap={1} paddingX={1}>
           <Text color="suggestion">✦</Text>
           <Text>{now === 'asking' ? 'Reading your draft…' : 'Writing three versions…'}</Text>
           <Text dimColor>{label}</Text>
@@ -438,7 +443,7 @@ export const register: Register = (on, options) => {
       const index = (await read($, answers)).length
       const isLast = index + 1 >= asked.length
       ours = (
-        <Box flexDirection="column" paddingX={1}>
+        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1}>
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             <Text color="suggestion" bold>✦ A few questions first</Text>
             <Text dimColor>
@@ -471,7 +476,7 @@ export const register: Register = (on, options) => {
       const current = await read($, job)
       const missing = current === null ? [] : missingTokens(current.original, picked.text)
       ours = (
-        <Box flexDirection="column" paddingX={1}>
+        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1}>
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             <Text color="suggestion" bold>✦ Enhanced</Text>
             <Text dimColor>
@@ -502,7 +507,7 @@ export const register: Register = (on, options) => {
     } else {
       const failed = await read($, failure)
       ours = (
-        <Box flexDirection="row" gap={1} flexWrap="wrap" paddingX={1}>
+        <Box key="band-under:prompt-enhancer" flexDirection="row" gap={1} flexWrap="wrap" paddingX={1}>
           <Text color="error">✦ Could not enhance: {failed?.reason ?? 'unknown error'}</Text>
           <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
           <Button key="dismiss" label="Dismiss" onPress={() => void cancel($)} />
@@ -510,8 +515,16 @@ export const register: Register = (on, options) => {
       )
     }
 
-    return isFree(below) ? (
-      ours
+    if (isFree(below)) return ours
+    // Above the plugins that drew: the chip at the right of their tree, a card
+    // under it.
+    return now === 'idle' ? (
+      <Box flexDirection="row" alignItems="flex-start">
+        <Box flexDirection="column" flexGrow={1}>
+          {below}
+        </Box>
+        {ours}
+      </Box>
     ) : (
       <Box flexDirection="column">
         {below}
