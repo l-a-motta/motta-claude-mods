@@ -1,9 +1,17 @@
 // motta-statusline: a two-line status line.
 //
-//   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean
+//   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
 //   [model | effort] · CTX n% used/window · 5h n% ~reset · 7d n% ~reset · In n Out n
 //
 // The desktop app leaves out [model | effort]: its model picker shows both.
+//
+// The PR segment is the current branch's PR as `gh pr view` reads it: CI
+// checks, conflicts or behind its base, review decision. It refreshes every
+// 30 s while checks run and every 2 min once they settle, at once after
+// Claude pushes or runs `gh pr ...`, and on a GitHub event the session
+// receives. A change worth knowing (CI failed or passed, a new conflict, a
+// review, merged) raises a toast. No gh, or no PR for the branch: no segment.
+// A refresh that fails keeps the last reading, drawn dim until one succeeds.
 //
 // `placement` picks where it draws:
 // - below (default): drawn in the hint line under the prompt (PromptHint),
@@ -21,14 +29,34 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
+const PR_PENDING_MS = 30_000
+const PR_SETTLED_MS = 120_000
+// GitHub takes a few seconds to start the checks of a pushed commit.
+const PR_AFTER_PUSH_MS = 20_000
+const PR_FIELDS = 'number,url,state,isDraft,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup'
 
 type Git = { branch: string; staged: number; modified: number }
+
+export type Pr = {
+  number: number
+  url: string
+  state: 'OPEN' | 'MERGED' | 'CLOSED'
+  isDraft: boolean
+  base: string
+  hasConflicts: boolean
+  isBehind: boolean
+  isReady: boolean
+  review: 'approved' | 'changes' | 'pending' | null
+  checks: { total: number; passed: number; pending: number; failed: string[] }
+}
 
 type Data = {
   dir: string
   repoName: string | null
   repoUrl: string | null
   git: Git | null
+  pr: Pr | null
+  isPrStale: boolean
   model: string
   effort: string | null
   ctxPercent: number
@@ -43,6 +71,11 @@ let gitRoot: string | null = null
 let outTokens = 0
 let liveEffort: string | null = null
 let isTicking = false
+// The branch the PR reading is for, when it was last asked, and whether a
+// `gh` call is out.
+let prBranch: string | null = null
+let prAskedAt = 0
+let isAskingPr = false
 let placement: 'above' | 'below' = 'below'
 
 export const register: Register = (on, options) => {
@@ -74,6 +107,27 @@ export const register: Register = (on, options) => {
     if (e.agentId === undefined) await refreshAll($)
     return result
   })
+
+  // A push or a `gh pr` command changes the PR: read it at once, and again
+  // once GitHub has started the pushed commit's checks.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (ran.deny === undefined && ran.isError !== true) {
+      const op = ran.result.gitOperation
+      if (op?.pr || op?.push) {
+        void refreshPr($, true)
+        $.clock.after(PR_AFTER_PUSH_MS, () => void refreshPr($, true))
+      }
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // The relay's events for a subscribed PR (checks, reviews, merges).
+  on('session.receive', async ($, e, next) => {
+    const received = await next(e)
+    if (e.event?.source === 'github') void refreshPr($, true)
+    return received
+  }).catch(($, e, next) => next(e))
 
   // Also the first-load trigger in both placements: a plugin reload does not
   // fire session.start, but the band is drawn as soon as the plugin loads.
@@ -137,6 +191,8 @@ async function refreshAll($: EngineInterface, withGit = true) {
       repoName: repoUrl ? basename(repoUrl) : null,
       repoUrl,
       git: data?.git ?? null,
+      pr: data?.pr ?? null,
+      isPrStale: data?.isPrStale ?? false,
       model: modelLabel(await $.session.model()),
       effort: liveEffort ?? (await settingsEffort($)),
       ctxPercent: Math.round(ctx.percent ?? (ctx.window ? ((ctx.tokens ?? 0) / ctx.window) * 100 : 0)),
@@ -177,6 +233,131 @@ async function refreshGit($: EngineInterface) {
     // git missing or slow: keep the last reading.
   }
   await paint($)
+  void refreshPr($)
+}
+
+// Asks gh for the branch's PR when the branch changed, when `isNow`, or when
+// the reading is older than its cadence. Leaves the last reading up, marked
+// stale, when gh fails for any reason other than there being no PR.
+async function refreshPr($: EngineInterface, isNow = false) {
+  const branch = data?.git?.branch
+  if (data === null || gitRoot === null || !branch || branch === 'HEAD' || isAskingPr) return
+  const now = await $.clock.now()
+  const isNewBranch = branch !== prBranch
+  const cadence = data.pr?.state === 'OPEN' && data.pr.checks.pending > 0 ? PR_PENDING_MS : PR_SETTLED_MS
+  if (!isNow && !isNewBranch && now - prAskedAt < cadence) return
+  if (isNewBranch && data.pr !== null) {
+    data = { ...data, pr: null, isPrStale: false }
+    await paint($)
+  }
+  isAskingPr = true
+  prBranch = branch
+  prAskedAt = now
+  try {
+    const run = await $.process.run(['gh', 'pr', 'view', '--json', PR_FIELDS], { cwd: gitRoot, timeoutMs: 15_000 })
+    let pr: Pr | null
+    if (run.exitCode === 0) pr = parsePr(run.stdout)
+    else if (/no (open )?pull requests? found/i.test(run.stderr)) pr = null
+    else return await markPrStale($, branch)
+    if (data === null || prBranch !== branch) return
+    const before = data.pr
+    if (before !== null && pr !== null && before.number === pr.number) {
+      const change = prChange(before, pr)
+      if (change) $.ui.toast(change, { timeoutMs: 8_000 })
+    }
+    data = { ...data, pr, isPrStale: false }
+    await paint($)
+  } catch {
+    // gh missing, slow or unparsable: keep the last reading.
+    await markPrStale($, branch)
+  } finally {
+    isAskingPr = false
+  }
+}
+
+async function markPrStale($: EngineInterface, branch: string) {
+  if (data === null || data.pr === null || data.isPrStale || prBranch !== branch) return
+  data = { ...data, isPrStale: true }
+  await paint($)
+}
+
+type RawCheck = {
+  __typename?: string
+  name?: string
+  context?: string
+  status?: string
+  conclusion?: string
+  state?: string
+}
+
+const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'STALE'])
+
+// `gh pr view --json` with PR_FIELDS. Check runs (Actions) carry `status` and
+// `conclusion`; commit statuses (external CI) carry `state`.
+export function parsePr(json: string): Pr {
+  const raw = JSON.parse(json) as {
+    number: number
+    url: string
+    state: Pr['state']
+    isDraft: boolean
+    baseRefName: string
+    mergeable?: string
+    mergeStateStatus?: string
+    reviewDecision?: string
+    statusCheckRollup?: RawCheck[] | null
+  }
+  const checks: Pr['checks'] = { total: 0, passed: 0, pending: 0, failed: [] }
+  for (const c of raw.statusCheckRollup ?? []) {
+    checks.total++
+    const outcome =
+      c.__typename === 'StatusContext'
+        ? c.state === 'SUCCESS' ? 'passed' : c.state === 'FAILURE' || c.state === 'ERROR' ? 'failed' : 'pending'
+        : c.status !== 'COMPLETED' ? 'pending' : PASSED.has(c.conclusion ?? '') ? 'passed' : 'failed'
+    if (outcome === 'passed') checks.passed++
+    else if (outcome === 'pending') checks.pending++
+    else checks.failed.push(c.name ?? c.context ?? 'check')
+  }
+  return {
+    number: raw.number,
+    url: raw.url,
+    state: raw.state,
+    isDraft: raw.isDraft,
+    base: raw.baseRefName,
+    hasConflicts: raw.mergeable === 'CONFLICTING' || raw.mergeStateStatus === 'DIRTY',
+    isBehind: raw.mergeStateStatus === 'BEHIND',
+    isReady: raw.state === 'OPEN' && !raw.isDraft && raw.mergeStateStatus === 'CLEAN',
+    review: REVIEWS[raw.reviewDecision ?? ''] ?? null,
+    checks,
+  }
+}
+
+const REVIEWS: Record<string, Pr['review']> = {
+  APPROVED: 'approved',
+  CHANGES_REQUESTED: 'changes',
+  REVIEW_REQUIRED: 'pending',
+}
+
+// The toast for what changed between two readings of the same PR, or null.
+// One line: a plugin's newer toast replaces its own older one.
+export function prChange(before: Pr, after: Pr): string | null {
+  const tag = `#${after.number}`
+  if (after.state === 'MERGED' && before.state !== 'MERGED') return `${tag} merged`
+  if (after.state === 'CLOSED' && before.state === 'OPEN') return `${tag} closed`
+  const parts: string[] = []
+  const c = after.checks
+  if (c.failed.length > 0 && before.checks.failed.length === 0) {
+    parts.push(`✗ CI failed: ${checkNames(c.failed)}`)
+  } else if (c.total > 0 && c.pending === 0 && c.failed.length === 0 && (before.checks.pending > 0 || before.checks.failed.length > 0)) {
+    parts.push('✓ all checks passed')
+  }
+  if (after.hasConflicts && !before.hasConflicts) parts.push(`⚠ now conflicts with ${after.base}`)
+  if (after.review === 'approved' && before.review !== 'approved') parts.push('approved')
+  if (after.review === 'changes' && before.review !== 'changes') parts.push('changes requested')
+  return parts.length > 0 ? `${tag} ${parts.join(' · ')}` : null
+}
+
+function checkNames(names: string[]) {
+  return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')
 }
 
 async function settingsEffort($: EngineInterface): Promise<string | null> {
@@ -222,6 +403,7 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel =
     if (d.git.modified > 0) line1.push(<Text color="warning">  ~{d.git.modified}</Text>)
     if (d.git.staged === 0 && d.git.modified === 0) line1.push(<Text color="subtle">  clean</Text>)
   }
+  if (d.pr) line1.push(<Text>  </Text>, ...prSegment(Text, Link, d.pr, d.isPrStale))
 
   const model = d.effort ? `[${d.model} | ${d.effort}]` : `[${d.model}]`
   const line2 = [
@@ -242,6 +424,31 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel =
     <Box key="line1" flexDirection="row">{line1}</Box>,
     <Box key="line2" flexDirection="row">{line2}</Box>,
   ]
+}
+
+// `#482 ✓ CI 7/7 · approved · ready to merge`, `#482 ✗ CI 1 failed (lint)
+// ⚠ conflicts with main · review pending`, `#482 merged`. Dim when stale.
+function prSegment(Text: any, Link: any, pr: Pr, isStale: boolean) {
+  const T = (color: string, text: string) => <Text color={color} dimColor={isStale}>{text}</Text>
+  const parts = [<Link href={pr.url} label={`#${pr.number}`} />]
+  if (pr.state === 'MERGED') return [...parts, T('merged', ' merged')]
+  if (pr.state === 'CLOSED') return [...parts, T('subtle', ' closed')]
+  if (pr.isDraft) parts.push(T('subtle', ' draft'))
+  const c = pr.checks
+  if (c.failed.length > 0) {
+    parts.push(T('error', ` ✗ CI ${c.failed.length} failed`), T('subtle', ` (${checkNames(c.failed)})`))
+  } else if (c.pending > 0) {
+    parts.push(T('warning', ` ◐ CI ${c.passed}/${c.total}`))
+  } else if (c.total > 0) {
+    parts.push(T('success', ` ✓ CI ${c.passed}/${c.total}`))
+  }
+  if (pr.hasConflicts) parts.push(T('error', ` ⚠ conflicts with ${pr.base}`))
+  else if (pr.isBehind) parts.push(T('warning', ` ↓ behind ${pr.base}`))
+  if (pr.review === 'approved') parts.push(T('success', ' · approved'))
+  else if (pr.review === 'changes') parts.push(T('error', ' · changes requested'))
+  else if (pr.review === 'pending') parts.push(T('subtle', ' · review pending'))
+  if (pr.isReady) parts.push(T('subtle', ' · ready to merge'))
+  return parts
 }
 
 function level(percent: number, warn: number, crit: number) {
