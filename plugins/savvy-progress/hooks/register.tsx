@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AgentRun, Flow, Panel, Phase, PlannedTask } from '../types'
 
 const flow = atom({ plugin: 'savvy-progress', key: 'flow' } as const, null)
+const rows = atom({ plugin: 'savvy-progress', key: 'rows' } as const, {})
 const agents = atom({ plugin: 'savvy-progress', key: 'agents' } as const, [])
 const panel = atom({ plugin: 'savvy-progress', key: 'panel' } as const, {
   isCompact: false,
@@ -63,6 +64,7 @@ const STRINGS = {
     review: 'Review',
     busy: 'running',
     autoTitle: 'Subagents',
+    workflow: 'Workflow',
   },
   ru: {
     pane: 'Агенты',
@@ -92,6 +94,7 @@ const STRINGS = {
     review: 'Ревью',
     busy: 'в работе',
     autoTitle: 'Субагенты',
+    workflow: 'Воркфлоу',
   },
 } as const
 
@@ -124,7 +127,7 @@ const blank = (): Flow => ({
 })
 
 const isNewFlow = (prev: Flow | null, input: ProgressInput): boolean =>
-  !prev || prev.isFinished || prev.isAuto === true || (input.title !== undefined && input.title.trim() !== prev.title)
+  !prev || prev.isFinished || (input.title !== undefined && input.title.trim() !== prev.title)
 
 const cleanTasks = (tasks: ProgressInput['tasks']): PlannedTask[] | undefined =>
   tasks
@@ -158,32 +161,36 @@ const label = (f: Flow): string => {
   if (f.isFinished) return s.done
   if (f.phase === 'plan') return s.plan
   if (f.phase === 'design') return s.design
-  if (f.isAuto) return `${s.pane} ${f.done}/${f.total}`
+  if (f.kind === 'agents') return `${s.pane} ${f.done}/${f.total}`
   const count = f.total ? `${f.done}/${f.total}` : `${f.running} ${s.busy}`
   return `${f.phase === 'review' ? s.review : s.tasks} ${count}`
 }
 
 const ratio = (f: Flow): number => (f.isFinished ? 1 : f.total ? f.done / f.total : 0)
 
-// A plain-subagent flow keeps no counters: it counts the non-savvy agents
-// started since it began, and is done once none of them runs.
-// How long after its last agent ended a plain-subagent bar still takes the next one.
-const AUTO_GAP = 30_000
-
-// When the flow's last agent ended; still running counts as now.
-const lastEnd = (f: Flow, list: AgentRun[]): number =>
-  Math.max(
-    f.since ?? 0,
-    ...list.filter(a => a.startedAt >= (f.since ?? 0)).map(a => (a.status === 'running' ? Infinity : (a.endedAt ?? a.startedAt))),
-  )
-
-export const view = (f: Flow, list: AgentRun[]): Flow => {
-  if (!f.isAuto) return f
-  const mine = list.filter(a => a.startedAt >= (f.since ?? 0) && !a.type.startsWith('savvy-'))
+// The bar of one Agent or Workflow call: its agents, done once none of them runs.
+export const tally = (anchor: string, list: AgentRun[], title: string): Flow => {
+  const mine = list.filter(a => a.anchor === anchor)
   const running = mine.filter(a => a.status === 'running').length
   const isFinished = mine.length > 0 && running === 0
-  return { ...f, total: mine.length, done: mine.length - running, running, isFinished, phase: isFinished ? 'close' : 'delegate' }
+  return {
+    ...blank(),
+    title,
+    total: mine.length,
+    done: mine.length - running,
+    running,
+    isFinished,
+    phase: isFinished ? 'close' : 'delegate',
+    anchor,
+    kind: 'agents',
+  }
 }
+
+// How many call rows keep their bar; older ones draw the engine's row alone.
+const ROWS_KEPT = 100
+
+const keepRows = (m: Record<string, Flow>): Record<string, Flow> =>
+  Object.fromEntries(Object.entries(m).slice(-ROWS_KEPT))
 
 // Deterministic noise so the dither does not shimmer between redraws.
 const noise = (x: number, y: number): number => {
@@ -192,8 +199,8 @@ const noise = (x: number, y: number): number => {
 }
 
 // The whole row is one SVG: the desktop wraps sibling elements onto new lines,
-// so title, bar, percent and the crab live in one drawing; only the count and
-// the dismiss are Buttons beside it.
+// so title, bar, percent and the crab live in one drawing; only the count is a
+// Button beside it.
 const H = 22
 const BAR_H = 16
 const CRAB_W = 26
@@ -288,18 +295,6 @@ const rowSvg = (f: Flow, W: number, isWorking: boolean): string => {
 ${CRAB_CSS}${crab(W - CRAB_W + 1, 0, 'other', false, isWorking, 0.8)}
 </svg>`
 }
-
-// CSS px kept free at the right of the band for a chip set beside it.
-const BESIDE_ROOM = 110
-
-// What `next(e)` hands back when no plugin beneath drew: the engine's own band
-// as an opaque `{ type: 'engine' }` reference, or nothing.
-const isFree = (node: unknown): boolean =>
-  node === null ||
-  node === undefined ||
-  node === false ||
-  node === '' ||
-  (typeof node === 'object' && (node as { type?: unknown }).type === 'engine')
 
 const barText = (f: Flow, width: number): string => {
   const filled = Math.round(width * ratio(f))
@@ -409,7 +404,7 @@ const totals = (list: AgentRun[], at: number) => {
   return { cost, tokens, time: list.length ? end - start : 0 }
 }
 
-// --- desktop drawings: each row is one SVG, as the band above the prompt is.
+// --- desktop drawings: each row is one SVG, as the bar under a call is.
 
 const PANE_CSS = `<style>
 .t{fill:#1f1f1f}.s{fill:#6b6b68}.m{fill:#9a9a96}.k{fill:#ecebe8}.ln{stroke:#e4e4e1}.tile{fill:#f4f3f0}
@@ -675,6 +670,13 @@ async function autoOpen($: EngineInterface, key: string): Promise<void> {
   void $.ui.open({ id: PANE, title: tr().pane })
 }
 
+// Counts one call's agents again into its row's bar.
+async function retally($: EngineInterface, anchor: string | undefined, title: string): Promise<void> {
+  if (!anchor) return
+  const list = await read($, agents)
+  await update($, rows, m => keepRows({ ...m, [anchor]: tally(anchor, list, m[anchor]?.title ?? title) }))
+}
+
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -751,11 +753,18 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: TOOL }, async ($, e) => {
     const input = e as unknown as ProgressInput
     const prev = await read($, flow)
-    if (isNewFlow(prev, input) && input.title !== undefined) {
-      // A new flow starts with a clean list; agents still running stay.
-      await update($, agents, list => list.filter(a => a.status === 'running'))
+    if (prev?.anchor && isNewFlow(prev, input)) {
+      // The flow it replaces keeps its last state on the row it was drawn on.
+      const done = prev
+      await update($, rows, m => keepRows({ ...m, [done.anchor ?? '']: done }))
     }
-    const next = await update($, flow, p => merge(p, input))
+    if (isNewFlow(prev, input) && input.title !== undefined) {
+      // A new flow starts the panel on a clean list; agents still running stay.
+      const at = await $.clock.now()
+      await update($, panel, p => ({ ...p, since: at }))
+    }
+    // The bar moves to this call's row: the latest progress call draws it.
+    const next = await update($, flow, p => ({ ...merge(p, input), anchor: e.tool_use_id }))
     if (next && input.tasks?.length) await autoOpen($, next.title)
     return { result: `ok: ${label(next ?? blank())}` }
   })
@@ -781,10 +790,11 @@ export const register: Register = (on, options) => {
     const type = String(e.subagent_type ?? '')
     if (!type.startsWith('savvy-')) return next(e)
 
-    await update($, flow, prev => {
-      const base = prev && !prev.isFinished && !prev.isAuto ? { ...blank(), ...prev } : blank()
-      return { ...base, running: base.running + 1, phase: base.phase === 'plan' ? 'delegate' : base.phase }
-    })
+    await update($, flow, prev =>
+      prev && !prev.isFinished
+        ? { ...prev, running: prev.running + 1, phase: prev.phase === 'plan' ? 'delegate' : prev.phase }
+        : prev,
+    )
     try {
       return await next(e)
     } finally {
@@ -797,12 +807,12 @@ export const register: Register = (on, options) => {
     if (started.deny !== undefined) return started
 
     const at = await $.clock.now()
-    const before = await read($, agents)
     await update($, agents, list => {
       const round = 1 + list.filter(a => norm(a.description) === norm(e.description) && e.description).length
       const run: AgentRun = {
         id: started.agentId ?? e.tool_use_id,
         agentId: started.agentId,
+        anchor: e.tool_use_id || undefined,
         type: e.subagentType,
         description: e.description,
         model: started.model,
@@ -815,20 +825,16 @@ export const register: Register = (on, options) => {
         steps: 0,
         round,
       }
-      return [...list.filter(a => a.id !== run.id), run].slice(-200)
+      return [...list.filter(a => a.id !== run.id), run].slice(-300)
     })
     await update($, now, () => at)
+    // The call that started it draws its bar: one Agent call, or a whole workflow run.
+    await retally($, e.tool_use_id || undefined, e.workflow ? tr().workflow : tr().autoTitle)
     if (e.subagentType.startsWith('savvy-')) {
       const f = await read($, flow)
       await autoOpen($, f && !f.isFinished ? f.title : 'savvy-flow')
     } else {
-      // Any other subagent shows the bar too, unless a savvy flow holds it.
-      await update($, flow, prev => {
-        if (prev && !prev.isFinished && !prev.isAuto) return prev
-        // One agent after another (a sequential workflow) stays on one bar.
-        if (prev?.isAuto && !prev.isFinished && at - lastEnd(prev, before) < AUTO_GAP) return prev
-        return { ...blank(), title: tr().autoTitle, phase: 'delegate' as const, isAuto: true, since: at }
-      })
+      await autoOpen($, `row:${e.tool_use_id || at}`)
     }
     return started
   })
@@ -841,6 +847,8 @@ export const register: Register = (on, options) => {
     if (!agentId || !usage) return result
 
     const model = usage.model || e.model
+    // A finished agent resumed (SendMessage) runs again: its row's bar goes back to work.
+    const resumed = (await read($, agents)).find(a => a.agentId === agentId && a.status !== 'running')
     await update($, agents, list =>
       list.map(a =>
         a.agentId !== agentId
@@ -868,6 +876,7 @@ export const register: Register = (on, options) => {
             },
       ),
     )
+    if (resumed) await retally($, resumed.anchor, tr().autoTitle)
     return result
   })
 
@@ -899,6 +908,8 @@ export const register: Register = (on, options) => {
         }),
       )
       await update($, now, () => at)
+      const run = (await read($, agents)).find(a => a.agentId === agentId)
+      await retally($, run?.anchor, tr().autoTitle)
     }
     return next(e)
   })
@@ -907,10 +918,9 @@ export const register: Register = (on, options) => {
     const s = tr()
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
-    const list = await read($, agents)
-    const stored = await read($, flow)
-    const f = stored && view(stored, list)
     const p: Panel = await read($, panel)
+    const list = (await read($, agents)).filter(a => a.status === 'running' || a.startedAt >= (p.since ?? 0))
+    const f = await read($, flow)
     const at = Math.max(await read($, now), ...list.map(a => a.startedAt), 0)
 
     const running = list.filter(a => a.status === 'running').reverse()
@@ -1067,69 +1077,69 @@ export const register: Register = (on, options) => {
     )
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const stored = await read($, flow)
-    if (stored === null || e.props.hasSurvey) return next(e)
-    const below = await next(e)
+  // The bar lives in the transcript, under the row of the call that started the
+  // work: an Agent call, a Workflow call (its whole run), and the latest
+  // savvy-flow `progress` call (the flow). Each row redraws as its agents run.
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const tool = e.props.tool
+    if (tool !== 'Agent' && tool !== 'Workflow' && tool !== TOOL) return next(e)
+    const engineRow = await next(e)
+
+    const live = tool === TOOL ? await read($, flow) : null
+    const f = live?.anchor === e.requestId ? live : (await read($, rows))[e.requestId]
+    if (!f) return engineRow
 
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
-    const list = await read($, agents)
-    const f = view(stored, list)
-    // The band is shared: the `band-under:` key tells a plugin above to draw its
-    // own lines over ours, and what plugins beneath drew stays over ours too.
-    const share = (row: typeof below) => (
-      <Box key="band-under:savvy-progress" flexDirection="column">
-        {!isFree(below) && below}
-        {row}
-      </Box>
-    )
-    const crew = list.length + plannedOf(f, list).length
-    const isWorking = list.some(a => a.status === 'running')
-    const crewButton = (
-      <Button key="savvy-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />
-    )
+    // A workflow's row names the run, as its meta says, once the call has answered.
+    const output = e.props.output as { workflowName?: unknown } | undefined
+    const title = tool === 'Workflow' && typeof output?.workflowName === 'string' && output.workflowName ? output.workflowName : f.title
+    const shown = { ...f, title }
+    let crew = f.total
+    let isWorking = f.running > 0
+    if (f.kind !== 'agents') {
+      // The flow's bar counts the panel's crew: its agents and the tasks still planned.
+      const p = await read($, panel)
+      const list = (await read($, agents)).filter(a => a.status === 'running' || a.startedAt >= (p.since ?? 0))
+      crew = list.length + plannedOf(f, list).length
+      isWorking = list.some(a => a.status === 'running')
+    }
+    const crewButton = <Button key="savvy-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />
     const percent = `${Math.round(ratio(f) * 100)}%`
-    const dismiss = (
-      <Button
-        key="savvy-dismiss"
-        label="✕"
-        plain
-        role="dismiss"
-        onPress={() => update($, flow, () => null)}
-      />
-    )
 
     if (e.surface !== 'terminal' && 'Svg' in ui) {
       const { Svg } = ui
-      // About 8 CSS px per reported column; the rest is the count, the dismiss,
-      // their gaps and room for a chip a plugin above sets beside the band
-      // (prompt-enhancer's). No floor above the slot: a row wider than it would wrap.
-      const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 96 - BESIDE_ROOM))
-      return share(
-        <Box flexDirection="row" alignItems="center" gap={1}>
-          <Svg source={rowSvg(f, width, isWorking)} alt={`${f.title}: ${label(f)}, ${percent}`} width={width} height={H} />
-          {crewButton}
-          {dismiss}
-        </Box>,
+      // About 8 CSS px per column the surface measured, less the count beside it
+      // and the row's indent; capped so a wide window keeps a bar, not a banner.
+      const width = Math.max(180, Math.min(720, (e.viewport?.columns || 100) * 8 - 140))
+      return (
+        <Box key="savvy-row" flexDirection="column">
+          {engineRow}
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Svg source={rowSvg(shown, width, isWorking)} alt={`${title}: ${label(f)}, ${percent}`} width={width} height={H} />
+            {crewButton}
+          </Box>
+        </Box>
       )
     }
 
-    const cols = e.props.bodyColumns
-    const titleW = Math.max(8, Math.min(30, f.title.length + 2, Math.floor(cols / 3)))
-    const width = Math.max(6, Math.min(40, cols - titleW - 32 - 12))
-    return share(
-      <Box flexDirection="row" gap={2}>
-        <Box width={titleW} flexShrink={0}>
-          <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
-          <Text wrap="truncate-end">{f.title}</Text>
+    const cols = Math.max(30, (e.viewport?.columns || 100) - 4)
+    const titleW = Math.max(8, Math.min(30, title.length + 2, Math.floor(cols / 3)))
+    const width = Math.max(6, Math.min(40, cols - titleW - 32))
+    return (
+      <Box key="savvy-row" flexDirection="column">
+        {engineRow}
+        <Box flexDirection="row" gap={2} paddingLeft={2}>
+          <Box width={titleW} flexShrink={0}>
+            <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
+            <Text wrap="truncate-end">{title}</Text>
+          </Box>
+          <Text color={f.isFinished ? DONE : ACCENT}>{barText(f, width)}</Text>
+          <Text bold>{label(f)}</Text>
+          <Text dimColor>{percent}</Text>
+          <Text color={CLAY}>▣</Text>
+          {crewButton}
         </Box>
-        <Text color={f.isFinished ? DONE : ACCENT}>{barText(f, width)}</Text>
-        <Text bold>{label(f)}</Text>
-        <Text dimColor>{percent}</Text>
-        <Text color={CLAY}>▣</Text>
-        {crewButton}
-        {dismiss}
       </Box>
     )
   })

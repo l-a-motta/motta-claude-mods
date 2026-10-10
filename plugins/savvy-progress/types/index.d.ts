@@ -14,9 +14,10 @@ export type Flow = {
   phase: Phase
   isFinished: boolean
   tasks: PlannedTask[]
-  /** Started by a plain subagent, not by savvy-flow: its counts come from the agents started since `since`. */
-  isAuto?: boolean
-  since?: number
+  /** The tool call whose transcript row draws this bar: the latest `progress` call of a flow. */
+  anchor?: string
+  /** The bar of one Agent or Workflow call, counted from its agents: drawn `Agents done/total`. */
+  kind?: 'agents'
 }
 
 export type AgentStatus = 'running' | 'done' | 'failed'
@@ -24,6 +25,8 @@ export type AgentStatus = 'running' | 'done' | 'failed'
 export type AgentRun = {
   id: string
   agentId?: string
+  /** The Agent call that started it, or the Workflow call of its run. */
+  anchor?: string
   type: string
   description: string
   model: string
@@ -47,12 +50,16 @@ export type Panel = {
   isCompact: boolean
   isDoneCollapsed: boolean
   autoOpenedFor: string
+  /** The panel lists the agents started from here on, and any still running. */
+  since?: number
 }
 
 declare module 'claude-code' {
   interface PluginState {
     'savvy-progress': {
       flow: Flow | null
+      /** Each tool call row's bar, by tool_use_id; the live flow's row reads `flow`. */
+      rows: Record<string, Flow>
       agents: AgentRun[]
       panel: Panel
       now: number

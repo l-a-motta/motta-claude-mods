@@ -1,7 +1,7 @@
 {
   "name": "savvy-progress",
-  "version": "1.3.0",
-  "description": "Progress bar above the prompt for /savvy-flow, plus an agents panel (/agents-info): running, finished and planned subagents with model, task progress, context, cost and time.",
+  "version": "1.4.0",
+  "description": "Live progress bars under each Agent, Workflow and /savvy-flow call in the transcript, plus an agents panel (/agents-info): running, finished and planned subagents with model, task progress, context, cost and time.",
   "author": {
     "name": "johnnyvizz",
     "url": "https://github.com/johnnyvizz"
