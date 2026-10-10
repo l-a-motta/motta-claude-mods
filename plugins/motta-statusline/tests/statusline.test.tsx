@@ -1,7 +1,8 @@
-import { describe, expect, mock, test } from 'claude-code/testing'
-import type { TestBody } from 'claude-code/testing'
+import { describe, expect, test } from 'claude-code/testing'
 
-import { httpsUrl, modelLabel, parseStatus } from '../hooks/register.tsx'
+import { httpsUrl, modelLabel, parsePr, parseStatus, prChange } from '../hooks/register.tsx'
+import type { Pr } from '../hooks/register.tsx'
+import { answerSession, BAND_PROPS, PR_JSON } from './session.tsx'
 
 describe('parseStatus', () => {
   test('reads the branch and counts staged and modified files', () => {
@@ -29,6 +30,43 @@ describe('modelLabel', () => {
   })
 })
 
+describe('parsePr', () => {
+  test('counts checks, conflicts and the review the way GitHub shows them', () => {
+    const pr = parsePr(PR_JSON)
+    expect(pr.checks).toEqual({ total: 5, passed: 2, pending: 2, failed: ['lint'] })
+    expect(pr.hasConflicts).toBe(true)
+    expect(pr.isReady).toBe(false)
+    expect(pr.review).toBe('pending')
+  })
+})
+
+describe('prChange', () => {
+  const base: Pr = {
+    number: 482,
+    url: 'u',
+    state: 'OPEN',
+    isDraft: false,
+    base: 'main',
+    hasConflicts: false,
+    isBehind: false,
+    isReady: false,
+    review: 'pending',
+    checks: { total: 3, passed: 1, pending: 2, failed: [] },
+  }
+
+  test('says when CI fails, passes or a conflict appears, in one line', () => {
+    const failed = { ...base, hasConflicts: true, checks: { total: 3, passed: 2, pending: 0, failed: ['lint'] } }
+    expect(prChange(base, failed)).toBe('#482 ✗ CI failed: lint · ⚠ now conflicts with main')
+    const passed = { ...base, checks: { total: 3, passed: 3, pending: 0, failed: [] } }
+    expect(prChange(base, passed)).toBe('#482 ✓ all checks passed')
+    expect(prChange(base, { ...base, state: 'MERGED' })).toBe('#482 merged')
+  })
+
+  test('says nothing while nothing worth knowing changed', () => {
+    expect(prChange(base, { ...base, checks: { total: 3, passed: 2, pending: 1, failed: [] } })).toBeNull()
+  })
+})
+
 describe('httpsUrl', () => {
   test('turns ssh remotes into browsable urls', () => {
     expect(httpsUrl('git@github.com:o/r.git')).toBe('https://github.com/o/r')
@@ -36,36 +74,6 @@ describe('httpsUrl', () => {
   })
 })
 
-// Answers each call on $ the mod makes with one fixed session; hooks on a
-// call answer `{ value }`. The ui.render stand-ins are the engine beneath the
-// plugin: its hint line, and the opaque reference it hands back for an empty band.
-function answerSession(on: Parameters<TestBody>[1]) {
-  mock.clock(on)
-  on('session.cwd', () => ({ value: 'C:/code/vtex-copilot-fse' }))
-  on('session.repo', () => ({
-    value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
-  }))
-  on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
-  on('session.usage', () => ({
-    value: {
-      startedAt: 0,
-      context: { tokens: 360_000, window: 1_000_000, percent: 36 },
-      rateLimits: [{ kind: 'five_hour', percentUsed: 5 }],
-    },
-  }))
-  on('settings.read', () => ({ value: { effortLevel: 'high' } }))
-  on('process.run', () => ({
-    value: { exitCode: 0, stdout: '## dev\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
-  }))
-  on('ui.status', () => ({ value: undefined }))
-  on('ui.render', { component: 'PromptHint' }, ($, e) => {
-    const { Text } = $.ui.resolve(e)
-    return <Text key="engine-hint">esc to interrupt</Text>
-  })
-  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 1 }) as never)
-}
-
-const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120, scroll: { offset: 0, bodyRows: 10 }, view: {} }
 
 test('draws both lines above the engine hint in the terminal hint line', async ($, on) => {
   answerSession(on)
