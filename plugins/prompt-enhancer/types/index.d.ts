@@ -1,5 +1,6 @@
 // idle: the chip. choosing: the draft in hand, Cleaned up or Expanded to
-// pick. working: the one model call. result: the card. error: why it failed.
+// pick. working: the one model call. result: the result, in the pane.
+// error: why it failed.
 export type Phase = 'idle' | 'choosing' | 'working' | 'result' | 'error'
 
 export type Kind = 'clean' | 'expand'

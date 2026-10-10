@@ -16,6 +16,14 @@ export const BAND = {
   view: {},
 }
 
+// The Enhance pane, mounted as a surface draws it.
+export const PANE = {
+  plugin: 'prompt-enhancer',
+  component: 'Pane',
+  requestId: 'prompt-enhancer',
+  props: { title: 'Enhance', isFocused: true, bodyColumns: 60, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} },
+} as const
+
 export const command = (args: string) => ({
   command: 'enhance',
   args,
@@ -61,6 +69,8 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
     submitted: [] as string[],
     copied: [] as string[],
     toasts: [] as string[],
+    opened: [] as string[],
+    closed: [] as string[],
   }
   const replies = [...(setup.replies ?? [])]
   const hasComposer = setup.hasComposer ?? true
@@ -108,6 +118,14 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
   on('ui.copy', ($, e) => {
     seen.copied.push(e.text)
     return { value: { isCopied: true as const } }
+  })
+  on('ui.open', ($, e) => {
+    seen.opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  on('ui.close', ($, e) => {
+    seen.closed.push(e.id)
+    return { value: undefined }
   })
   on('ui.toast', ($, e) => {
     seen.toasts.push(e.text)

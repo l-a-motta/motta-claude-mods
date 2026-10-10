@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CLEAN_RULES, cleanPrompt, excerpt, expandPrompt, formatUsage, missingTokens, protectedTokens } from '../hooks/register.tsx'
-import { BAND, CLEANED, command, DRAFT, EXPANDED, START, world } from './world.tsx'
+import { BAND, CLEANED, command, DRAFT, EXPANDED, PANE, START, world } from './world.tsx'
 
 type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
 
@@ -55,72 +55,80 @@ test('Expanded asks for the shortest prompt and carries the conversation', () =>
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`the chip offers both, and Cleaned up is one cheap call with no conversation (${surface})`, async ($, on) => {
+  test(`the chip opens the pane with both ways, and Cleaned up is one cheap call with no conversation (${surface})`, async ($, on) => {
     const seen = world(on, { box: DRAFT, replies: [CLEANED] })
     await $.session.start(START)
-    const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
+    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
+    const pane = await $.ui.mount({ ...PANE, surface })
 
-    await ui.press({ key: 'enhance' })
-    expect(await ui.find({ key: 'clean' })).toBeDefined()
-    expect(await ui.find({ key: 'expand' })).toBeDefined()
+    await band.press({ key: 'enhance' })
+    expect(seen.opened).toEqual(['prompt-enhancer'])
+    expect(await pane.find({ text: DRAFT })).toBeDefined()
+    expect(await pane.find({ key: 'clean' })).toBeDefined()
+    expect(await pane.find({ key: 'expand' })).toBeDefined()
     expect(seen.completed).toEqual([])
     expect(seen.forked).toEqual([])
 
-    await ui.press({ key: 'clean' })
+    await pane.press({ key: 'clean' })
     expect(seen.forked).toEqual([])
     expect(seen.completed).toEqual([{ model: 'haiku', prompt: `<text>\n${DRAFT}\n</text>`, system: CLEAN_RULES, effort: 'low' }])
-    expect(await ui.find({ text: CLEANED })).toBeDefined()
-    expect(await ui.find({ text: 'Cleaned up', type: 'Text' })).toBeDefined()
-    // The card sits under a rule that names the mod.
-    expect(await ui.find({ text: '✦ enhance ', type: 'Text' })).toBeDefined()
+    expect(await pane.find({ text: CLEANED })).toBeDefined()
+    expect(await pane.find({ text: 'Before' })).toBeDefined()
+    expect(await pane.find({ text: /✦ Cleaned up/, type: 'Text' })).toBeDefined()
+    // The band keeps the chip alone the whole time.
+    expect(await band.find({ key: 'enhance' })).toBeDefined()
+    expect(await band.find({ key: 'use' })).toBeUndefined()
 
-    await ui.press({ key: 'use' })
+    await pane.press({ key: 'use' })
     expect(seen.filled.at(-1)).toBe(CLEANED)
-    expect(await ui.find({ key: 'enhance' })).toBeDefined()
+    expect(seen.closed).toEqual(['prompt-enhancer'])
   })
 
   test(`Expanded is one call on the conversation's fork (${surface})`, async ($, on) => {
     const seen = world(on, { box: DRAFT, replies: [EXPANDED] })
     await $.session.start(START)
-    const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
+    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
+    const pane = await $.ui.mount({ ...PANE, surface })
 
-    await ui.press({ key: 'enhance' })
-    await ui.press({ key: 'expand' })
+    await band.press({ key: 'enhance' })
+    await pane.press({ key: 'expand' })
     expect(seen.completed).toEqual([])
     expect(seen.forked).toHaveLength(1)
     expect(seen.forked[0]).toContain(`<draft>\n${DRAFT}\n</draft>`)
     expect(seen.forked[0]).toContain('Our conversation so far is above')
-    expect(await ui.find({ text: EXPANDED })).toBeDefined()
-    expect(await ui.find({ text: /session model · in 1\.2k \(1\.0k cached\) · out 300/ })).toBeDefined()
+    expect(await pane.find({ text: EXPANDED })).toBeDefined()
+    expect(await pane.find({ text: /session model · in 1\.2k \(1\.0k cached\) · out 300/ })).toBeDefined()
   })
 }
 
 test('the cheap model is an option', { options: { cleanModel: 'claude-haiku-5-5' } }, async ($, on) => {
   const seen = world(on, { replies: [CLEANED] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.command.run(command(DRAFT))
-  await ui.press({ key: 'clean' })
+  await pane.press({ key: 'clean' })
   expect(seen.completed.map(c => c.model)).toEqual(['claude-haiku-5-5'])
 })
 
-test('Copy copies, Send sends and clears the box, Cancel offers the chip again', async ($, on) => {
+test('Copy copies, Send sends and clears the box, Cancel closes the pane', async ($, on) => {
   const seen = world(on, { box: DRAFT, replies: [CLEANED] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
-  await ui.press({ key: 'enhance' })
-  await ui.press({ key: 'cancel' })
-  expect(await ui.find({ key: 'enhance' })).toBeDefined()
+  await band.press({ key: 'enhance' })
+  await pane.press({ key: 'cancel' })
+  expect(seen.closed).toEqual(['prompt-enhancer'])
+  expect(await pane.find({ key: 'clean' })).toBeUndefined()
 
-  await ui.press({ key: 'enhance' })
-  await ui.press({ key: 'clean' })
-  await ui.press({ key: 'copy' })
+  await band.press({ key: 'enhance' })
+  await pane.press({ key: 'clean' })
+  await pane.press({ key: 'copy' })
   expect(seen.copied).toEqual([CLEANED])
-  await ui.press({ key: 'send' })
+  await pane.press({ key: 'send' })
   expect(seen.filled.at(-1)).toBe('')
   expect(seen.submitted).toEqual([CLEANED])
-  expect(await ui.find({ key: 'enhance' })).toBeDefined()
+  expect(seen.closed).toEqual(['prompt-enhancer', 'prompt-enhancer'])
 })
 
 // The engine's own `no_composer` cannot be raised from a test: a hook's
@@ -129,18 +137,20 @@ test('Copy copies, Send sends and clears the box, Cancel offers the chip again',
 test('an empty box, or a refusal of unknown cause, keeps the chip; /enhance still works', async ($, on) => {
   const seen = world(on, { hasComposer: false, replies: [CLEANED] })
   await $.session.start({ ...START, surface: 'desktop' as const })
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  await ui.press({ key: 'enhance' })
+  await band.press({ key: 'enhance' })
   expect(seen.toasts.at(-1)).toBe('Write a prompt in the box first, then press ✦ enhance.')
-  expect(await ui.find({ key: 'enhance' })).toBeDefined()
+  expect(await band.find({ key: 'enhance' })).toBeDefined()
+  expect(seen.opened).toEqual([])
 
   const ran = await $.command.run(command(DRAFT))
-  expect(ran.text).toContain('Pick Cleaned up or Expanded')
-  await ui.press({ key: 'clean' })
-  await ui.press({ key: 'use' })
+  expect(ran.text).toContain('Pick Cleaned up or Expanded in the Enhance pane')
+  await pane.press({ key: 'clean' })
+  await pane.press({ key: 'use' })
   expect(seen.toasts.at(-1)).toBe('The box did not take the text. Use Send or Copy.')
-  expect(await ui.find({ key: 'send' })).toBeDefined()
+  expect(await pane.find({ key: 'send' })).toBeDefined()
 })
 
 test('/enhance with nothing after it says how to use it', async ($, on) => {
@@ -152,9 +162,9 @@ test('/enhance with nothing after it says how to use it', async ($, on) => {
 test('a named Expanded model gets the conversation as an excerpt', { options: { model: 'sonnet', effort: 'low' } }, async ($, on) => {
   const seen = world(on, { replies: [EXPANDED] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.command.run(command(DRAFT))
-  await ui.press({ key: 'expand' })
+  await pane.press({ key: 'expand' })
   expect(seen.forked).toEqual([])
   expect(seen.completed.map(c => [c.model, c.effort])).toEqual([['sonnet', 'low']])
   expect(seen.completed[0]?.prompt).toContain('<conversation>\nMe: why is checkout slow?\n\nClaude: The cart loads every item.\n</conversation>')
@@ -163,9 +173,9 @@ test('a named Expanded model gets the conversation as an excerpt', { options: { 
 test('with no conversation to fork yet, Expanded falls back to Sonnet', async ($, on) => {
   const seen = world(on, { canFork: false, replies: [EXPANDED] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.command.run(command(DRAFT))
-  await ui.press({ key: 'expand' })
+  await pane.press({ key: 'expand' })
   expect(seen.completed.map(c => c.model)).toEqual(['sonnet'])
   expect(seen.completed[0]?.prompt).not.toContain('<conversation>')
 })
@@ -173,59 +183,60 @@ test('with no conversation to fork yet, Expanded falls back to Sonnet', async ($
 test('a failed call shows why, and Retry runs the same option again', async ($, on) => {
   const seen = world(on, { box: DRAFT, replies: ['fail', CLEANED] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
-  await ui.press({ key: 'enhance' })
-  await ui.press({ key: 'clean' })
-  expect(await ui.find({ text: /Could not enhance: the API answered 529 \(overloaded\)/ })).toBeDefined()
-  await ui.press({ key: 'retry-failed' })
+  await band.press({ key: 'enhance' })
+  await pane.press({ key: 'clean' })
+  expect(await pane.find({ text: /Could not enhance: the API answered 529 \(overloaded\)/ })).toBeDefined()
+  await pane.press({ key: 'retry-failed' })
   expect(seen.completed.map(c => c.model)).toEqual(['haiku', 'haiku'])
-  expect(await ui.find({ text: CLEANED })).toBeDefined()
+  expect(await pane.find({ text: CLEANED })).toBeDefined()
 })
 
-test('the card names a mention the result dropped', async ($, on) => {
+test('the result names a mention it dropped', async ($, on) => {
   world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  await ui.press({ key: 'enhance' })
-  await ui.press({ key: 'clean' })
-  expect(await ui.find({ text: /Changed or dropped: @tests\/checkout\.spec\.ts/ })).toBeDefined()
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await band.press({ key: 'enhance' })
+  await pane.press({ key: 'clean' })
+  expect(await pane.find({ text: /Changed or dropped: @tests\/checkout\.spec\.ts/ })).toBeDefined()
 })
 
-test('the chip stays out of the way during a turn and under a survey', async ($, on) => {
+test('the chip shows during a turn, and stays out of a survey', async ($, on) => {
   world(on)
   await $.session.start(START)
   const working = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, isWorking: true } })
-  expect(await working.find({ key: 'enhance' })).toBeUndefined()
+  expect(await working.find({ key: 'enhance' })).toBeDefined()
   const survey = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, hasSurvey: true } })
   expect(await survey.find({ key: 'enhance' })).toBeUndefined()
 })
 
-test('above the status line on the desktop, the chip draws at the right of it and a card under it', async ($, on) => {
-  world(on, { box: DRAFT, hasStatusLine: true })
+test('above the status line on the desktop, the chip draws at the right of it, and nothing under it', async ($, on) => {
+  world(on, { box: DRAFT, hasStatusLine: true, replies: [CLEANED] })
   await $.session.start({ ...START, surface: 'desktop' as const })
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  expect(await ui.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
-  expect(await ui.find({ key: 'enhance' })).toBeDefined()
-  const idle = (await ui.drawn()) as Node
-  expect(idle.props?.flexDirection).toBe('row')
-  expect(idle.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
-
-  await ui.press({ key: 'enhance' })
-  expect(await ui.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
-  const card = (await ui.drawn()) as Node
-  expect(card.props?.flexDirection).toBe('column')
-  expect(card.children?.at(-1)?.props?.key).toBe('band-under:prompt-enhancer')
+  for (const step of ['idle', 'choosing', 'result']) {
+    if (step === 'choosing') await band.press({ key: 'enhance' })
+    if (step === 'result') await pane.press({ key: 'clean' })
+    expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
+    const drawn = (await band.drawn()) as Node
+    expect(drawn.props?.flexDirection).toBe('row')
+    expect(drawn.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+  }
 })
 
-test('alone in the band, its trees carry the keys motta-statusline reads', async ($, on) => {
+test('alone in the band, its tree carries the key motta-statusline reads, whatever the stage', async ($, on) => {
   world(on, { box: DRAFT, replies: [CLEANED] })
   await $.session.start({ ...START, surface: 'desktop' as const })
-  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-  expect(((await ui.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
-  await ui.press({ key: 'enhance' })
-  expect(((await ui.drawn()) as Node).props?.key).toBe('band-under:prompt-enhancer')
-  await ui.press({ key: 'clean' })
-  expect(((await ui.drawn()) as Node).props?.key).toBe('band-under:prompt-enhancer')
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
+  await band.press({ key: 'enhance' })
+  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
+  await pane.press({ key: 'clean' })
+  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
 })

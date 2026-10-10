@@ -1,13 +1,18 @@
 // prompt-enhancer: rewrites the draft in your prompt box, one of two ways.
 //
-//                                                         ✦ enhance
-//   ✦ Enhance as  [ Cleaned up ] [ Expanded ] [ Cancel ]
-//   ✦ Expanded  session model · in 14.2k (13.9k cached) · out 210
-//   Fix the flaky test in @tests/checkout.spec.ts ...
-//   [ Use it ] [ Send ] [ Copy ] [ Retry ] [ Discard ]
+//   above the prompt, at the right of the status line:   ✦ enhance
 //
-// Press the chip above the prompt, or run /enhance <text>, and pick one;
-// only that one is written, in one model call:
+//   the Enhance pane:
+//   ✦ Expanded · session model · in 14.2k (13.9k cached) · out 210
+//   Before
+//   fix the flaky test in checkout ...
+//   After
+//   Fix the flaky test in @tests/checkout.spec.ts ...
+//   [ Use it ] [ Send ] [ Copy ]                       retry  discard
+//
+// Press the chip above the prompt, or run /enhance <text>: the Enhance pane
+// opens with the draft, and you pick one way; only that one is written, in
+// one model call:
 // - Cleaned up: a cheap model (the `cleanModel` option, haiku by default),
 //   no conversation, fixes typos, fillers ("uh", "ah"), other voice-to-text
 //   artifacts and punctuation, and leaves every other word, the wording, the
@@ -33,13 +38,15 @@
 // Cancel drops the result: a completion is aborted; a fork cannot be, so its
 // late answer is ignored.
 //
-// The band is shared, and the hooks on it run in an order no mod picks, so
-// each tree says how it shares: the chip's root Box is keyed
-// `band-beside:prompt-enhancer`, the cards' `band-under:prompt-enhancer`.
-// Beneath motta-statusline, the status line reads the key and draws the chip
-// at the right of its lines, a card under them. Above it, this hook does the
-// same with what the plugins beneath drew. Nothing is drawn while idle during
-// a turn or under a survey.
+// The band holds the chip alone, during a turn too, so the status line
+// keeps its rows; the choice, the call and the result live in the pane. The
+// band is shared, and the hooks on it run in an order no mod picks, so the
+// chip's root Box is keyed `band-beside:prompt-enhancer`: beneath
+// motta-statusline, the status line draws it at the right of its lines;
+// above it, this hook does the same with what the plugins beneath drew.
+// Under a survey nothing is drawn, so its number keys are the only ones.
+// Use it, Send, Cancel, Discard and Dismiss close the pane; closing it
+// yourself cancels the job.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -56,6 +63,8 @@ const FALLBACK_MODEL = 'sonnet'
 const EXCERPT_MESSAGES = 12
 const EXCERPT_MESSAGE_CHARS = 1_200
 const EXCERPT_CHARS = 10_000
+const PANE = 'prompt-enhancer'
+const PANE_TITLE = 'Enhance'
 const NO_BOX_TIP = 'This app does not let mods read your prompt box. Run /enhance followed by your prompt instead.'
 
 const phase = atom({ plugin: 'prompt-enhancer', key: 'phase' } as const, 'idle' as Phase)
@@ -68,8 +77,6 @@ const boxAccess = atom({ plugin: 'prompt-enhancer', key: 'boxAccess' } as const,
 
 const EFFORTS: readonly ModelEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 const TITLES: Record<Kind, string> = { clean: 'Cleaned up', expand: 'Expanded' }
-// Wider than any band: the rule's Box clips it to the width left.
-const RULE = '─'.repeat(400)
 
 // Set from the options each time the module loads.
 let settings = { model: 'session', cleanModel: 'haiku', effort: undefined as ModelEffort | undefined }
@@ -217,12 +224,21 @@ async function reset($: EngineInterface) {
   await update($, failure, () => null)
 }
 
-// The draft is in hand: offer the two ways.
+async function openPane($: EngineInterface) {
+  return $.ui.open({ id: PANE, title: PANE_TITLE, focus: true })
+}
+
+async function closePane($: EngineInterface) {
+  await $.ui.close({ id: PANE })
+}
+
+// The draft is in hand: offer the two ways, in the pane.
 async function offer($: EngineInterface, original: string, via: Job['via']) {
   ticket++
   await reset($)
   await update($, job, () => ({ original, via, kind: null }))
   await update($, phase, () => 'choosing')
+  await openPane($)
 }
 
 async function run($: EngineInterface, kind: Kind) {
@@ -258,11 +274,13 @@ async function retry($: EngineInterface) {
   if (kind) await run($, kind)
 }
 
-async function cancel($: EngineInterface) {
+// The pane's own close calls this with isClosing, the pane already going.
+async function cancel($: EngineInterface, isClosing = false) {
   ticket++
   stop?.abort()
   stop = null
   await reset($)
+  if (!isClosing) await closePane($)
 }
 
 // The chip: offer what the box holds. An empty read is either an empty box or
@@ -286,7 +304,8 @@ async function useIt($: EngineInterface, text: string) {
   if (r.isFilled) {
     await update($, boxAccess, () => 'yes')
     ticket++
-    return reset($)
+    await reset($)
+    return closePane($)
   }
   if (r.refusal === 'no_composer') {
     await update($, boxAccess, () => 'no')
@@ -302,6 +321,7 @@ async function send($: EngineInterface, text: string) {
   await reset($)
   // The draft the chip read is still in the box: clear it.
   if (current?.via === 'box' && (await read($, boxAccess)) === 'yes') await $.prompt.fill({ text: '', mode: 'replace' })
+  await closePane($)
   void $.prompt.submit({ text })
 }
 
@@ -344,119 +364,131 @@ export const register: Register = (on, options) => {
     if (text === '') return { text: 'Put your prompt after the command: /enhance fix the flaky checkout test. Or write it in the box and press ✦ enhance above it.' }
     if ((await read($, phase)) === 'working') return { text: 'An enhance is already running. Cancel it above the prompt first.' }
     await offer($, text, 'command')
-    return { text: '✦ Pick Cleaned up or Expanded above the prompt.' }
+    return { text: '✦ Pick Cleaned up or Expanded in the Enhance pane.' }
   })
 
+  // Closed by the person, the pane takes its job with it.
+  on('ui.close', { id: 'prompt-enhancer' }, async ($, e, next) => {
+    if (e.origin.kind === 'person' && (await read($, phase)) !== 'idle') await cancel($, true)
+    return next(e)
+  })
+
+  // The band: the chip alone. A desktop draws a Button as a native button of
+  // its plain label, so the ✦'s color is a Text beside it.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
-    const now = await read($, phase)
-    if (now === 'idle' && (e.props.isWorking || !showChip)) return next(e)
+    if (e.props.hasSurvey || !showChip) return next(e)
     const below = await next(e)
 
     const { Box, Text, Button } = $.ui.resolve(e)
-    const access = await read($, boxAccess)
-    const hasBox = e.surface === 'terminal' || access !== 'no'
-    const current = await read($, job)
-    const title = current?.kind ? TITLES[current.kind] : ''
-    const label = await read($, modelLabel)
-
-    let ours
-    if (now === 'idle') {
-      ours = (
-        <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" paddingX={1}>
-          {hasBox ? <Button key="enhance" plain label="✦ enhance" onPress={() => void chip($)} /> : <Text dimColor>{'✦ /enhance <your prompt>'}</Text>}
-        </Box>
-      )
-    } else {
-      let body
-      if (now === 'choosing') {
-        body = (
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            <Text bold>Enhance as</Text>
-            <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
-            <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
-            <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
-          </Box>
-        )
-      } else if (now === 'working') {
-        body = (
-          <Box flexDirection="row" gap={1}>
-            <Text>{current?.kind === 'clean' ? 'Cleaning up…' : 'Expanding…'}</Text>
-            <Text dimColor>{label}</Text>
-            <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
-          </Box>
-        )
-      } else if (now === 'result') {
-        const text = await read($, result)
-        const spent = await read($, usage)
-        const missing = current === null ? [] : missingTokens(current.original, text)
-        body = (
-          <Box flexDirection="column">
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
-              <Text color="suggestion" bold>
-                {title}
-              </Text>
-              <Text dimColor>
-                {label}
-                {spent !== null ? ` · ${formatUsage(spent)}` : ''}
-              </Text>
-            </Box>
-            <Box flexDirection="column" marginY={1}>
-              <Text>{text}</Text>
-              {missing.length > 0 && <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>}
-            </Box>
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
-              {hasBox && <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />}
-              <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
-              <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
-              <Button key="retry" label="Retry" onPress={() => void retry($)} />
-              <Button key="discard" label="Discard" onPress={() => void cancel($)} />
-            </Box>
-          </Box>
-        )
-      } else {
-        const failed = await read($, failure)
-        body = (
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            <Text color="error">Could not enhance: {failed ?? 'unknown error'}</Text>
-            <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
-            <Button key="dismiss" label="Dismiss" onPress={() => void cancel($)} />
-          </Box>
-        )
-      }
-      // A card: a blank line, a rule naming the mod, a blank line, the stage.
-      ours = (
-        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1} marginTop={1}>
-          <Box flexDirection="row">
-            <Text dimColor>── </Text>
-            <Text color="suggestion">✦ enhance </Text>
-            <Box flexGrow={1} width={0} overflow="hidden">
-              <Text dimColor wrap="truncate">
-                {RULE}
-              </Text>
-            </Box>
-          </Box>
-          <Box flexDirection="column" marginTop={1}>
-            {body}
-          </Box>
-        </Box>
-      )
-    }
-
+    const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
+    const ours = (
+      <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" gap={1} paddingX={1}>
+        <Text color="suggestion">✦</Text>
+        {hasBox ? <Button key="enhance" plain label="enhance" onPress={() => void chip($)} /> : <Text dimColor>{'/enhance <your prompt>'}</Text>}
+      </Box>
+    )
     if (isFree(below)) return ours
-    // Above the plugins that drew: the chip at the right of their tree, a card
-    // under it.
-    return now === 'idle' ? (
+    // Above the plugins that drew: the chip at the right of their tree.
+    return (
       <Box flexDirection="row" alignItems="flex-start">
         <Box flexDirection="column" flexGrow={1}>
           {below}
         </Box>
         {ours}
       </Box>
-    ) : (
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const now = await read($, phase)
+    const current = await read($, job)
+    const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
+    const label = await read($, modelLabel)
+
+    if (now === 'idle' || current === null) {
+      return <Text dimColor>Press ✦ enhance above the prompt, or run /enhance followed by your prompt.</Text>
+    }
+
+    const draft = (title: string, isDim: boolean) => (
       <Box flexDirection="column">
-        {below}
-        {ours}
+        <Text dimColor>{title}</Text>
+        <Text dimColor={isDim}>{current.original}</Text>
+      </Box>
+    )
+
+    if (now === 'choosing') {
+      return (
+        <Box flexDirection="column" gap={1}>
+          {draft('Your draft', false)}
+          <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+            <Text bold>Enhance as</Text>
+            <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
+            <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
+            <Box flexGrow={1} />
+            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
+          </Box>
+        </Box>
+      )
+    }
+
+    if (now === 'working') {
+      return (
+        <Box flexDirection="column" gap={1}>
+          {draft('Your draft', true)}
+          <Box flexDirection="row" gap={1} alignItems="center">
+            <Text color="suggestion">{current.kind === 'clean' ? '✦ Cleaning up…' : '✦ Expanding…'}</Text>
+            <Text dimColor>{label}</Text>
+            <Box flexGrow={1} />
+            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
+          </Box>
+        </Box>
+      )
+    }
+
+    if (now === 'error') {
+      const failed = await read($, failure)
+      return (
+        <Box flexDirection="column" gap={1}>
+          {draft('Your draft', true)}
+          <Text color="error">Could not enhance: {failed ?? 'unknown error'}</Text>
+          <Box flexDirection="row" gap={1}>
+            <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
+            <Box flexGrow={1} />
+            <Button key="dismiss" label="dismiss" plain dimColor onPress={() => void cancel($)} />
+          </Box>
+        </Box>
+      )
+    }
+
+    const text = await read($, result)
+    const spent = await read($, usage)
+    const missing = missingTokens(current.original, text)
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Text color="suggestion" bold>
+            ✦ {current.kind ? TITLES[current.kind] : ''}
+          </Text>
+          <Text dimColor>
+            · {label}
+            {spent !== null ? ` · ${formatUsage(spent)}` : ''}
+          </Text>
+        </Box>
+        {draft('Before', true)}
+        <Box flexDirection="column">
+          <Text dimColor>After</Text>
+          <Text>{text}</Text>
+        </Box>
+        {missing.length > 0 && <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>}
+        <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+          {hasBox && <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />}
+          <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
+          <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
+          <Box flexGrow={1} />
+          <Button key="retry" label="retry" plain dimColor onPress={() => void retry($)} />
+          <Button key="discard" label="discard" plain dimColor onPress={() => void cancel($)} />
+        </Box>
       </Box>
     )
   })
