@@ -4,13 +4,9 @@ A Claude Code mod that lets you step through the file edits Claude made in the l
 
 ## What this shows
 
-While a turn runs, Replay Theater records each file edit Claude makes (the Edit, Write and MultiEdit tool calls): the file, and the text before and after. When the turn ends, a hint appears above the prompt:
+While a turn runs, Replay Theater records each file edit Claude makes (the Edit, Write and MultiEdit tool calls): the file, and the text before and after. When the turn ends, `/replay` opens them. (Upstream also shows a hint above the prompt, `▶ Replay: 5 edits (press r)  [ Replay ]`; this copy is patched to draw nothing there.)
 
-```text
-▶ Replay: 5 edits (press r)  [ Replay ]
-```
-
-Open it, and a pane shows one edit at a time: the file, the tool, a count of added and removed lines, and a short diff in red and green. A strip of numbered cells shows every step, with the current one highlighted, and the header reads "step 2 of 5". Prev, Next and Close buttons move through the steps.
+The replay is a pane that shows one edit at a time: the file, the tool, a count of added and removed lines, and a short diff in red and green. A strip of numbered cells shows every step, with the current one highlighted, and the header reads "step 2 of 5". Prev, Next and Close buttons move through the steps.
 
 Replay Theater only watches. It never blocks, changes or delays an edit.
 
@@ -23,7 +19,7 @@ The patterns it demonstrates:
 
 ## Demo
 
-After a rename, the hint above the prompt:
+After a rename, upstream's hint above the prompt (not drawn by this copy):
 
 ![The Replay hint above the prompt after a turn with five edits](https://github.com/anthropics/claude-code-playground/raw/569c528/claude-code/mods/replay-theater/screenshots/replay-theater-hint.png)
 
@@ -68,37 +64,21 @@ No environment variables or configuration.
 
 **Steps:**
 
-1. Clone this repository and go to this folder's parent:
+1. This copy is vendored into motta-claude-mods from [anthropics/claude-code-playground@569c528](https://github.com/anthropics/claude-code-playground/tree/569c528/claude-code/mods/replay-theater) (Apache-2.0), and installs from that marketplace ([setup/SETUP.md](../../setup/SETUP.md) adds it on a new machine):
 
    ```bash
-   git clone https://github.com/anthropics/claude-code-playground.git
-   cd claude-code-playground/claude-code/mods
+   claude plugin install replay-theater@motta-claude-mods --scope user
    ```
 
-2. Check the plugin:
+   Or try it for one session, from the repository's root:
 
    ```bash
-   claude plugin validate ./replay-theater
+   claude --plugin-dir ./plugins/replay-theater
    ```
 
-3. Try it for one session:
-
-   ```bash
-   claude --plugin-dir ./replay-theater
-   ```
-
-   Or install it, with the other mods here, from the local marketplace in this folder (see the [mods README](../README.md)):
-
-   ```bash
-   claude plugin marketplace add ./
-   claude plugin install replay-theater@claude-code-playground-mods --scope user
-   ```
-
-4. Ask Claude for a change that edits files, for example "rename the function greet to welcome everywhere".
-5. When the turn ends, open the replay in one of two ways:
-   - Type `/replay` and press Enter.
-   - Press `ctrl+x` then `Tab` to focus the band above the prompt, then press `r` (or Enter on the Replay button).
-6. In the pane:
+2. Ask Claude for a change that edits files, for example "rename the function greet to welcome everywhere".
+3. When the turn ends, type `/replay` and press Enter. This copy shows no hint above the prompt.
+4. In the pane:
 
    | Key | Does |
    |---|---|
