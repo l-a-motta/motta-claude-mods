@@ -1,0 +1,10 @@
+{
+  "externalEditorContext": true,
+  "messageIdleNotifThresholdMs": 1000,
+  "copyOnSelect": false,
+  "claudeInChromeDefaultEnabled": true,
+  "diffSidebarOpen": false,
+  "pluginPanes": {
+    "dockColumns": 55
+  }
+}

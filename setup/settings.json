@@ -1,0 +1,53 @@
+{
+  "cleanupPeriodDays": 210,
+  "env": {
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1",
+    "CLAUDE_CODE_DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS": "1",
+    "FORCE_HYPERLINK": "1"
+  },
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "model": "opus[1m]",
+  "feedbackDrafts": "notify",
+  "effortLevel": "high",
+  "modelSettings": {
+    "claude-fable-5-1": {
+      "effortLevel": "high"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  },
+  "advisorModel": "fable",
+  "pluginConfigs": {
+    "cc-plugin-agents-md@builtin": {
+      "options": {
+        "instructionFiles": "claude-md-or-agents-md"
+      }
+    }
+  },
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
+  "editorMode": "normal",
+  "verbose": false,
+  "preferredNotifChannel": "terminal_bell",
+  "switchModelsOnFlag": true,
+  "autoContinueAtUsageLimit": false,
+  "inputNeededNotifEnabled": true,
+  "promptSuggestionEnabled": false,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Bash(aws:* --profile prod*)",
+      "Bash(aws:* production*)"
+    ]
+  },
+  "voiceEnabled": true
+}
