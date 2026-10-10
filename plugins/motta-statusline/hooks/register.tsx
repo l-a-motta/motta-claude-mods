@@ -3,7 +3,8 @@
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
 //   [model | effort] · CTX -------|-- used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
 //
-// The desktop app leaves out [model | effort]: its model picker shows both.
+// The desktop app leaves out [model | effort], which its model picker shows,
+// and the PR, which its PR bar shows. A narrow band wraps between segments.
 //
 // CTX is a bar of the context window, its used part green under 30%, yellow
 // to 50%, orange to 70% and red past it, with a tick where auto-compact
@@ -208,11 +209,9 @@ export const register: Register = (on, options) => {
     const share = bandShare(below)
     if (share === 'taken' || data === null) return below
     const { Box, Text, Link } = $.ui.resolve(e)
-    // The desktop app shows the model and effort in its own picker.
-    const showModel = e.surface !== 'desktop'
     const ours = (
-      <Box flexDirection="column" paddingX={1} flexGrow={1}>
-        {lines(Box, Text, Link, data, await $.clock.now(), showModel)}
+      <Box flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
+        {lines(Box, Text, Link, data, await $.clock.now(), e.surface === 'desktop')}
       </Box>
     )
     if (share === 'beside') {
@@ -541,41 +540,52 @@ export function parseStatus(out: string): Git {
 
 const LIMIT_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
-function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel = true) {
-  const sep = <Text color="subtle">  ·  </Text>
+// Each line is a row of segments that wraps between them, never inside one:
+// a narrow band moves a whole segment to the next row instead of breaking
+// `motta-claude-mods` over two. `onDesktop` leaves out what the desktop app
+// draws itself: the model and effort (its picker) and the PR (its PR bar).
+function lines(Box: any, Text: any, Link: any, d: Data, now: number, onDesktop = false) {
+  const sep = <Text color="subtle">·  </Text>
+  const seg = (parts: unknown[]) => <Box flexDirection="row" flexShrink={0}>{parts}</Box>
 
-  const line1 = [<Text color="suggestion">📁 {d.dir}</Text>]
+  const line1 = [seg([<Text color="suggestion">📁 {d.dir}</Text>])]
   if (d.repoUrl && d.repoName) {
     const href = d.git ? `${d.repoUrl}/tree/${d.git.branch}` : d.repoUrl
-    line1.push(<Text>  </Text>, <Link href={href} label={`🔗 ${d.repoName}`} />)
+    line1.push(seg([<Link href={href} label={`🔗 ${d.repoName}`} />]))
   }
   if (d.git) {
-    line1.push(<Text color="success">  🌿 {d.git.branch}</Text>)
-    if (d.git.staged > 0) line1.push(<Text color="success">  +{d.git.staged}</Text>)
-    if (d.git.modified > 0) line1.push(<Text color="warning">  ~{d.git.modified}</Text>)
-    if (d.git.staged === 0 && d.git.modified === 0) line1.push(<Text color="subtle">  clean</Text>)
+    const git = [<Text color="success">🌿 {d.git.branch}</Text>]
+    if (d.git.staged > 0) git.push(<Text color="success">  +{d.git.staged}</Text>)
+    if (d.git.modified > 0) git.push(<Text color="warning">  ~{d.git.modified}</Text>)
+    if (d.git.staged === 0 && d.git.modified === 0) git.push(<Text color="subtle">  clean</Text>)
+    line1.push(seg(git))
   }
-  if (d.pr) line1.push(<Text>  </Text>, ...prSegment(Text, Link, d.pr, d.isPrStale))
+  if (d.pr && !onDesktop) line1.push(seg(prSegment(Text, Link, d.pr, d.isPrStale)))
 
   const model = d.effort ? `[${d.model} | ${d.effort}]` : `[${d.model}]`
   const line2 = [
-    ...(showModel ? [<Text color="subtle">{model}</Text>, sep] : []),
-    <Text>CTX </Text>,
-    ...ctxBar(Text, d),
-    <Text color="subtle"> {short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
+    ...(onDesktop ? [] : [seg([<Text color="subtle">{model}</Text>])]),
+    seg([
+      ...(onDesktop ? [] : [sep]),
+      <Text>CTX </Text>,
+      ...ctxBar(Text, d),
+      <Text color="subtle"> {short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
+    ]),
   ]
   for (const l of d.limits) {
-    line2.push(sep, <Text>{l.label} </Text>, <Text color={level(l.percent, 60, 80)}>{l.percent}%</Text>)
+    const limit = [sep, <Text>{l.label} </Text>, <Text color={level(l.percent, 60, 80)}>{l.percent}%</Text>]
     const left = l.resetsAt === null ? '' : resetIn(l.resetsAt - now)
-    if (left) line2.push(<Text color="subtle"> ~{left}</Text>)
+    if (left) limit.push(<Text color="subtle"> ~{left}</Text>)
+    line2.push(seg(limit))
   }
-  line2.push(sep, <Text>In </Text>, <Text color="subtle">{short(d.ctxTokens)}</Text>)
-  line2.push(<Text>  Out </Text>, <Text color="subtle">{short(d.outTokens)}</Text>)
-  if (d.rate) line2.push(...rateSegment(Text, d.rate))
+  const io = [sep, <Text>In </Text>, <Text color="subtle">{short(d.ctxTokens)}</Text>]
+  io.push(<Text>  Out </Text>, <Text color="subtle">{short(d.outTokens)}</Text>)
+  if (d.rate) io.push(...rateSegment(Text, d.rate))
+  line2.push(seg(io))
 
   return [
-    <Box key="line1" flexDirection="row">{line1}</Box>,
-    <Box key="line2" flexDirection="row">{line2}</Box>,
+    <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={2}>{line1}</Box>,
+    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={2}>{line2}</Box>,
   ]
 }
 
