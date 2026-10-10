@@ -1,9 +1,15 @@
 // motta-statusline: a two-line status line.
 //
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
-//   [model | effort] · CTX n% used/window · 5h n% ~reset · 7d n% ~reset · In n Out n
+//   [model | effort] · CTX n% used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
 //
 // The desktop app leaves out [model | effort]: its model picker shows both.
+//
+// `@n/s` is the main session's generation rate: output tokens over the time
+// from a request's first streamed token to its end, exact once the request
+// ends. While one streams it reads `@~n/s`, estimated from the text received
+// so far, and before its first token, past a second, `waiting ns`.
+// Subagents are left out, as they are from Out.
 //
 // The PR segment is the current branch's PR as `gh pr view` reads it: CI
 // checks, conflicts or behind its base, review decision. It refreshes every
@@ -26,9 +32,15 @@
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
+// How often a streaming request's rate is redrawn, how long a request waits
+// for its first token before the wait is shown, and the characters per token
+// the live estimate assumes.
+const RATE_TICK_MS = 500
+const WAIT_SHOWN_MS = 1_000
+const CHARS_PER_TOKEN = 4
 const PR_PENDING_MS = 30_000
 const PR_SETTLED_MS = 120_000
 // GitHub takes a few seconds to start the checks of a pushed commit.
@@ -64,11 +76,22 @@ type Data = {
   ctxWindow: number
   limits: { label: string; percent: number; resetsAt: number | null }[]
   outTokens: number
+  rate: Rate | null
 }
+
+// The main session's rate: the last finished request's (`exact`), the one
+// streaming now (`live`), or how long it has waited for its first token.
+export type Rate = { kind: 'exact' | 'live'; perSec: number } | { kind: 'waiting'; ms: number }
+
+// One main-session request while it streams: when it was sent, when its
+// first token came, the characters received, and whether it has ended.
+type Step = { sentAt: number; firstAt: number | null; chars: number; isDone: boolean }
 
 let data: Data | null = null
 let gitRoot: string | null = null
 let outTokens = 0
+let rate: Rate | null = null
+let lastExact: Rate | null = null
 let liveEffort: string | null = null
 let isTicking = false
 // The branch the PR reading is for, when it was last asked, and whether a
@@ -85,21 +108,56 @@ export const register: Register = (on, options) => {
     const started = await next(e)
     outTokens = 0
     liveEffort = null
+    rate = null
+    lastExact = null
     await refreshAll($)
     return started
   })
 
   // The main loop's requests carry the effort actually sent, after any
   // downgrade for the model; subagents' requests are left out. Refreshing
-  // after each one keeps the figures moving while a turn runs.
+  // after each one keeps the figures moving while a turn runs. The chunks are
+  // passed on as they come; counting them is all the hook does to the stream.
   on('turn.step', async function* ($, e, next) {
-    const result = yield* next(e)
-    if (e.agentId === undefined) {
-      if (e.effort !== undefined) liveEffort = String(e.effort)
-      outTokens += result?.usage?.output_tokens ?? 0
+    if (e.agentId !== undefined) return yield* next(e)
+    if (e.effort !== undefined) liveEffort = String(e.effort)
+    const step: Step = { sentAt: await $.clock.now(), firstAt: null, chars: 0, isDone: false }
+    const tick = $.clock.every(RATE_TICK_MS, () => void tickRate($, step))
+    // Runs once, when the stream ends or the dispatch is abandoned (esc), so
+    // no tick outlives its request. An interrupted request has no result:
+    // its live figure goes and the last finished request's comes back.
+    const end = async () => {
+      if (step.isDone) return
+      step.isDone = true
+      tick.cancel()
+      rate = lastExact
       await refreshAll($, false)
     }
-    return result
+    const onAbort = () => void end()
+    next.signal.addEventListener('abort', onAbort, { once: true })
+    let endAt: number | null = null
+    try {
+      const stream = next(e)
+      for await (const chunk of stream) {
+        // Timed before the chunk is passed on, so drawing it costs no time.
+        if (chunk.kind === 'stop') endAt = await $.clock.now()
+        const chars = chunkChars(chunk)
+        if (chars > 0) {
+          if (step.firstAt === null) step.firstAt = await $.clock.now()
+          step.chars += chars
+        }
+        yield chunk
+      }
+      const result = await stream.result
+      const tokens = result.usage?.output_tokens ?? 0
+      outTokens += tokens
+      const exact = exactRate(tokens, step.firstAt, endAt ?? (await $.clock.now()))
+      if (exact !== null) lastExact = exact
+      return result
+    } finally {
+      next.signal.removeEventListener('abort', onAbort)
+      await end()
+    }
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -204,6 +262,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
         resetsAt: l.resetsAt ? Date.parse(l.resetsAt) : null,
       })),
       outTokens,
+      rate,
     }
     if (withGit) await refreshGit($)
     else await paint($)
@@ -214,6 +273,42 @@ async function refreshAll($: EngineInterface, withGit = true) {
 
 async function paint($: EngineInterface) {
   $.ui.invalidate('ui.render')
+}
+
+// Redraws a streaming request's rate: the wait for its first token once it
+// passes WAIT_SHOWN_MS, then the estimate from the characters received, once
+// they span a tick (a few characters over a few milliseconds would read as
+// thousands per second). Until either shows, the last finished request's
+// figure stays.
+async function tickRate($: EngineInterface, step: Step) {
+  const now = await $.clock.now()
+  if (step.isDone || data === null) return
+  let shown: Rate | null = null
+  if (step.firstAt === null) {
+    if (now - step.sentAt >= WAIT_SHOWN_MS) shown = { kind: 'waiting', ms: now - step.sentAt }
+  } else if (now - step.firstAt >= RATE_TICK_MS) {
+    shown = { kind: 'live', perSec: step.chars / CHARS_PER_TOKEN / ((now - step.firstAt) / 1_000) }
+  }
+  if (shown === null) return
+  rate = shown
+  data = { ...data, rate }
+  await paint($)
+}
+
+// The characters a chunk adds to the response: visible text, thinking and a
+// tool call's arguments. The rest (a tool call's start, the stop, the
+// engine's own items) carries none.
+export function chunkChars(chunk: TurnStepChunk): number {
+  if (chunk.kind === 'text' || chunk.kind === 'thinking') return chunk.text.length
+  if (chunk.kind === 'input') return chunk.json.length
+  return 0
+}
+
+// The exact rate of a finished request, or null when it streamed nothing or
+// ended too soon after its first token to divide by.
+export function exactRate(tokens: number, firstAt: number | null, endAt: number): Rate | null {
+  if (firstAt === null || tokens <= 0 || endAt - firstAt < 50) return null
+  return { kind: 'exact', perSec: tokens / ((endAt - firstAt) / 1_000) }
 }
 
 async function refreshGit($: EngineInterface) {
@@ -419,6 +514,7 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel =
   }
   line2.push(sep, <Text>In </Text>, <Text color="subtle">{short(d.ctxTokens)}</Text>)
   line2.push(<Text>  Out </Text>, <Text color="subtle">{short(d.outTokens)}</Text>)
+  if (d.rate) line2.push(...rateSegment(Text, d.rate))
 
   return [
     <Box key="line1" flexDirection="row">{line1}</Box>,
@@ -449,6 +545,15 @@ function prSegment(Text: any, Link: any, pr: Pr, isStale: boolean) {
   else if (pr.review === 'pending') parts.push(T('subtle', ' · review pending'))
   if (pr.isReady) parts.push(T('subtle', ' · ready to merge'))
   return parts
+}
+
+// ` @84/s` once a request ended, ` @~84/s` while one streams (the estimate
+// in the warning color), ` waiting 3s` before its first token.
+function rateSegment(Text: any, r: Rate) {
+  if (r.kind === 'waiting') return [<Text color="subtle"> waiting {Math.floor(r.ms / 1_000)}s</Text>]
+  const n = Math.round(r.perSec)
+  if (r.kind === 'live') return [<Text color="subtle"> @</Text>, <Text color="warning">~{n}</Text>, <Text color="subtle">/s</Text>]
+  return [<Text color="subtle"> @{n}/s</Text>]
 }
 
 function level(percent: number, warn: number, crit: number) {

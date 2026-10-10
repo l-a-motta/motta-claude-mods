@@ -1,7 +1,7 @@
 {
   "name": "motta-statusline",
-  "version": "0.4.0",
-  "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review, model and effort, context, rate limits and tokens. Below the prompt (always visible) or as a band above it.",
+  "version": "0.5.0",
+  "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review, model and effort, context, rate limits, tokens and the generation rate (tokens per second, live while a request streams). Below the prompt (always visible) or as a band above it.",
   "author": {
     "name": "l-a-motta"
   },
