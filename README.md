@@ -15,57 +15,12 @@ Third-party mods are pinned to the commit that was reviewed. To take an upstream
 
 ## New machine
 
-The repository is private, so the machine needs git access to it (`gh auth login`).
-
-```
-claude plugin marketplace add l-a-motta/motta-claude-mods
-claude plugin install motta-statusline@motta-claude-mods --scope user
-claude plugin install replay-theater@motta-claude-mods --scope user
-claude plugin install filetree@motta-claude-mods --scope user
-claude plugin install savvy-progress@motta-claude-mods --scope user
-claude plugin enable cc-plugin-you-should-know@builtin
-```
-
-`cc-plugin-you-should-know` ships inside Claude Code, off by default: a side agent that flags things in the reply worth knowing.
-
-Settings are not carried by plugins; set these by hand.
-
-`~/.claude/settings.json`: no `statusLine` key (the mod replaces it), plus
-
-```json
-{
-  "env": {
-    "FORCE_HYPERLINK": "1",
-    "CLAUDE_CODE_DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS": "1"
-  },
-  "preferredNotifChannel": "terminal_bell",
-  "promptSuggestionEnabled": false
-}
-```
-
-- `FORCE_HYPERLINK` makes the status line's repo link clickable where Claude Code does not detect OSC 8 support (VS Code's terminal). Ctrl+click there opens it twice, once from the terminal and once from Claude Code; a plain click opens it once.
-- The notification pair rings the terminal bell when a reply finishes, and only then. `auto` sends nothing on Windows terminals.
-- `promptSuggestionEnabled: false` turns off the greyed-out guess at your next prompt. Claude Code makes that guess with a second request over the whole conversation after each turn; with the setting off the request is never sent. A mod can only hide the guess once it is made, so this is a setting rather than a mod.
-
-`~/.claude.json` (global config, edit it with no session running): `"messageIdleNotifThresholdMs": 1000`, so the bell rings one second after a reply rather than sixty. Any key press or click in that second cancels it.
-
-VS Code `settings.json`, when Claude Code runs in its terminal:
-
-```json
-{
-  "terminal.integrated.enableVisualBell": true,
-  "terminal.integrated.bellDuration": 10000,
-  "accessibility.signals.terminalBell": { "sound": "on" },
-  "terminal.integrated.gpuAcceleration": "off"
-}
-```
-
-`gpuAcceleration: off` keeps mouse clicks on the cell under the pointer in the fullscreen layout; the GPU renderer drifts at fractional display scaling.
+[setup/SETUP.md](setup/SETUP.md) makes a Windows machine's Claude match the others: log in, clone this repository, install the mods, merge the settings in [setup/](setup/), add the skills. Every step is a command with a check, so a Claude session pointed at that file can run it. It also lists what comes with your Claude account and what no machine can carry.
 
 ## Where mods draw
 
 - **CLI:** everything.
-- **Desktop app (Code tab):** the band above the prompt, panes and slash commands. It does not raise the hint line under the prompt, so `motta-statusline` draws in the band there on its own, without the model and effort the app's picker already shows. It also runs the copy cached at install, not this checkout: after editing a mod, bump its `version` and run `claude plugin update <mod>@motta-claude-mods` before the app sees it.
+- **Desktop app (Code tab):** the band above the prompt, panes and slash commands. It does not raise the hint line under the prompt, so `motta-statusline` draws in the band there on its own, without the model and effort the app's picker already shows. Installed from this checkout as a folder marketplace, it reads the mods from the folder, as the CLI does: an edit reaches a session at its next start or on `/reload-plugins`, with no version bump or `claude plugin update`.
 - **claude.ai web and cloud sessions:** none; they do not load local plugins.
 
 ## Developing
