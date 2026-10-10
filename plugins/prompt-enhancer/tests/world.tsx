@@ -23,20 +23,11 @@ export const command = (args: string) => ({
   presentation: { isFullscreen: true, columns: 160 },
 })
 
-export const DRAFT = 'fix the flaky test in @tests/checkout.spec.ts, it fails sometimes on CI'
+export const DRAFT = 'uh fix the flaky test in @tests/checkout.spec.ts, it fails sometimes on CI'
 
-export const VARIANTS = [
-  '=== TIGHT ===',
-  'Fix the flaky @tests/checkout.spec.ts.',
-  '=== BALANCED ===',
-  '<task>',
-  'Fix the flaky test in @tests/checkout.spec.ts.',
-  '</task>',
-  '=== THOROUGH ===',
-  'You are a senior engineer. Fix @tests/checkout.spec.ts and say when to stop.',
-].join('\n')
-
-export const BALANCED = '<task>\nFix the flaky test in @tests/checkout.spec.ts.\n</task>'
+// What the cheap model and the conversation's model answer.
+export const CLEANED = 'Fix the flaky test in @tests/checkout.spec.ts, it fails sometimes on CI.'
+export const EXPANDED = 'Fix the flaky test in @tests/checkout.spec.ts: it fails on CI [how often]. Find the root cause, then show it passing 20 runs in a row.'
 
 export const MESSAGES = [
   { role: 'user', content: [{ type: 'text', text: 'why is checkout slow?' }] },
@@ -65,7 +56,7 @@ type Setup = {
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
   const seen = {
     forked: [] as string[],
-    completed: [] as { model: string; prompt: string; effort?: string }[],
+    completed: [] as { model: string; prompt: string; system?: string; effort?: string }[],
     filled: [] as string[],
     submitted: [] as string[],
     copied: [] as string[],
@@ -110,7 +101,7 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
     return { value: answer() }
   })
   on('model.complete', ($, e) => {
-    seen.completed.push({ model: e.model, prompt: e.prompt, ...(e.effort ? { effort: e.effort } : {}) })
+    seen.completed.push({ model: e.model, prompt: e.prompt, ...(e.system ? { system: e.system } : {}), ...(e.effort ? { effort: e.effort } : {}) })
     return { value: answer() }
   })
   on('session.messages', () => ({ value: MESSAGES as never }))
