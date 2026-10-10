@@ -38,10 +38,16 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
     value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
   }))
   on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
-  on('session.usage', () => ({
+  // Asked for the breakdown, it says auto-compact fires at 835k.
+  on('session.usage', ($, e) => ({
     value: {
       startedAt: 0,
-      context: { tokens: 360_000, window: 1_000_000, percent: 36 },
+      context: {
+        tokens: 360_000,
+        window: 1_000_000,
+        percent: 36,
+        ...(e?.breakdown ? { breakdown: { isAutoCompactEnabled: true, autoCompactThreshold: 835_000 } as never } : {}),
+      },
       rateLimits: [{ kind: 'five_hour', percentUsed: 5 }],
     },
   }))

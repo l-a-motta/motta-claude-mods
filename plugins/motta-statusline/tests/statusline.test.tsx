@@ -85,7 +85,7 @@ test('draws both lines above the engine hint in the terminal hint line', async (
   })
   expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /36%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' 360k/1M' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
   await ui.unmount()
 })
@@ -94,7 +94,7 @@ test('draws in the band on the desktop, which has no hint line, and leaves the t
   answerSession(on)
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
   expect(await desktop.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: /36%/ })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: ' 360k/1M' })).toBeDefined()
   // The app's model picker already shows the model and effort.
   expect(await desktop.find({ type: 'Text', text: /Opus 5\.5/ })).toBeUndefined()
   await desktop.unmount()
