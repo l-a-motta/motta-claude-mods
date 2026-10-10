@@ -1,0 +1,21 @@
+{
+  "name": "motta-claude-mods",
+  "owner": {
+    "name": "l-a-motta"
+  },
+  "metadata": {
+    "description": "Personal Claude Code mods."
+  },
+  "plugins": [
+    {
+      "name": "motta-statusline",
+      "source": "./plugins/motta-statusline",
+      "description": "Two-line status band above the prompt: folder, repo link, git state, model and effort, context, rate limits and tokens."
+    },
+    {
+      "name": "replay-theater",
+      "source": "./plugins/replay-theater",
+      "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); the band hint lasts one prompt."
+    }
+  ]
+}
