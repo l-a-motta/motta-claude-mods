@@ -5,8 +5,9 @@
 //
 // `placement` picks where it draws:
 // - below (default): drawn in the hint line under the prompt (PromptHint),
-//   above the engine's own hint, and it stays while a turn runs. Terminal and
-//   desktop only; $.ui.status is not used, since it draws as a warning notice.
+//   above the engine's own hint, and it stays while a turn runs. The desktop
+//   app never raises that line, so there it draws as the band instead.
+//   $.ui.status is not used, since it draws as a warning notice.
 // - above: a colored band above the prompt. The engine gives that space to
 //   the spinner during a turn. The band is shared: this hook asks the plugins
 //   beneath it first and draws only when none of them drew, so a mod such as
@@ -76,7 +77,9 @@ export const register: Register = (on, options) => {
   // fire session.start, but the band is drawn as soon as the plugin loads.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
-    if (placement === 'below' || e.props.hasSurvey) return next(e)
+    // The desktop app never raises PromptHint, so `below` draws in the band there.
+    const isBand = placement === 'above' || e.surface === 'desktop'
+    if (!isBand || e.props.hasSurvey) return next(e)
     const below = await next(e)
     if (!isFree(below) || data === null) return below
     const { Box, Text, Link } = $.ui.resolve(e)
