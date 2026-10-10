@@ -40,7 +40,7 @@
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
-import type { EngineInterface, Register, TurnStepChunk } from 'claude-code'
+import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
 // How often a streaming request's rate is redrawn, how long a request waits
@@ -177,6 +177,18 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // The engine's push when a rate-limit window moves a whole point or the
+  // context fill moves, from any response: a subagent's too, and a background
+  // one's after the turn ended, when no main-session step would re-read them.
+  on('session.measure', async ($, e, next) => {
+    const measured = await next(e)
+    if (data !== null) {
+      data = { ...data, ...contextFigures(e.context), limits: limitsOf(e.rateLimits) }
+      await paint($)
+    }
+    return measured
+  }).catch(($, e, next) => next(e))
+
   // A push or a `gh pr` command changes the PR: read it at once, and again
   // once GitHub has started the pushed commit's checks.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -293,15 +305,9 @@ async function refreshAll($: EngineInterface, withGit = true) {
       isPrStale: data?.isPrStale ?? false,
       model: modelLabel(await $.session.model()),
       effort: liveEffort ?? (await settingsEffort($)),
-      ctxPercent: Math.round(ctx.percent ?? (ctx.window ? ((ctx.tokens ?? 0) / ctx.window) * 100 : 0)),
-      ctxTokens: ctx.tokens ?? 0,
-      ctxWindow: ctx.window ?? 0,
+      ...contextFigures(ctx),
       compactAt,
-      limits: usage.rateLimits.map(l => ({
-        label: LIMIT_LABELS[l.kind] ?? l.kind,
-        percent: Math.round(l.percentUsed),
-        resetsAt: l.resetsAt ? Date.parse(l.resetsAt) : null,
-      })),
+      limits: limitsOf(usage.rateLimits),
       outTokens,
       rate,
     }
@@ -310,6 +316,22 @@ async function refreshAll($: EngineInterface, withGit = true) {
   } catch {
     // Keep the last reading; the next step, turn or timer tries again.
   }
+}
+
+function contextFigures(ctx: SessionContextUsage) {
+  return {
+    ctxPercent: Math.round(ctx.percent ?? (ctx.window ? ((ctx.tokens ?? 0) / ctx.window) * 100 : 0)),
+    ctxTokens: ctx.tokens ?? 0,
+    ctxWindow: ctx.window ?? 0,
+  }
+}
+
+function limitsOf(rateLimits: SessionRateLimit[]): Data['limits'] {
+  return rateLimits.map(l => ({
+    label: LIMIT_LABELS[l.kind] ?? l.kind,
+    percent: Math.round(l.percentUsed),
+    resetsAt: l.resetsAt ? Date.parse(l.resetsAt) : null,
+  }))
 }
 
 // The session's usage. On the full refreshes (the session's start, a turn's
