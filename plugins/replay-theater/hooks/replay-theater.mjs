@@ -6,10 +6,9 @@
 //
 // Claude Code 2.1.280 function hooks. Load with --plugin-dir.
 //
-// Modified by l-a-motta from anthropics/claude-code-playground@569c528: the
-// band hint shows only until the next prompt or until the replay is opened
-// (`hint`), so the band goes back to the mods beneath; /replay still opens
-// the last turn's edits.
+// Modified by l-a-motta from anthropics/claude-code-playground@569c528: no
+// hint in the band after a turn; /replay alone opens the last turn's edits.
+// The band is still drawn as the pane's fallback where no pane fits.
 
 const PANE_ID = "replay-theater";
 const MAX_DIFF_LINES = 12;
@@ -17,9 +16,8 @@ const MAX_LCS_LINES = 400;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 
 // Module state. `pending` fills during a turn; `replay` is the last finished
-// turn's steps, the ones the pane shows. `hint` is whether the band offers
-// them; the band is shared, so the offer lasts one prompt.
-const state = { pending: [], replay: [], index: 0, isOpen: false, inBand: false, turns: 0, hint: false };
+// turn's steps, the ones the pane shows.
+const state = { pending: [], replay: [], index: 0, isOpen: false, inBand: false, turns: 0 };
 
 function relPath(cwd, path) {
   if (!path) return "(unknown file)";
@@ -107,20 +105,10 @@ async function stepsFor($, e) {
   return [];
 }
 
-function hintText() {
-  const n = state.replay.length;
-  return `▶ Replay: ${n} edit${n === 1 ? "" : "s"} (press r)`;
-}
-
 async function openReplay($) {
   if (!state.replay.length) return false;
   state.index = 0;
   state.isOpen = true;
-  state.hint = false;
-  // The pane only takes the keyboard while nothing else holds it. Hide the
-  // band first (it held the keys if its button was pressed), then open.
-  $.ui.invalidate("ui.render");
-  await $.clock.sleep(200);
   const rows = Math.min(MAX_DIFF_LINES + 8, 22);
   const placed = await $.ui.open({ id: PANE_ID, title: "Replay Theater", focus: true, closeOnEscape: true, rows, columns: 58 });
   // No room for a pane (a narrow terminal): draw the replay in the band.
@@ -211,13 +199,7 @@ export function register(on, options) {
   });
 
   on("turn.start", ($, e, next) => {
-    if (!e.agentId) {
-      state.pending = [];
-      if (state.hint) {
-        state.hint = false;
-        $.ui.invalidate("ui.render");
-      }
-    }
+    if (!e.agentId) state.pending = [];
     return next(e);
   });
 
@@ -229,23 +211,13 @@ export function register(on, options) {
     state.pending = [];
     state.index = 0;
     state.turns++;
-    state.hint = true;
-    $.ui.invalidate("ui.render");
     return r;
   });
 
-  // The band above the prompt: the hint and a button that opens the pane.
+  // The band above the prompt: the replay, only where no pane fits.
   on("ui.render", { component: "AbovePrompt" }, ($, e, next) => {
     if (state.isOpen && state.inBand) return replayView($, e, true);
-    if (!state.hint || !state.replay.length || state.isOpen) return next(e);
-    const { Box, Text, Button } = $.ui.resolve(e);
-    return Box({
-      flexDirection: "row", gap: 2, paddingX: 1,
-      children: [
-        Text({ color: "magenta", bold: true, children: hintText() }),
-        Button({ key: "open-replay", label: "Replay", hotkey: "r", onPress: () => openReplay($) }),
-      ],
-    });
+    return next(e);
   });
 
   // The pane.
