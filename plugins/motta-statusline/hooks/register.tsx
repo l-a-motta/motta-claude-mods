@@ -1,7 +1,7 @@
 // motta-statusline: a two-line status line.
 //
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
-//   [model | effort] · CTX ████··│· used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
+//   [model | effort] · CTX -------|-- used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
 //
 // The desktop app leaves out [model | effort]: its model picker shows both.
 //
@@ -613,27 +613,38 @@ function rateSegment(Text: any, r: Rate) {
   return [<Text color="subtle"> @{n}/s</Text>]
 }
 
-// `██████········│·`: the window in BAR_CELLS cells, the used part in the
-// color of how full it is, and a tick (the theme's text color: white on a
-// dark theme) where auto-compact fires. No tick when auto-compact is off.
+// `----------|-`: the window in BAR_CELLS dashes, the used ones bold in the
+// color of how full it is, the rest dim, and a tick (the theme's text color:
+// white on a dark theme) where auto-compact fires. Plain dashes: a desktop
+// draws box-drawing lines at full width, joined into one long rule. The tick sits
+// between two cells, never on one, so the room left past it stays drawn. No
+// tick when auto-compact is off.
 function ctxBar(Text: any, d: Data) {
   const { filled, mark } = barCells(d.ctxTokens, d.ctxWindow, d.compactAt)
-  const look = { used: { color: ctxLevel(d.ctxPercent), glyph: '█' }, mark: { color: 'text', glyph: '│' }, free: { color: 'subtle', glyph: '·' } }
-  // One Text per run of like cells.
+  const look = { used: { color: ctxLevel(d.ctxPercent), glyph: '-' }, mark: { color: 'text', glyph: '|' }, free: { color: 'subtle', glyph: '-' } }
+  // One Text per run of like cells, the tick its own.
   const runs: { kind: keyof typeof look; length: number }[] = []
-  for (let i = 0; i < BAR_CELLS; i++) {
-    const kind = i === mark ? 'mark' : i < filled ? 'used' : 'free'
+  const push = (kind: keyof typeof look) => {
     const last = runs[runs.length - 1]
-    if (last?.kind === kind) last.length++
+    if (last?.kind === kind && kind !== 'mark') last.length++
     else runs.push({ kind, length: 1 })
   }
-  return runs.map(r => <Text color={look[r.kind].color}>{look[r.kind].glyph.repeat(r.length)}</Text>)
+  for (let i = 0; i < BAR_CELLS; i++) {
+    if (i === mark) push('mark')
+    push(i < filled ? 'used' : 'free')
+  }
+  return runs.map(r => (
+    <Text color={look[r.kind].color} bold={r.kind !== 'free'}>
+      {look[r.kind].glyph.repeat(r.length)}
+    </Text>
+  ))
 }
 
-const BAR_CELLS = 14
+const BAR_CELLS = 10
 
-// How many of the bar's cells the used tokens fill, and which cell holds the
-// auto-compact tick (null when there is none).
+// How many of the bar's cells the used tokens fill, and before which cell the
+// auto-compact tick goes (null when there is none): never after the last, so
+// a threshold short of the window's end shows room past it.
 export function barCells(tokens: number, window: number, compactAt: number | null) {
   if (window <= 0) return { filled: 0, mark: null }
   const at = (n: number) => Math.min(BAR_CELLS - 1, Math.max(0, Math.round((n / window) * BAR_CELLS)))
