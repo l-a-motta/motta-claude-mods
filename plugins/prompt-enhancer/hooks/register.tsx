@@ -68,6 +68,8 @@ const boxAccess = atom({ plugin: 'prompt-enhancer', key: 'boxAccess' } as const,
 
 const EFFORTS: readonly ModelEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 const TITLES: Record<Kind, string> = { clean: 'Cleaned up', expand: 'Expanded' }
+// Wider than any band: the rule's Box clips it to the width left.
+const RULE = '─'.repeat(400)
 
 // Set from the options each time the module loads.
 let settings = { model: 'session', cleanModel: 'haiku', effort: undefined as ModelEffort | undefined }
@@ -365,55 +367,78 @@ export const register: Register = (on, options) => {
           {hasBox ? <Button key="enhance" plain label="✦ enhance" onPress={() => void chip($)} /> : <Text dimColor>{'✦ /enhance <your prompt>'}</Text>}
         </Box>
       )
-    } else if (now === 'choosing') {
-      ours = (
-        <Box key="band-under:prompt-enhancer" flexDirection="row" gap={1} flexWrap="wrap" paddingX={1}>
-          <Text color="suggestion" bold>✦ Enhance as</Text>
-          <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
-          <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
-          <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
-        </Box>
-      )
-    } else if (now === 'working') {
-      ours = (
-        <Box key="band-under:prompt-enhancer" flexDirection="row" gap={1} paddingX={1}>
-          <Text color="suggestion">✦</Text>
-          <Text>{current?.kind === 'clean' ? 'Cleaning up…' : 'Expanding…'}</Text>
-          <Text dimColor>{label}</Text>
-          <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
-        </Box>
-      )
-    } else if (now === 'result') {
-      const text = await read($, result)
-      const spent = await read($, usage)
-      const missing = current === null ? [] : missingTokens(current.original, text)
-      ours = (
-        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1}>
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            <Text color="suggestion" bold>✦ {title}</Text>
-            <Text dimColor>
-              {label}
-              {spent !== null ? ` · ${formatUsage(spent)}` : ''}
-            </Text>
-          </Box>
-          <Text>{text}</Text>
-          {missing.length > 0 && <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>}
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {hasBox && <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />}
-            <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
-            <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
-            <Button key="retry" label="Retry" onPress={() => void retry($)} />
-            <Button key="discard" label="Discard" onPress={() => void cancel($)} />
-          </Box>
-        </Box>
-      )
     } else {
-      const failed = await read($, failure)
+      let body
+      if (now === 'choosing') {
+        body = (
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Text bold>Enhance as</Text>
+            <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
+            <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
+            <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
+          </Box>
+        )
+      } else if (now === 'working') {
+        body = (
+          <Box flexDirection="row" gap={1}>
+            <Text>{current?.kind === 'clean' ? 'Cleaning up…' : 'Expanding…'}</Text>
+            <Text dimColor>{label}</Text>
+            <Button key="cancel" label="Cancel" onPress={() => void cancel($)} />
+          </Box>
+        )
+      } else if (now === 'result') {
+        const text = await read($, result)
+        const spent = await read($, usage)
+        const missing = current === null ? [] : missingTokens(current.original, text)
+        body = (
+          <Box flexDirection="column">
+            <Box flexDirection="row" gap={1} flexWrap="wrap">
+              <Text color="suggestion" bold>
+                {title}
+              </Text>
+              <Text dimColor>
+                {label}
+                {spent !== null ? ` · ${formatUsage(spent)}` : ''}
+              </Text>
+            </Box>
+            <Box flexDirection="column" marginY={1}>
+              <Text>{text}</Text>
+              {missing.length > 0 && <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>}
+            </Box>
+            <Box flexDirection="row" gap={1} flexWrap="wrap">
+              {hasBox && <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />}
+              <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
+              <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
+              <Button key="retry" label="Retry" onPress={() => void retry($)} />
+              <Button key="discard" label="Discard" onPress={() => void cancel($)} />
+            </Box>
+          </Box>
+        )
+      } else {
+        const failed = await read($, failure)
+        body = (
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Text color="error">Could not enhance: {failed ?? 'unknown error'}</Text>
+            <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
+            <Button key="dismiss" label="Dismiss" onPress={() => void cancel($)} />
+          </Box>
+        )
+      }
+      // A card: a blank line, a rule naming the mod, a blank line, the stage.
       ours = (
-        <Box key="band-under:prompt-enhancer" flexDirection="row" gap={1} flexWrap="wrap" paddingX={1}>
-          <Text color="error">✦ Could not enhance: {failed ?? 'unknown error'}</Text>
-          <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
-          <Button key="dismiss" label="Dismiss" onPress={() => void cancel($)} />
+        <Box key="band-under:prompt-enhancer" flexDirection="column" paddingX={1} marginTop={1}>
+          <Box flexDirection="row">
+            <Text dimColor>── </Text>
+            <Text color="suggestion">✦ enhance </Text>
+            <Box flexGrow={1} width={0} overflow="hidden">
+              <Text dimColor wrap="truncate">
+                {RULE}
+              </Text>
+            </Box>
+          </Box>
+          <Box flexDirection="column" marginTop={1}>
+            {body}
+          </Box>
         </Box>
       )
     }

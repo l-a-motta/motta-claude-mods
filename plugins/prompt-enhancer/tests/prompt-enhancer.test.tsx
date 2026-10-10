@@ -70,7 +70,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(seen.forked).toEqual([])
     expect(seen.completed).toEqual([{ model: 'haiku', prompt: `<text>\n${DRAFT}\n</text>`, system: CLEAN_RULES, effort: 'low' }])
     expect(await ui.find({ text: CLEANED })).toBeDefined()
-    expect(await ui.find({ text: '✦ Cleaned up' })).toBeDefined()
+    expect(await ui.find({ text: 'Cleaned up', type: 'Text' })).toBeDefined()
+    // The card sits under a rule that names the mod.
+    expect(await ui.find({ text: '✦ enhance ', type: 'Text' })).toBeDefined()
 
     await ui.press({ key: 'use' })
     expect(seen.filled.at(-1)).toBe(CLEANED)
