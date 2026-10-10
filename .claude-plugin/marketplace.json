@@ -15,12 +15,12 @@
     {
       "name": "assumption-check",
       "source": "./plugins/assumption-check",
-      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: mark one wrong (type the fix or let Claude ask), ask why, or delete it. On from the start, /assumption-check off to stop; nothing in the pane reaches Claude unless you press wrong or why."
+      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt, with counts that filter: mark one right, or wrong (type the fix or let Claude ask), ask why, open its source, or delete it. On from the start, /assumption-check off to stop; nothing in the pane reaches Claude unless you press wrong or why."
     },
     {
       "name": "prompt-enhancer",
       "source": "./plugins/prompt-enhancer",
-      "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it."
+      "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that opens an Enhance pane and rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it; the band holds the chip alone."
     },
     {
       "name": "replay-theater",
@@ -29,22 +29,13 @@
     },
     {
       "name": "filetree",
-      "source": {
-        "source": "github",
-        "repo": "data-goblin/claude-code-filetree",
-        "sha": "bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5"
-      },
-      "description": "IDE-style file tree with git status that shimmers on files Claude reads and writes. Third-party (MIT), pinned to the reviewed commit."
+      "source": "./plugins/filetree",
+      "description": "IDE-style file tree with git status that shimmers on files Claude reads and writes. Vendored from data-goblin/claude-code-filetree@bf8de32 (MIT)."
     },
     {
       "name": "savvy-progress",
-      "source": {
-        "source": "git-subdir",
-        "url": "JohnnyVizz/claude-kit",
-        "path": "plugins/savvy-progress",
-        "sha": "272a877f39b6971690e087b16a7cc3951b811e39"
-      },
-      "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time. Third-party (MIT), pinned to the reviewed commit."
+      "source": "./plugins/savvy-progress",
+      "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time. Vendored from JohnnyVizz/claude-kit@272a877 (MIT)."
     }
   ]
 }

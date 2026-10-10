@@ -91,7 +91,7 @@ What the settings do, where it is not obvious from the name:
 
 ## 5. The find-skills skill
 
-From [vercel-labs/skills](https://github.com/vercel-labs/skills), pinned to the commit that was reviewed (`0b8fb22`), like the third-party mods:
+From [vercel-labs/skills](https://github.com/vercel-labs/skills), pinned to the commit that was reviewed (`0b8fb22`):
 
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.claude\skills\find-skills" | Out-Null

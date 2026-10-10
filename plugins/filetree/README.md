@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="media/filetree-shimmer.gif" alt="filetree shimmering the file Claude is editing" width="900">
+  <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-shimmer.gif" alt="filetree shimmering the file Claude is editing" width="900">
 </p>
 
 > [!NOTE]
@@ -22,21 +22,13 @@
 
 ## Installation
 
-The repo is its own plugin marketplace. Run this in the terminal:
+This copy is vendored into motta-claude-mods from [data-goblin/claude-code-filetree@bf8de32](https://github.com/data-goblin/claude-code-filetree/tree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5) (MIT), and installs from that marketplace:
 
 ```bash
-claude plugin marketplace add data-goblin/claude-code-filetree
-claude plugin install filetree@claude-code-filetree
+claude plugin install filetree@motta-claude-mods
 ```
 
-Or inside a Claude Code session:
-
-```text
-/plugin marketplace add data-goblin/claude-code-filetree
-/plugin install filetree@claude-code-filetree
-```
-
-Installed it as `filetree@filetree` before the repository was renamed? Nothing to do: that install keeps loading and keeps receiving updates.
+[setup/SETUP.md](../../setup/SETUP.md) adds the marketplace on a new machine.
 
 ## Features
 
@@ -46,15 +38,15 @@ Installed it as `filetree@filetree` before the repository was renamed? Nothing t
 - Branch, upstream and ahead/behind in the header
 - Visual indicator of Claude reads and searches (purple), writes (orange) and commits (green); collapsed folders open to show the file
 
-  <img src="media/filetree-read.gif" alt="Files shimmer purple while Claude reads and searches them" width="800">
+  <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-read.gif" alt="Files shimmer purple while Claude reads and searches them" width="800">
 
 - Git and GitHub operations via `git` and `gh` (commit, push, pull, checkout, merge, PR and more) shown as a status at the bottom of the pane
 
-  <img src="media/filetree-git.gif" alt="A committed file shimmers green and the footer shows the commit" width="800">
+  <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-git.gif" alt="A committed file shimmers green and the footer shows the commit" width="800">
 
 - Selection-aware: the selected file is passed to Claude as context through a `prompt.submit` hook, and `@path` mentions in a prompt reveal that file in the tree
 
-  <img src="media/filetree-ask.gif" alt="Selecting config.yaml in the tree and asking Claude what it changed there" width="800">
+  <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-ask.gif" alt="Selecting config.yaml in the tree and asking Claude what it changed there" width="800">
 
 - File and folder sizes: the `Σ` header button swaps the date column for sizes; folders show their disk usage (`du`, or a summed listing on Windows), worked out in the background for the rows on screen and refreshed after Claude writes
 - Double-click a file to open it in its default app
@@ -68,7 +60,7 @@ Installed it as `filetree@filetree` before the repository was renamed? Nothing t
 You can resize the pane with the mouse, or by setting custom `pane:grow` or `pane:shrink` keybindings in `keybindings.json`
 
 <p align="center">
-  <img src="media/filetree-resize.gif" alt="Dragging the filetree pane edge to resize it" width="900">
+  <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-resize.gif" alt="Dragging the filetree pane edge to resize it" width="900">
 </p>
 
 ## Settings
