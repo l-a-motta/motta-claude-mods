@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 import { httpsUrl, modelLabel, parseStatus } from '../hooks/register.tsx'
 
@@ -35,9 +36,11 @@ describe('httpsUrl', () => {
   })
 })
 
-test('draws both lines above the engine hint on every surface that has the line', async ($, on) => {
+// Answers each call on $ the mod makes with one fixed session; hooks on a
+// call answer `{ value }`. The ui.render stand-ins are the engine beneath the
+// plugin: its hint line, and the opaque reference it hands back for an empty band.
+function answerSession(on: Parameters<TestBody>[1]) {
   mock.clock(on)
-  // Each call on $ is an event; its hooks answer `{ value }`.
   on('session.cwd', () => ({ value: 'C:/code/vtex-copilot-fse' }))
   on('session.repo', () => ({
     value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
@@ -55,23 +58,37 @@ test('draws both lines above the engine hint on every surface that has the line'
     value: { exitCode: 0, stdout: '## dev\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   }))
   on('ui.status', () => ({ value: undefined }))
-  // Stands in for the engine's own hint line beneath the plugin.
-  on('ui.render', ($, e) => {
+  on('ui.render', { component: 'PromptHint' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text key="engine-hint">esc to interrupt</Text>
   })
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 1 }) as never)
+}
 
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({
-      plugin: 'motta-statusline',
-      surface,
-      component: 'PromptHint',
-      props: { isDraft: false, isWorking: true, hint: 'esc to interrupt' },
-    })
-    expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /36%/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
-    await ui.unmount()
-  }
+const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120, scroll: { offset: 0, bodyRows: 10 }, view: {} }
+
+test('draws both lines above the engine hint in the terminal hint line', async ($, on) => {
+  answerSession(on)
+  const ui = await $.ui.mount({
+    plugin: 'motta-statusline',
+    surface: 'terminal',
+    component: 'PromptHint',
+    props: { isDraft: false, isWorking: true, hint: 'esc to interrupt' },
+  })
+  expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /36%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('draws in the band on the desktop, which has no hint line, and leaves the terminal band free', async ($, on) => {
+  answerSession(on)
+  const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
+  expect(await desktop.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
+  await desktop.unmount()
+
+  const terminal = await $.ui.mount({ plugin: 'motta-statusline', surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS })
+  expect(await terminal.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeUndefined()
+  await terminal.unmount()
 })
