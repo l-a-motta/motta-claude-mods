@@ -47,6 +47,7 @@ Add this checkout as a folder marketplace, so the mods run straight from it and 
 ```powershell
 claude plugin marketplace add "$HOME\Documents\Coding\motta-claude-mods"
 claude plugin install motta-statusline@motta-claude-mods --scope user
+claude plugin install assumption-check@motta-claude-mods --scope user
 claude plugin install replay-theater@motta-claude-mods --scope user
 claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
@@ -55,7 +56,7 @@ claude plugin enable cc-plugin-you-should-know@builtin
 
 `cc-plugin-you-should-know` is off by default: a side agent that flags things in a reply worth knowing.
 
-Check: `claude plugin list` shows the four mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
+Check: `claude plugin list` shows the five mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
 
 ## 4. Settings
 
@@ -136,7 +137,7 @@ In VS Code's `settings.json`:
 
 ## 9. The last check
 
-Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar. `/filetree` opens the file tree, `/agents-info` the agents panel and `/replay` the replay of the last turn's edits.
+Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar. `/filetree` opens the file tree, `/assumption-check` the assumptions pane (`/assumption-check on` starts capture), `/agents-info` the agents panel and `/replay` the replay of the last turn's edits.
 
 ## Keeping this in step
 
