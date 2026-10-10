@@ -59,6 +59,8 @@ type Setup = {
   // A plugin beneath drawing in the band: motta-statusline's lines, as it
   // draws them on the desktop, unkeyed.
   hasStatusLine?: boolean
+  // A card beneath that shares the band (`band-under:`), as savvy-progress's bar.
+  hasCard?: boolean
 }
 
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
@@ -84,8 +86,15 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
   const clock = mock.clock(on)
   // The engine's own band, empty: the opaque reference it hands back.
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
     const { Box, Text } = $.ui.resolve(e)
+    if (setup.hasCard) {
+      return (
+        <Box key="band-under:savvy-progress" flexDirection="column">
+          <Text>Subagents 2/2</Text>
+        </Box>
+      )
+    }
+    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
     return (
       <Box flexDirection="column" paddingX={1} flexGrow={1}>
         <Text>📁 motta-claude-mods 🌿 main</Text>

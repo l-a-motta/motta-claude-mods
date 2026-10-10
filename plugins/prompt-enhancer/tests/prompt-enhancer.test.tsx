@@ -240,3 +240,13 @@ test('alone in the band, its tree carries the key motta-statusline reads, whatev
   await pane.press({ key: 'clean' })
   expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
 })
+
+test('over a card that shares the band, the chip keeps it shared, so the status line stays', async ($, on) => {
+  world(on, { hasCard: true })
+  await $.session.start({ ...START, surface: 'desktop' as const })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const drawn = (await band.drawn()) as Node
+  expect(drawn.props?.key).toBe('band-under:prompt-enhancer')
+  expect(await band.find({ text: 'Subagents 2/2' })).toBeDefined()
+  expect(drawn.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+})

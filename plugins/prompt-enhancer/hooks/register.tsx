@@ -388,9 +388,13 @@ export const register: Register = (on, options) => {
       </Box>
     )
     if (isFree(below)) return ours
-    // Above the plugins that drew: the chip at the right of their tree.
+    // Above the plugins that drew: the chip at the right of their tree. A tree
+    // that shares the band (`band-under:`) keeps sharing it with the chip, so a
+    // plugin above, such as motta-statusline, still draws its lines over both.
+    const belowKey = (below as { props?: { key?: unknown } }).props?.key
+    const isUnder = typeof belowKey === 'string' && belowKey.startsWith('band-under:')
     return (
-      <Box flexDirection="row" alignItems="flex-start">
+      <Box {...(isUnder ? { key: 'band-under:prompt-enhancer' } : {})} flexDirection="row" alignItems="flex-start">
         <Box flexDirection="column" flexGrow={1}>
           {below}
         </Box>
