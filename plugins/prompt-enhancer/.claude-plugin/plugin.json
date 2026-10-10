@@ -1,0 +1,32 @@
+{
+  "name": "prompt-enhancer",
+  "version": "0.1.0",
+  "description": "A ✦ enhance chip above the prompt, or /enhance <text>: asks what your draft leaves out, then writes it three ways (Tight, Balanced, Thorough) following Anthropic's and OpenAI's prompting guidance. Use it, send it or copy it.",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "description": "session (the default): this session's own model, reading the conversation from the prompt cache. Or haiku, sonnet, opus or a full model id: that model, sent the last messages of the conversation as an excerpt.",
+      "default": "session"
+    },
+    "effort": {
+      "type": "string",
+      "title": "Effort",
+      "description": "How hard a model other than session thinks. default: the model's own.",
+      "default": "default",
+      "options": ["default", "low", "medium", "high", "xhigh", "max"]
+    },
+    "chip": {
+      "type": "boolean",
+      "title": "Show the chip",
+      "description": "The ✦ enhance chip above the prompt. Off: /enhance only.",
+      "default": true
+    }
+  }
+}
