@@ -138,7 +138,7 @@ In VS Code's `settings.json`:
 
 ## 9. The last check
 
-Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar, and **✦ enhance** sits above the prompt. `/filetree` opens the file tree, `/assumption-check` the assumptions pane (`/assumption-check on` starts capture), `/agents-info` the agents panel, `/enhance <text>` the prompt enhancer and `/replay` the replay of the last turn's edits.
+Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar, and **✦ enhance** sits above the prompt. `/filetree` opens the file tree, `/assumption-check` the assumptions pane (capture is on; `/assumption-check off` stops it), `/agents-info` the agents panel, `/enhance <text>` the prompt enhancer and `/replay` the replay of the last turn's edits.
 
 ## Keeping this in step
 

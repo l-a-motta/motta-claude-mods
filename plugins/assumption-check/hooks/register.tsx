@@ -6,10 +6,11 @@
 //     ✎ A9 use axios
 //   ▸ P3 fix the CI badge · 1 marked
 //
-// Off until switched on. While off the mod adds nothing Claude reads: no
-// instruction, no tool, no note. `/assumption-check on` (or the startOn
-// option) registers the note_assumption tool and adds a short section to the
-// system prompt asking Claude to log, through that tool, the assumptions that
+// On from the session start, unless the startOn option is false.
+// `/assumption-check off` switches it off for the session, and while off the
+// mod adds nothing Claude reads: no instruction, no tool, no note. On, it
+// registers the note_assumption tool and adds a short section to the system
+// prompt asking Claude to log, through that tool, the assumptions that
 // shape its work. Each call lands as a card under the prompt it was logged in.
 // Only the main session's: a subagent's or a teammate's call is answered
 // without a card, and a teammate's prompt gets no instruction. Their
@@ -165,8 +166,7 @@ export const register: Register = (on, options) => {
       description: 'Open the assumptions pane; `on` or `off` switches capture',
       argumentHint: '[on|off]',
     })
-    if (options.startOn === true) await turnOn($)
-    else if (await read($, isOn)) await turnOn($)
+    if (options.startOn !== false || (await read($, isOn))) await turnOn($)
 
     return next(e)
   })

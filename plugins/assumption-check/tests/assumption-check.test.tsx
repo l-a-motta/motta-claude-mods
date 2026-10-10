@@ -6,6 +6,8 @@ import { command, ENGINE_SECTION, LOGGED, PANE_PROPS, typed, world } from './wor
 const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
 const TOOL = 'mcp__assumption-check__note_assumption'
 const COMPOSE = { model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] }
+// Capture starts on unless the option says otherwise.
+const OFF = { options: { startOn: false } }
 const MOUNT = { plugin: 'assumption-check', component: 'Pane', props: PANE_PROPS, requestId: 'assumption-check' } as const
 
 describe('parseAssumptions', () => {
@@ -35,7 +37,7 @@ describe('groupLabel', () => {
   })
 })
 
-test('changes nothing Claude reads while capture is off', async ($, on) => {
+test('changes nothing Claude reads while capture is off', OFF, async ($, on) => {
   const { seen, appended } = world(on)
   await $.session.start(START)
   await $.prompt.submit(typed('add retry to fetch'))
@@ -46,7 +48,7 @@ test('changes nothing Claude reads while capture is off', async ($, on) => {
   expect(appended()).toBe(0)
 })
 
-test('/assumption-check on adds the tool and the instruction; cards open the pane once', async ($, on) => {
+test('/assumption-check on adds the tool and the instruction; cards open the pane once', OFF, async ($, on) => {
   const { seen } = world(on)
   await $.session.start(START)
   await $.command.run(command('on'))
@@ -151,7 +153,7 @@ test("leaves a subagent's and a teammate's assumptions out", async ($, on) => {
   expect(teammate.sections).toEqual([ENGINE_SECTION])
 })
 
-test('a call while capture is off logs no card and opens no pane, before it was on and after', async ($, on) => {
+test('a call while capture is off logs no card and opens no pane, before it was on and after', OFF, async ($, on) => {
   const { seen } = world(on)
   await $.session.start(START)
   await $.prompt.submit(typed('add retry to fetch'))
@@ -203,7 +205,7 @@ test('each prompt gets its own dropdown, the newest open, and a task notificatio
   await ui.unmount()
 })
 
-test('the startOn option turns capture on from the session start', { options: { startOn: true } }, async ($, on) => {
+test('capture is on from the session start when the startOn option is unset', async ($, on) => {
   const { seen } = world(on)
   await $.session.start(START)
   expect(seen.tools).toEqual(['note_assumption'])

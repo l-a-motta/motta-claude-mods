@@ -1,7 +1,7 @@
 {
   "name": "assumption-check",
-  "version": "0.2.0",
-  "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: mark one wrong (type the fix or let Claude ask), ask why, or delete it. Off until /assumption-check on; nothing in the pane reaches Claude unless you press wrong or why.",
+  "version": "0.3.0",
+  "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: mark one wrong (type the fix or let Claude ask), ask why, or delete it. On from the start, /assumption-check off to stop; nothing in the pane reaches Claude unless you press wrong or why.",
   "author": {
     "name": "l-a-motta"
   },
@@ -12,8 +12,8 @@
     "startOn": {
       "type": "boolean",
       "title": "Start on",
-      "description": "Turn assumption capture on in every session. Off (the default), Claude works exactly as without the mod until you run /assumption-check on.",
-      "default": false
+      "description": "Turn assumption capture on in every session (the default). Off, Claude works exactly as without the mod until you run /assumption-check on.",
+      "default": true
     }
   }
 }
