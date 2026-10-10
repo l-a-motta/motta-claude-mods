@@ -25,6 +25,8 @@ Third-party mods are pinned to the commit that was reviewed. To take an upstream
 - **Desktop app (Code tab):** the band above the prompt, panes and slash commands. It does not raise the hint line under the prompt, so `motta-statusline` draws in the band there on its own, without the model and effort the app's picker already shows. Installed from this checkout as a folder marketplace, it reads the mods from the folder, as the CLI does: an edit reaches a session at its next start or on `/reload-plugins`, with no version bump or `claude plugin update`.
 - **claude.ai web and cloud sessions:** none; they do not load local plugins.
 
+The band above the prompt is shared: `prompt-enhancer` draws its chip and cards under whatever the mods beneath it drew (`motta-statusline` with `placement: above`, or on the desktop), and `replay-theater` takes it while it has edits to show. Panes (`/filetree`, `/assumption-check`, `/agents-info`) share one place too, as tabs: docked beside the transcript in the fullscreen layout from 110 columns, inline above the prompt otherwise.
+
 ## Developing
 
 Add this checkout as a directory marketplace and edits go live in the CLI on `/reload-plugins`:
