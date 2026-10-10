@@ -1,9 +1,14 @@
 // motta-statusline: a two-line status line.
 //
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
-//   [model | effort] · CTX n% used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
+//   [model | effort] · CTX ████··│· used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
 //
 // The desktop app leaves out [model | effort]: its model picker shows both.
+//
+// CTX is a bar of the context window, its used part green under 30%, yellow
+// to 50%, orange to 70% and red past it, with a tick where auto-compact
+// fires (from the local /context breakdown, no request sent), then the
+// tokens used over the window.
 //
 // `@n/s` is the main session's generation rate: output tokens over the time
 // from a request's first streamed token to its end, exact once the request
@@ -74,6 +79,7 @@ type Data = {
   ctxPercent: number
   ctxTokens: number
   ctxWindow: number
+  compactAt: number | null
   limits: { label: string; percent: number; resetsAt: number | null }[]
   outTokens: number
   rate: Rate | null
@@ -92,6 +98,8 @@ let gitRoot: string | null = null
 let outTokens = 0
 let rate: Rate | null = null
 let lastExact: Rate | null = null
+// The token count at which Claude Code auto-compacts, null when it is off.
+let compactAt: number | null = null
 let liveEffort: string | null = null
 let isTicking = false
 // The branch the PR reading is for, when it was last asked, and whether a
@@ -242,8 +250,10 @@ async function refreshAll($: EngineInterface, withGit = true) {
     const repo = await $.session.repo().catch(() => null)
     gitRoot = repo?.root ?? null
     const repoUrl = repo?.remote ? httpsUrl(repo.remote) : null
-    const usage = await $.session.usage()
+    const usage = await readUsage($, withGit)
     const ctx = usage.context
+    const breakdown = ctx.breakdown
+    if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
     data = {
       dir: basename(cwd),
       repoName: repoUrl ? basename(repoUrl) : null,
@@ -256,6 +266,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
       ctxPercent: Math.round(ctx.percent ?? (ctx.window ? ((ctx.tokens ?? 0) / ctx.window) * 100 : 0)),
       ctxTokens: ctx.tokens ?? 0,
       ctxWindow: ctx.window ?? 0,
+      compactAt,
       limits: usage.rateLimits.map(l => ({
         label: LIMIT_LABELS[l.kind] ?? l.kind,
         percent: Math.round(l.percentUsed),
@@ -269,6 +280,21 @@ async function refreshAll($: EngineInterface, withGit = true) {
   } catch {
     // Keep the last reading; the next step, turn or timer tries again.
   }
+}
+
+// The session's usage. On the full refreshes (the session's start, a turn's
+// end) it also asks for the local breakdown, the one place that
+// says where auto-compact fires: no request is sent for it. A breakdown that
+// fails leaves the last threshold up.
+async function readUsage($: EngineInterface, withBreakdown: boolean) {
+  if (withBreakdown) {
+    try {
+      return await $.session.usage({ breakdown: 'summary' })
+    } catch {
+      // Fall through to the plain reading.
+    }
+  }
+  return $.session.usage()
 }
 
 async function paint($: EngineInterface) {
@@ -504,7 +530,7 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel =
   const line2 = [
     ...(showModel ? [<Text color="subtle">{model}</Text>, sep] : []),
     <Text>CTX </Text>,
-    <Text color={level(d.ctxPercent, 70, 90)}>{d.ctxPercent}%</Text>,
+    ...ctxBar(Text, d),
     <Text color="subtle"> {short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
   ]
   for (const l of d.limits) {
@@ -555,6 +581,45 @@ function rateSegment(Text: any, r: Rate) {
   if (r.kind === 'live') return [<Text color="subtle"> @</Text>, <Text color="warning">~{n}</Text>, <Text color="subtle">/s</Text>]
   return [<Text color="subtle"> @{n}/s</Text>]
 }
+
+// `██████········│·`: the window in BAR_CELLS cells, the used part in the
+// color of how full it is, and a tick (the theme's text color: white on a
+// dark theme) where auto-compact fires. No tick when auto-compact is off.
+function ctxBar(Text: any, d: Data) {
+  const { filled, mark } = barCells(d.ctxTokens, d.ctxWindow, d.compactAt)
+  const look = { used: { color: ctxLevel(d.ctxPercent), glyph: '█' }, mark: { color: 'text', glyph: '│' }, free: { color: 'subtle', glyph: '·' } }
+  // One Text per run of like cells.
+  const runs: { kind: keyof typeof look; length: number }[] = []
+  for (let i = 0; i < BAR_CELLS; i++) {
+    const kind = i === mark ? 'mark' : i < filled ? 'used' : 'free'
+    const last = runs[runs.length - 1]
+    if (last?.kind === kind) last.length++
+    else runs.push({ kind, length: 1 })
+  }
+  return runs.map(r => <Text color={look[r.kind].color}>{look[r.kind].glyph.repeat(r.length)}</Text>)
+}
+
+const BAR_CELLS = 14
+
+// How many of the bar's cells the used tokens fill, and which cell holds the
+// auto-compact tick (null when there is none).
+export function barCells(tokens: number, window: number, compactAt: number | null) {
+  if (window <= 0) return { filled: 0, mark: null }
+  const at = (n: number) => Math.min(BAR_CELLS - 1, Math.max(0, Math.round((n / window) * BAR_CELLS)))
+  const filled = Math.min(BAR_CELLS, Math.round((tokens / window) * BAR_CELLS))
+  return { filled, mark: compactAt === null ? null : at(compactAt) }
+}
+
+// Under 30% green, then yellow to 50%, orange to 70%, red past it.
+export function ctxLevel(percent: number) {
+  if (percent >= 70) return 'error'
+  if (percent >= 50) return ORANGE
+  if (percent >= 30) return 'warning'
+  return 'success'
+}
+
+// The theme has no orange key; a raw color draws the same on every theme.
+const ORANGE = '#ff8700'
 
 function level(percent: number, warn: number, crit: number) {
   if (percent >= crit) return 'error'
