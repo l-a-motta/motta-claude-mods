@@ -1,0 +1,19 @@
+{
+  "name": "assumption-check",
+  "version": "0.1.0",
+  "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: reinforce one, mark it wrong (type the fix or let Claude ask), ask why, pin and export. Off until /assumption-check on; unmarked cards change nothing.",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "startOn": {
+      "type": "boolean",
+      "title": "Start on",
+      "description": "Turn assumption capture on in every session. Off (the default), Claude works exactly as without the mod until you run /assumption-check on.",
+      "default": false
+    }
+  }
+}
