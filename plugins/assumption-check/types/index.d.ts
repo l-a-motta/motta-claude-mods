@@ -2,10 +2,9 @@ export type Confidence = 'low' | 'medium' | 'high'
 
 export type Category = 'scope' | 'intent' | 'tech' | 'environment' | 'data' | 'style' | 'other'
 
-// open: unmarked. reinforced: the person confirmed it. wrong: marked wrong,
-// Claude asked to ask what is right. corrected: marked wrong with the right
-// assumption typed in.
-export type Status = 'open' | 'reinforced' | 'wrong' | 'corrected'
+// open: unmarked. wrong: marked wrong, Claude asked to ask what is right.
+// corrected: marked wrong with the right assumption typed in.
+export type Status = 'open' | 'wrong' | 'corrected'
 
 export type Card = {
   id: string
@@ -18,13 +17,10 @@ export type Card = {
   impact: string
   status: Status
   correction?: string
-  isSavedToMemory?: boolean
 }
 
 // One dropdown: the prompt the cards were logged under.
 export type Group = { id: string; label: string }
-
-export type View = 'prompts' | 'pinned'
 
 declare module 'claude-code' {
   interface PluginState {
@@ -35,7 +31,8 @@ declare module 'claude-code' {
       expanded: string[]
       selected: string | null
       fixing: string | null
-      view: View
+      // Cards ever logged, so a deleted card's id is never reused.
+      cardCount: number
       hasAutoOpened: boolean
     }
   }

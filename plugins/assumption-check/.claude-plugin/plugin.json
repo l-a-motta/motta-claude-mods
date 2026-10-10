@@ -1,7 +1,7 @@
 {
   "name": "assumption-check",
-  "version": "0.1.0",
-  "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: reinforce one, mark it wrong (type the fix or let Claude ask), ask why, pin and export. Off until /assumption-check on; unmarked cards change nothing.",
+  "version": "0.2.0",
+  "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: mark one wrong (type the fix or let Claude ask), ask why, or delete it. Off until /assumption-check on; nothing in the pane reaches Claude unless you press wrong or why.",
   "author": {
     "name": "l-a-motta"
   },

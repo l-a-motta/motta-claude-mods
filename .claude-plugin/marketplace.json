@@ -15,7 +15,7 @@
     {
       "name": "assumption-check",
       "source": "./plugins/assumption-check",
-      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: reinforce one (a note Claude reads), mark it wrong (type the fix or let Claude ask), ask why, pin, save to memory, export. Off until /assumption-check on: unused, Claude works as without it."
+      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: mark one wrong (type the fix or let Claude ask), ask why, or delete it. Off until /assumption-check on; nothing in the pane reaches Claude unless you press wrong or why."
     },
     {
       "name": "prompt-enhancer",
