@@ -3,6 +3,8 @@
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean
 //   [model | effort] · CTX n% used/window · 5h n% ~reset · 7d n% ~reset · In n Out n
 //
+// The desktop app leaves out [model | effort]: its model picker shows both.
+//
 // `placement` picks where it draws:
 // - below (default): drawn in the hint line under the prompt (PromptHint),
 //   above the engine's own hint, and it stays while a turn runs. The desktop
@@ -83,9 +85,11 @@ export const register: Register = (on, options) => {
     const below = await next(e)
     if (!isFree(below) || data === null) return below
     const { Box, Text, Link } = $.ui.resolve(e)
+    // The desktop app shows the model and effort in its own picker.
+    const showModel = e.surface !== 'desktop'
     return (
       <Box flexDirection="column" paddingX={1}>
-        {lines(Box, Text, Link, data, await $.clock.now())}
+        {lines(Box, Text, Link, data, await $.clock.now(), showModel)}
       </Box>
     )
   })
@@ -204,7 +208,7 @@ export function parseStatus(out: string): Git {
 
 const LIMIT_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
-function lines(Box: any, Text: any, Link: any, d: Data, now: number) {
+function lines(Box: any, Text: any, Link: any, d: Data, now: number, showModel = true) {
   const sep = <Text color="subtle">  ·  </Text>
 
   const line1 = [<Text color="suggestion">📁 {d.dir}</Text>]
@@ -221,8 +225,7 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number) {
 
   const model = d.effort ? `[${d.model} | ${d.effort}]` : `[${d.model}]`
   const line2 = [
-    <Text color="subtle">{model}</Text>,
-    sep,
+    ...(showModel ? [<Text color="subtle">{model}</Text>, sep] : []),
     <Text>CTX </Text>,
     <Text color={level(d.ctxPercent, 70, 90)}>{d.ctxPercent}%</Text>,
     <Text color="subtle"> {short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
