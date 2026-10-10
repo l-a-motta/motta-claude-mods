@@ -25,19 +25,19 @@ The patterns it demonstrates:
 
 After a rename, the hint above the prompt:
 
-![The Replay hint above the prompt after a turn with five edits](screenshots/replay-theater-hint.png)
+![The Replay hint above the prompt after a turn with five edits](https://github.com/anthropics/claude-code-playground/raw/569c528/claude-code/mods/replay-theater/screenshots/replay-theater-hint.png)
 
 The pane, on step 1 of 5:
 
-![The Replay Theater pane showing step 1 of 5](screenshots/replay-theater-pane.png)
+![The Replay Theater pane showing step 1 of 5](https://github.com/anthropics/claude-code-playground/raw/569c528/claude-code/mods/replay-theater/screenshots/replay-theater-pane.png)
 
 A Write step for a new file, capped at 12 lines:
 
-![A Write step for a new file, with the diff capped at 12 lines](screenshots/replay-theater-write.png)
+![A Write step for a new file, with the diff capped at 12 lines](https://github.com/anthropics/claude-code-playground/raw/569c528/claude-code/mods/replay-theater/screenshots/replay-theater-write.png)
 
 Inline above the prompt in an 80-column terminal:
 
-![The pane drawn inline in an 80-column terminal](screenshots/replay-theater-80-columns.png)
+![The pane drawn inline in an 80-column terminal](https://github.com/anthropics/claude-code-playground/raw/569c528/claude-code/mods/replay-theater/screenshots/replay-theater-80-columns.png)
 
 ## How it was built
 

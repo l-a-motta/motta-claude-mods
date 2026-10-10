@@ -5,6 +5,11 @@
 // step through them in a pane, one diff at a time.
 //
 // Claude Code 2.1.280 function hooks. Load with --plugin-dir.
+//
+// Modified by l-a-motta from anthropics/claude-code-playground@569c528: the
+// band hint shows only until the next prompt or until the replay is opened
+// (`hint`), so the band goes back to the mods beneath; /replay still opens
+// the last turn's edits.
 
 const PANE_ID = "replay-theater";
 const MAX_DIFF_LINES = 12;
@@ -12,8 +17,9 @@ const MAX_LCS_LINES = 400;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 
 // Module state. `pending` fills during a turn; `replay` is the last finished
-// turn's steps, the ones the pane shows.
-const state = { pending: [], replay: [], index: 0, isOpen: false, inBand: false, turns: 0 };
+// turn's steps, the ones the pane shows. `hint` is whether the band offers
+// them; the band is shared, so the offer lasts one prompt.
+const state = { pending: [], replay: [], index: 0, isOpen: false, inBand: false, turns: 0, hint: false };
 
 function relPath(cwd, path) {
   if (!path) return "(unknown file)";
@@ -110,6 +116,7 @@ async function openReplay($) {
   if (!state.replay.length) return false;
   state.index = 0;
   state.isOpen = true;
+  state.hint = false;
   // The pane only takes the keyboard while nothing else holds it. Hide the
   // band first (it held the keys if its button was pressed), then open.
   $.ui.invalidate("ui.render");
@@ -204,7 +211,13 @@ export function register(on, options) {
   });
 
   on("turn.start", ($, e, next) => {
-    if (!e.agentId) state.pending = [];
+    if (!e.agentId) {
+      state.pending = [];
+      if (state.hint) {
+        state.hint = false;
+        $.ui.invalidate("ui.render");
+      }
+    }
     return next(e);
   });
 
@@ -216,6 +229,7 @@ export function register(on, options) {
     state.pending = [];
     state.index = 0;
     state.turns++;
+    state.hint = true;
     $.ui.invalidate("ui.render");
     return r;
   });
@@ -223,7 +237,7 @@ export function register(on, options) {
   // The band above the prompt: the hint and a button that opens the pane.
   on("ui.render", { component: "AbovePrompt" }, ($, e, next) => {
     if (state.isOpen && state.inBand) return replayView($, e, true);
-    if (!state.replay.length || state.isOpen) return next(e);
+    if (!state.hint || !state.replay.length || state.isOpen) return next(e);
     const { Box, Text, Button } = $.ui.resolve(e);
     return Box({
       flexDirection: "row", gap: 2, paddingX: 1,
