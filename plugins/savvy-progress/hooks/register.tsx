@@ -38,7 +38,7 @@ const STRINGS = {
   en: {
     pane: 'Agents',
     cost: 'Cost',
-    tokens: 'Tokens',
+    tokens: 'Processed',
     time: 'Time',
     collapse: 'Collapse',
     expand: 'Expand',
@@ -49,7 +49,7 @@ const STRINGS = {
     round: 'round',
     failed: 'error',
     after: 'after',
-    tokensWord: 'tokens',
+    tokensWord: 'tokens processed',
     agentsCount: 'agents',
     isRunning: 'running',
     isFinished: 'finished',
@@ -62,11 +62,12 @@ const STRINGS = {
     tasks: 'Tasks',
     review: 'Review',
     busy: 'running',
+    autoTitle: 'Subagents',
   },
   ru: {
     pane: 'Агенты',
     cost: 'Стоимость',
-    tokens: 'Токены',
+    tokens: 'Обработано',
     time: 'Время',
     collapse: 'Свернуть',
     expand: 'Развернуть',
@@ -77,7 +78,7 @@ const STRINGS = {
     round: 'раунд',
     failed: 'ошибка',
     after: 'после',
-    tokensWord: 'токенов',
+    tokensWord: 'токенов обработано',
     agentsCount: 'агентов',
     isRunning: 'работает',
     isFinished: 'завершён',
@@ -90,6 +91,7 @@ const STRINGS = {
     tasks: 'Задачи',
     review: 'Ревью',
     busy: 'в работе',
+    autoTitle: 'Субагенты',
   },
 } as const
 
@@ -122,7 +124,7 @@ const blank = (): Flow => ({
 })
 
 const isNewFlow = (prev: Flow | null, input: ProgressInput): boolean =>
-  !prev || prev.isFinished || (input.title !== undefined && input.title.trim() !== prev.title)
+  !prev || prev.isFinished || prev.isAuto === true || (input.title !== undefined && input.title.trim() !== prev.title)
 
 const cleanTasks = (tasks: ProgressInput['tasks']): PlannedTask[] | undefined =>
   tasks
@@ -156,11 +158,32 @@ const label = (f: Flow): string => {
   if (f.isFinished) return s.done
   if (f.phase === 'plan') return s.plan
   if (f.phase === 'design') return s.design
+  if (f.isAuto) return `${s.pane} ${f.done}/${f.total}`
   const count = f.total ? `${f.done}/${f.total}` : `${f.running} ${s.busy}`
   return `${f.phase === 'review' ? s.review : s.tasks} ${count}`
 }
 
 const ratio = (f: Flow): number => (f.isFinished ? 1 : f.total ? f.done / f.total : 0)
+
+// A plain-subagent flow keeps no counters: it counts the non-savvy agents
+// started since it began, and is done once none of them runs.
+// How long after its last agent ended a plain-subagent bar still takes the next one.
+const AUTO_GAP = 30_000
+
+// When the flow's last agent ended; still running counts as now.
+const lastEnd = (f: Flow, list: AgentRun[]): number =>
+  Math.max(
+    f.since ?? 0,
+    ...list.filter(a => a.startedAt >= (f.since ?? 0)).map(a => (a.status === 'running' ? Infinity : (a.endedAt ?? a.startedAt))),
+  )
+
+export const view = (f: Flow, list: AgentRun[]): Flow => {
+  if (!f.isAuto) return f
+  const mine = list.filter(a => a.startedAt >= (f.since ?? 0) && !a.type.startsWith('savvy-'))
+  const running = mine.filter(a => a.status === 'running').length
+  const isFinished = mine.length > 0 && running === 0
+  return { ...f, total: mine.length, done: mine.length - running, running, isFinished, phase: isFinished ? 'close' : 'delegate' }
+}
 
 // Deterministic noise so the dither does not shimmer between redraws.
 const noise = (x: number, y: number): number => {
@@ -265,6 +288,18 @@ const rowSvg = (f: Flow, W: number, isWorking: boolean): string => {
 ${CRAB_CSS}${crab(W - CRAB_W + 1, 0, 'other', false, isWorking, 0.8)}
 </svg>`
 }
+
+// CSS px kept free at the right of the band for a chip set beside it.
+const BESIDE_ROOM = 110
+
+// What `next(e)` hands back when no plugin beneath drew: the engine's own band
+// as an opaque `{ type: 'engine' }` reference, or nothing.
+const isFree = (node: unknown): boolean =>
+  node === null ||
+  node === undefined ||
+  node === false ||
+  node === '' ||
+  (typeof node === 'object' && (node as { type?: unknown }).type === 'engine')
 
 const barText = (f: Flow, width: number): string => {
   const filled = Math.round(width * ratio(f))
@@ -747,7 +782,7 @@ export const register: Register = (on, options) => {
     if (!type.startsWith('savvy-')) return next(e)
 
     await update($, flow, prev => {
-      const base = prev && !prev.isFinished ? { ...blank(), ...prev } : blank()
+      const base = prev && !prev.isFinished && !prev.isAuto ? { ...blank(), ...prev } : blank()
       return { ...base, running: base.running + 1, phase: base.phase === 'plan' ? 'delegate' : base.phase }
     })
     try {
@@ -762,6 +797,7 @@ export const register: Register = (on, options) => {
     if (started.deny !== undefined) return started
 
     const at = await $.clock.now()
+    const before = await read($, agents)
     await update($, agents, list => {
       const round = 1 + list.filter(a => norm(a.description) === norm(e.description) && e.description).length
       const run: AgentRun = {
@@ -785,6 +821,14 @@ export const register: Register = (on, options) => {
     if (e.subagentType.startsWith('savvy-')) {
       const f = await read($, flow)
       await autoOpen($, f && !f.isFinished ? f.title : 'savvy-flow')
+    } else {
+      // Any other subagent shows the bar too, unless a savvy flow holds it.
+      await update($, flow, prev => {
+        if (prev && !prev.isFinished && !prev.isAuto) return prev
+        // One agent after another (a sequential workflow) stays on one bar.
+        if (prev?.isAuto && !prev.isFinished && at - lastEnd(prev, before) < AUTO_GAP) return prev
+        return { ...blank(), title: tr().autoTitle, phase: 'delegate' as const, isAuto: true, since: at }
+      })
     }
     return started
   })
@@ -864,7 +908,8 @@ export const register: Register = (on, options) => {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
     const list = await read($, agents)
-    const f = await read($, flow)
+    const stored = await read($, flow)
+    const f = stored && view(stored, list)
     const p: Panel = await read($, panel)
     const at = Math.max(await read($, now), ...list.map(a => a.startedAt), 0)
 
@@ -1023,12 +1068,22 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const f = await read($, flow)
-    if (f === null || e.props.hasSurvey) return next(e)
+    const stored = await read($, flow)
+    if (stored === null || e.props.hasSurvey) return next(e)
+    const below = await next(e)
 
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
     const list = await read($, agents)
+    const f = view(stored, list)
+    // The band is shared: the `band-under:` key tells a plugin above to draw its
+    // own lines over ours, and what plugins beneath drew stays over ours too.
+    const share = (row: typeof below) => (
+      <Box key="band-under:savvy-progress" flexDirection="column">
+        {!isFree(below) && below}
+        {row}
+      </Box>
+    )
     const crew = list.length + plannedOf(f, list).length
     const isWorking = list.some(a => a.status === 'running')
     const crewButton = (
@@ -1045,24 +1100,25 @@ export const register: Register = (on, options) => {
       />
     )
 
-    if ('Svg' in ui) {
+    if (e.surface !== 'terminal' && 'Svg' in ui) {
       const { Svg } = ui
-      // About 8 CSS px per reported column; the rest is the count, the dismiss
-      // and their gaps. No floor above the slot: a row wider than it would wrap.
-      const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 96))
-      return (
+      // About 8 CSS px per reported column; the rest is the count, the dismiss,
+      // their gaps and room for a chip a plugin above sets beside the band
+      // (prompt-enhancer's). No floor above the slot: a row wider than it would wrap.
+      const width = Math.max(180, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 96 - BESIDE_ROOM))
+      return share(
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg source={rowSvg(f, width, isWorking)} alt={`${f.title}: ${label(f)}, ${percent}`} width={width} height={H} />
           {crewButton}
           {dismiss}
-        </Box>
+        </Box>,
       )
     }
 
     const cols = e.props.bodyColumns
     const titleW = Math.max(8, Math.min(30, f.title.length + 2, Math.floor(cols / 3)))
-    const width = Math.max(6, Math.min(40, cols - titleW - 32))
-    return (
+    const width = Math.max(6, Math.min(40, cols - titleW - 32 - 12))
+    return share(
       <Box flexDirection="row" gap={2}>
         <Box width={titleW} flexShrink={0}>
           <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
