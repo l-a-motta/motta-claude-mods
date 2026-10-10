@@ -63,7 +63,7 @@ VS Code `settings.json`, when Claude Code runs in its terminal:
 ## Where mods draw
 
 - **CLI:** everything.
-- **Desktop app (Code tab):** the band above the prompt, panes and slash commands. It does not raise the hint line under the prompt, so `motta-statusline` draws in the band there on its own. It also runs the copy cached at install, not this checkout: after editing a mod, bump its `version` and run `claude plugin update <mod>@motta-claude-mods` before the app sees it.
+- **Desktop app (Code tab):** the band above the prompt, panes and slash commands. It does not raise the hint line under the prompt, so `motta-statusline` draws in the band there on its own, without the model and effort the app's picker already shows. It also runs the copy cached at install, not this checkout: after editing a mod, bump its `version` and run `claude plugin update <mod>@motta-claude-mods` before the app sees it.
 - **claude.ai web and cloud sessions:** none; they do not load local plugins.
 
 ## Developing
