@@ -42,7 +42,7 @@ Check: `node --version` is v18 or later, and `git -C "$HOME\Documents\Coding\mot
 
 ## 3. The mods
 
-Add this checkout as a folder marketplace, so the mods run straight from it and an edit goes live on `/reload-plugins`. Then install each mod and switch on the one that ships inside Claude Code:
+Add this checkout as a folder marketplace and install the mods from it. A session runs each mod from the copy the install made, so an edit reaches it after a version bump, `claude plugin update <mod>@motta-claude-mods` and a new session. Then install each mod and switch on the one that ships inside Claude Code:
 
 ```powershell
 claude plugin marketplace add "$HOME\Documents\Coding\motta-claude-mods"

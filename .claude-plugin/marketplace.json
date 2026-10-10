@@ -20,7 +20,7 @@
     {
       "name": "prompt-enhancer",
       "source": "./plugins/prompt-enhancer",
-      "description": "A ✦ enhance chip above the prompt, or /enhance <text>: asks what your draft leaves out, then writes it three ways (Tight, Balanced, Thorough) following Anthropic's and OpenAI's prompting guidance. Use it, send it or copy it."
+      "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it."
     },
     {
       "name": "replay-theater",
