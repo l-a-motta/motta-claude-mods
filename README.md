@@ -38,12 +38,14 @@ Settings are not carried by plugins; set these by hand.
     "FORCE_HYPERLINK": "1",
     "CLAUDE_CODE_DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS": "1"
   },
-  "preferredNotifChannel": "terminal_bell"
+  "preferredNotifChannel": "terminal_bell",
+  "promptSuggestionEnabled": false
 }
 ```
 
 - `FORCE_HYPERLINK` makes the status line's repo link clickable where Claude Code does not detect OSC 8 support (VS Code's terminal). Ctrl+click there opens it twice, once from the terminal and once from Claude Code; a plain click opens it once.
 - The notification pair rings the terminal bell when a reply finishes, and only then. `auto` sends nothing on Windows terminals.
+- `promptSuggestionEnabled: false` turns off the greyed-out guess at your next prompt. Claude Code makes that guess with a second request over the whole conversation after each turn; with the setting off the request is never sent. A mod can only hide the guess once it is made, so this is a setting rather than a mod.
 
 `~/.claude.json` (global config, edit it with no session running): `"messageIdleNotifThresholdMs": 1000`, so the bell rings one second after a reply rather than sixty. Any key press or click in that second cancels it.
 
