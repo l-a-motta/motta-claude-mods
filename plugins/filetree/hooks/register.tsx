@@ -1,7 +1,7 @@
 import { type BuiltinToolResults, type EngineInterface, type Register, type Timer, update } from 'claude-code'
 import { LINUX_LAUNCH, openCommand, openWithCommand } from './open'
 
-import type { Activity, FileNode, FileTree, Theme } from '../types'
+import type { Activity, FileNode, FileTree, Outside, Theme } from '../types'
 import { BRANCH_ICON, chainOf, type GitAction, gitActions, readOnly, readTargets, resolve, TONES } from './git'
 import type { RowSpec, RowsProps, Seg } from './rows'
 import { CHEVRON_CLOSED, CHEVRON_OPEN, fileIcon, GIT_COLOR } from './icons'
@@ -35,6 +35,7 @@ import {
 const TREE = { plugin: 'filetree', key: 'tree' } as const
 const THEME = { plugin: 'filetree', key: 'theme' } as const
 const ACTIVITY = { plugin: 'filetree', key: 'activity' } as const
+const OUTSIDE = { plugin: 'filetree', key: 'outside' } as const
 const PANE = 'filetree'
 const SHIMMER = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, { bright: v.bright, dim: v.dim }]))
 const BRANCH_ROW = '#branch'
@@ -46,6 +47,12 @@ const FIND_LIMIT = 200
 const READ_REVEAL_LIMIT = 12
 const SEARCH_REVEAL_LIMIT = 60
 const ACTIVITY_TTL_MS = 45_000
+// Files outside the tree's root that Claude read or changed since the user's last
+// prompt, newest first, listed above the tree since the tree itself only draws what
+// is under its root. A prompt or the × clears them; the terminal shows the newest few.
+const OUTSIDE_KEEP = 50
+const OUTSIDE_ROWS = 5
+const OUTSIDE_VERB: Record<string, string> = { purple: 'read', orange: 'changed' }
 const ADD_COLOR = '#98c379'
 const DEL_COLOR = '#e06c75'
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
@@ -71,6 +78,8 @@ const MORE_ABOVE = 'filetree:more-above'
 const MORE_BELOW = 'filetree:more-below'
 
 let blink: Timer | null = null
+let outsideBlink: Timer | null = null
+let outsideGen = 0
 let themePoll: Timer | null = null
 let themeMtime: number | null = null
 let generation = 0
@@ -156,6 +165,30 @@ async function activities($: EngineInterface): Promise<Activity[]> {
 
 async function setActivities($: EngineInterface, fn: (list: Activity[]) => Activity[]): Promise<void> {
   await update($, ACTIVITY, cur => fn(cur ?? []).slice(-6))
+}
+
+async function outside($: EngineInterface): Promise<Outside[]> {
+  return (await $.state.get(OUTSIDE)).value ?? []
+}
+
+async function noteOutside($: EngineInterface, tones: Record<string, string>): Promise<void> {
+  const paths = Object.keys(tones)
+  if (paths.length === 0) return
+  const mine = ++outsideGen
+  await update($, OUTSIDE, cur => [...paths.map(path => ({ path, tone: tones[path] ?? 'orange', lit: true })), ...(cur ?? []).filter(o => !(o.path in tones))].slice(0, OUTSIDE_KEEP))
+  outsideBlink?.cancel()
+  outsideBlink = $.clock.after(FLASH_MS, () => {
+    if (outsideGen !== mine) return
+    outsideBlink = null
+    void update($, OUTSIDE, cur => (cur ?? []).map(o => (o.lit ? { ...o, lit: false } : o)))
+  })
+}
+
+async function clearOutside($: EngineInterface): Promise<void> {
+  outsideGen += 1
+  outsideBlink?.cancel()
+  outsideBlink = null
+  if ((await outside($)).length) await $.state.set(OUTSIDE, [])
 }
 
 async function list($: EngineInterface, dir: string): Promise<FileNode[] | null> {
@@ -714,10 +747,14 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
   }
   if (showReads) {
     const found: string[] = []
+    const away: string[] = []
     for (const r of reads) {
-      if (found.length >= READ_REVEAL_LIMIT) break
-      if (r !== t.root && inside(t.root, r) && !underAny(r, ignored, t.root) && (await exists($, r))) found.push(r)
+      if (found.length >= READ_REVEAL_LIMIT && away.length >= OUTSIDE_KEEP) break
+      if (!inside(t.root, r)) {
+        if (away.length < OUTSIDE_KEEP && (await exists($, r))) away.push(r)
+      } else if (found.length < READ_REVEAL_LIMIT && r !== t.root && !underAny(r, ignored, t.root) && (await exists($, r))) found.push(r)
     }
+    if (away.length) await noteOutside($, Object.fromEntries(away.map(p => [p, 'purple'])))
     if (found.length) {
       await revealPaths($, found)
       const shown = new Set((await get($)).nodes.map(n => n.id))
@@ -764,7 +801,10 @@ async function touched($: EngineInterface, paths: string[], tone: string, show: 
   if (await followCwd($)) return
   const t = await get($)
   if (!t.root) return
-  const within = paths.map(posix).filter(p => inside(t.root, p))
+  const all = paths.map(posix)
+  const within = all.filter(p => inside(t.root, p))
+  const away = all.filter(p => !inside(t.root, p))
+  if (show && away.length) await noteOutside($, Object.fromEntries(away.map(p => [p, tone])))
   if (within.length === 0) return
   if (tone !== 'purple') {
     searchIndex = null
@@ -1023,6 +1063,14 @@ async function openNode($: EngineInterface, n: FileNode): Promise<void> {
   } else await openFile($, n.id)
 }
 
+// A file in the strip moves the tree to its folder, pinned like the ↑ button, and selects it.
+async function pressOutside($: EngineInterface, path: string): Promise<void> {
+  const isDir = await $.fs.stat(path).then(s => s.kind === 'dir', () => false)
+  follow = false
+  await reset($, isDir ? path : dirname(path))
+  if (!isDir) await patch($, () => ({ cursor: path, selected: path, scroll: null }))
+}
+
 async function loadTheme($: EngineInterface): Promise<void> {
   const path = `${(await $.env.get('HOME')) ?? ''}/${THEME_FILE}`
   try {
@@ -1151,6 +1199,12 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.message', async ($, e, next) => {
+    if (e.requestId === PANE && e.element === 'outside' && e.data && typeof e.data === 'object') {
+      const data = e.data as { press?: unknown; copy?: unknown }
+      if (typeof data.copy === 'string') await copyPath($, data.copy, true, e.surface)
+      else if (typeof data.press === 'string') await pressOutside($, data.press)
+      return {}
+    }
     if (e.requestId !== PANE || e.element !== 'rows' || !e.data || typeof e.data !== 'object') return next(e)
     const data = e.data as { press?: unknown; key?: unknown; ctrl?: unknown; shift?: unknown; scrollTo?: unknown; copy?: unknown }
     void sync($)
@@ -1253,6 +1307,7 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    await clearOutside($)
     void settleBackground($, e.text)
     if (!(await followCwd($))) void sync($)
     const t = await get($)
@@ -1336,6 +1391,9 @@ export const register: Register = (on, options) => {
     const untracked = new Set(t.untrackedDirs)
     const width = Math.max(24, e.props.bodyColumns)
     const rows = visibleRows(t)
+    const away = (await outside($)).filter(o => !inside(t.root, o.path))
+    const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
+    const stripRows = strip.length ? strip.length + 1 + (away.length > strip.length ? 1 : 0) : 0
     const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
     const countSegs = (c: [number, number, number] | undefined): Seg[] => {
       if (!c) return []
@@ -1400,7 +1458,18 @@ export const register: Register = (on, options) => {
 
     const note = (text: string): RowSpec => ({ id: '', left: [{ t: text, c: theme.muted }], right: [] })
     const more = (id: string, n: number): RowSpec => ({ id, left: [{ t: `  ⋮ ${n.toLocaleString('en')} more`, c: theme.muted }], right: [] })
-    const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0)
+    const outsideSpec = (o: Outside): RowSpec => {
+      const verb = OUTSIDE_VERB[o.tone] ?? 'changed'
+      const label = shortPath(o.path)
+      const cols = Math.max(8, width - verb.length - 4)
+      const name = label.length > cols ? '…' + label.slice(label.length - cols + 1) : label
+      return {
+        id: o.path,
+        left: clean([{ t: '  ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }]),
+        right: [{ t: ` ${verb} `, c: TONES[o.tone]?.solid ?? theme.muted }],
+      }
+    }
+    const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0) + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1603,6 +1672,27 @@ export const register: Register = (on, options) => {
           </Box>
           {t.query ? <Button key="clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void search($, '')} /> : null}
         </Box>
+        {strip.length > 0 && (
+          <Box flexDirection="row">
+            <Text color={theme.muted}>outside this folder</Text>
+            <Box flexGrow={1} />
+            <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
+          </Box>
+        )}
+        {strip.length > 0 && (
+          <Client
+            key="outside"
+            module="./rows.tsx"
+            props={{
+              rows: [...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`  ⋮ ${away.length - strip.length} more`)] : [])],
+              active: '',
+              activeBg: theme.selection,
+              hoverBg: faint(theme.selection),
+              tones: SHIMMER,
+              pointer,
+            } satisfies RowsProps}
+          />
+        )}
         <Client
           key="rows"
           module="./rows.tsx"

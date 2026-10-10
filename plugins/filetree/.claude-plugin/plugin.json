@@ -1,6 +1,6 @@
 {
   "name": "filetree",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "description": "An IDE-style file tree for Claude Code that shows what Claude is doing and where in files",
   "types": "./types/index.d.ts",
   "author": {
@@ -17,7 +17,7 @@
     "activity": {
       "type": "string",
       "title": "Claude activity",
-      "description": "Which of Claude's file activity shimmers in the tree: files read with the Read tool or Bash readers (rg, grep, find, cat) in purple, writes in orange and git actions in green",
+      "description": "Which of Claude's file activity shimmers in the tree: files read with the Read tool or Bash readers (rg, grep, find, cat) in purple, writes in orange and git actions in green; also which files outside the tree's folder are listed above it",
       "default": "reads and writes",
       "options": [
         "reads and writes",

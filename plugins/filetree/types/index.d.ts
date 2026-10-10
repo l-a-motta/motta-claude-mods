@@ -28,6 +28,12 @@ export type Activity = {
   plain: string
 }
 
+export type Outside = {
+  path: string
+  tone: string
+  lit: boolean
+}
+
 export type FileTree = {
   root: string
   nodes: FileNode[]
@@ -70,6 +76,7 @@ declare module 'claude-code' {
       tree: FileTree
       theme: Theme
       activity: Activity[]
+      outside: Outside[]
     }
   }
 }

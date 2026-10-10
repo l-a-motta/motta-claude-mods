@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude_Code-%E2%89%A5_2.1.287-D97757?logo=claude&logoColor=fff" alt="Claude Code 2.1.287 or newer">
-  <img src="https://img.shields.io/badge/version-0.2.24-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.2.26-blue" alt="Version">
   <img src="https://img.shields.io/badge/type-mod-6f42c1" alt="Claude Code mod">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
@@ -22,7 +22,7 @@
 
 ## Installation
 
-This copy is vendored into motta-claude-mods from [data-goblin/claude-code-filetree@bf8de32](https://github.com/data-goblin/claude-code-filetree/tree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5) (MIT), patched to draw only the rows that fit the host's 100,000-character bound (on the desktop, "⋮ N more" rows page the rest), and installs from that marketplace:
+This copy is vendored into motta-claude-mods from [data-goblin/claude-code-filetree@bf8de32](https://github.com/data-goblin/claude-code-filetree/tree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5) (MIT), patched to draw only the rows that fit the host's 100,000-character bound (on the desktop, "⋮ N more" rows page the rest) and to list the files Claude reads or changes outside the tree's folder, and installs from that marketplace:
 
 ```bash
 claude plugin install filetree@motta-claude-mods
@@ -37,6 +37,7 @@ claude plugin install filetree@motta-claude-mods
 - Git status per file and folder in color, with exact lines changed (`+N` `-N`) on modified files and `?:N M:N D:N` file counts on folders
 - Branch, upstream and ahead/behind in the header
 - Visual indicator of Claude reads and searches (purple), writes (orange) and commits (green); collapsed folders open to show the file
+- Files outside the tree's folder that Claude reads or changes, like a file in a parent folder, are listed under the search box ("outside this folder"), newest first, shimmering in the same colors and labelled `read` or `changed`. The list holds everything since your last prompt and clears when you send the next one, or when you press its `×`; the terminal shows the newest five and a `⋮ N more` count, and the desktop shows them all. Click one to move the tree to its folder with the file selected (pinned, like `↑`; `⌂` goes back), right-click to copy its path. It covers the Read, Edit, Write and NotebookEdit tools and the files Bash readers (`cat`, `grep`, `rg`, …) name; a file a Bash command changes outside the folder (`sed -i ../x`, a script) is not listed, since writes are found by scanning the tree's own folder
 
   <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-read.gif" alt="Files shimmer purple while Claude reads and searches them" width="800">
 
@@ -67,7 +68,7 @@ You can resize the pane with the mouse, or by setting custom `pane:grow` or `pan
 
 All settings are in `/config` under filetree.
 
-- **Claude activity:** what shimmers: `reads and writes` (default), `writes`, `reads` or `none`. Git status, line counts and the git status at the bottom always show.
+- **Claude activity:** what shimmers: `reads and writes` (default), `writes`, `reads` or `none`; it sets what goes in the list of files outside the folder too. Git status, line counts and the git status at the bottom always show.
 - **Follow Claude:** `on` (default) scrolls the tree to what Claude reads, writes or commits; `off` keeps the view where you put it, and highlights still show.
 - **Right column:** `date` (default) or `size`; what the right column shows when a session starts. The `Σ` button in the header toggles it.
 - **Open with:** empty (default) opens a double-clicked file in its default app. `preview` shows it in the pane instead: Markdown rendered, code highlighted, arrow keys, Page Up/Down and the wheel to scroll, `←`/`h` or `← files` back to the tree, `↗` the default app. Otherwise a command that double-click and Enter run instead: `{path}` is the file and `{dir}` its folder, and without `{path}` the path goes last. It runs without a shell, so quote a word that holds spaces, and it should start the viewer and return rather than wait for it. Examples: `zed {path}`, `code -g {path}`, or in herdr a tab running [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) on the file: `herdr plugin pane open --plugin herdr-file-viewer --entrypoint file-viewer --placement tab --focus --env HERDR_FILE_VIEWER_OPEN={path}`.
