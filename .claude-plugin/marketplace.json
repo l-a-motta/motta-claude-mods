@@ -13,6 +13,11 @@
       "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, a context bar with the auto-compact point, rate limits, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
     },
     {
+      "name": "assumption-check",
+      "source": "./plugins/assumption-check",
+      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt: reinforce one (a note Claude reads), mark it wrong (type the fix or let Claude ask), ask why, pin, save to memory, export. Off until /assumption-check on: unused, Claude works as without it."
+    },
+    {
       "name": "prompt-enhancer",
       "source": "./plugins/prompt-enhancer",
       "description": "A ✦ enhance chip above the prompt, or /enhance <text>: asks what your draft leaves out, then writes it three ways (Tight, Balanced, Thorough) following Anthropic's and OpenAI's prompting guidance. Use it, send it or copy it."
