@@ -15,7 +15,7 @@
     {
       "name": "replay-theater",
       "source": "./plugins/replay-theater",
-      "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); the band hint lasts one prompt."
+      "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); opened with /replay only, no band hint."
     },
     {
       "name": "filetree",
