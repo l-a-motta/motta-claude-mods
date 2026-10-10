@@ -1,7 +1,7 @@
 {
   "name": "prompt-enhancer",
-  "version": "0.1.0",
-  "description": "A ✦ enhance chip above the prompt, or /enhance <text>: asks what your draft leaves out, then writes it three ways (Tight, Balanced, Thorough) following Anthropic's and OpenAI's prompting guidance. Use it, send it or copy it.",
+  "version": "0.2.0",
+  "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it.",
   "author": {
     "name": "l-a-motta"
   },
@@ -9,18 +9,31 @@
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
+    "cleanModel": {
+      "type": "string",
+      "title": "Cleaned up model",
+      "description": "The model that cleans up a draft, with no conversation: haiku (the default), sonnet, opus or a full model id.",
+      "default": "haiku"
+    },
     "model": {
       "type": "string",
-      "title": "Model",
+      "title": "Expanded model",
       "description": "session (the default): this session's own model, reading the conversation from the prompt cache. Or haiku, sonnet, opus or a full model id: that model, sent the last messages of the conversation as an excerpt.",
       "default": "session"
     },
     "effort": {
       "type": "string",
       "title": "Effort",
-      "description": "How hard a model other than session thinks. default: the model's own.",
+      "description": "How hard Expanded's model thinks when it is not session. default: the model's own.",
       "default": "default",
-      "options": ["default", "low", "medium", "high", "xhigh", "max"]
+      "options": [
+        "default",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     "chip": {
       "type": "boolean",
