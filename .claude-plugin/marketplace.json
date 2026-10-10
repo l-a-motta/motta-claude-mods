@@ -10,7 +10,7 @@
     {
       "name": "motta-statusline",
       "source": "./plugins/motta-statusline",
-      "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, context, rate limits and tokens. Under the prompt in the CLI, or as a band above it."
+      "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, context, rate limits, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
     },
     {
       "name": "replay-theater",
