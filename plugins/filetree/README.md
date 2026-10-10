@@ -22,7 +22,7 @@
 
 ## Installation
 
-This copy is vendored into motta-claude-mods from [data-goblin/claude-code-filetree@bf8de32](https://github.com/data-goblin/claude-code-filetree/tree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5) (MIT), and installs from that marketplace:
+This copy is vendored into motta-claude-mods from [data-goblin/claude-code-filetree@bf8de32](https://github.com/data-goblin/claude-code-filetree/tree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5) (MIT), patched to draw only the rows that fit the host's 100,000-character bound (on the desktop, "⋮ N more" rows page the rest), and installs from that marketplace:
 
 ```bash
 claude plugin install filetree@motta-claude-mods

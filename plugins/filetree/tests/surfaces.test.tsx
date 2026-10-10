@@ -319,7 +319,7 @@ test('long trees scroll: wheel, scrollbar drag, and a click does not jump the vi
   await ui.unmount()
 })
 
-test('desktop: a long tree draws every row and leaves the wheel to the app', { timeoutMs: 20_000 }, async ($, on) => {
+test('desktop: a tree that fits draws every row and leaves the wheel to the app', { timeoutMs: 20_000 }, async ($, on) => {
   const root = '/Users/k/big'
   const names = Array.from({ length: 60 }, (_, i) => [`f${String(i).padStart(2, '0')}.txt`, 'file'] as [string, 'file'])
   const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k', TMPDIR: '/var/folders/x/T/' }, cwd: root, top: '', dirs: { [root]: names }, status: '', numstat: '' }, [])
@@ -342,6 +342,66 @@ test('desktop: a long tree draws every row and leaves the wheel to the app', { t
   p = await rowsOf()
   expect(p.rows.length).toBe(60)
   expect(p.rows[0].id).toBe(`${root}/f00.txt`)
+  await ui.unmount()
+})
+
+const MANY = Array.from({ length: 400 }, (_, i) => [`some-component-file-${String(i).padStart(4, '0')}.tsx`, 'file'] as [string, 'file'])
+
+test('desktop: a tree past the host bound draws a window that fits, and its more rows page it', { timeoutMs: 20_000 }, async ($, on) => {
+  const root = '/Users/k/big'
+  const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k', TMPDIR: '/var/folders/x/T/' }, cwd: root, top: '', dirs: { [root]: MANY }, status: '', numstat: '' }, [])
+  await $.session.start({ cwd: root, surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: { ...paneProps(60), scroll: { offset: 0, bodyRows: 20 } } })
+  await clock.settle()
+  const rowsOf = async () => ((await ui.drawn()) as any).children.find((c: any) => c.type === 'Client').props.props.rows as { id: string; left: { t: string }[] }[]
+  const files = (rows: { id: string }[]) => rows.filter(r => r.id.startsWith(root))
+  const fits = async () => {
+    expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+    expect(JSON.stringify(await ui.drawn({ in: 'rows' })).length).toBeLessThan(100_000)
+  }
+  await fits()
+  let rows = await rowsOf()
+  const size = files(rows).length
+  expect(size).toBeGreaterThan(60)
+  expect(size).toBeLessThan(400)
+  expect(rows[0]!.id).toBe(`${root}/${MANY[0]![0]}`)
+  expect(rows.at(-1)!.id).toBe('filetree:more-below')
+  expect(rows.at(-1)!.left[0]!.t).toBe(`  ⋮ ${400 - size} more`)
+  await ui.post({ press: 'filetree:more-below' }, { in: 'rows' })
+  await clock.settle()
+  await fits()
+  rows = await rowsOf()
+  expect(rows[0]!.id).toBe('filetree:more-above')
+  expect(files(rows)[0]!.id).toBe(`${root}/${MANY[size - 1]![0]}`)
+  await ui.post({ copy: 'filetree:more-above' }, { in: 'rows' })
+  await ui.post({ press: 'filetree:more-above' }, { in: 'rows' })
+  await clock.settle()
+  rows = await rowsOf()
+  expect(rows[0]!.id).toBe(`${root}/${MANY[0]![0]}`)
+  await ui.post({ key: 'end' }, { in: 'rows' })
+  await clock.settle()
+  await fits()
+  rows = await rowsOf()
+  expect(rows.at(-1)!.id).toBe(`${root}/${MANY[399]![0]}`)
+  expect(rows[0]!.id).toBe('filetree:more-above')
+  await ui.unmount()
+})
+
+test('desktop: sixty files Claude reads at once shimmer under the host bound', { timeoutMs: 20_000 }, async ($, on) => {
+  const root = '/Users/k/big'
+  const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k', TMPDIR: '/var/folders/x/T/' }, cwd: root, top: '', dirs: { [root]: MANY }, status: '', numstat: '' }, [])
+  await $.session.start({ cwd: root, surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: { ...paneProps(60), scroll: { offset: 0, bodyRows: 20 } } })
+  await clock.settle()
+  for (let i = 0; i < 60; i++) await $.tool.call({ tool: 'Read', file_path: `${root}/${MANY[i]![0]}` } as any)
+  await clock.settle()
+  const lit = (JSON.stringify(await ui.drawn()).match(/"sh":"purple"/g) ?? []).length
+  expect(lit).toBeGreaterThan(20)
+  expect(JSON.stringify(await ui.drawn({ in: 'rows' })).length).toBeLessThan(100_000)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  expect(await texts(ui)).toContain(shimmer(MANY[59]![0], 'purple'))
   await ui.unmount()
 })
 

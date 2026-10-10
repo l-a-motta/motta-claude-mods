@@ -63,6 +63,12 @@ const HOME_PRUNE = ['Library', 'AppData', '.Trash']
 const SIZE_TIMEOUT_MS = 15_000
 const SIZE_JOBS = 2
 const SIZE_WALK_LIMIT = 50_000
+// The host unmounts a Client whose props, or the tree it draws, serialize past
+// 100,000 characters, so the rows handed to rows.tsx stay under this.
+const ROWS_BUDGET = 80_000
+const MORE_COST = 1_000
+const MORE_ABOVE = 'filetree:more-above'
+const MORE_BELOW = 'filetree:more-below'
 
 let blink: Timer | null = null
 let themePoll: Timer | null = null
@@ -86,7 +92,7 @@ let showWrites = true
 let searchIndex: { root: string; paths: Promise<string[]> } | null = null
 let activityId = 0
 let pointer = true
-let view = { from: 0, max: 0 }
+let view = { from: 0, max: 0, size: 0 }
 let nativeScroll = false
 let lastSync = 0
 let noDock = false
@@ -878,6 +884,32 @@ async function finePointerOk($: EngineInterface): Promise<boolean> {
 const PREVIEW_CHARS = 90_000
 const PREVIEW_LINE = 2_000
 
+// The larger of a row's props and of what rows.tsx draws for it, both serialized,
+// the drawing overestimated: the row's boxes, background and scrollbar, a Text per
+// segment, and a Text per character of a shimmering one.
+function rowCost(s: RowSpec): number {
+  let drawn = 280
+  for (const g of [...s.left, ...s.right]) drawn += g.sh && !g.one ? 60 + [...g.t].length * 70 : 80 + JSON.stringify(g.t).length
+  return Math.max(drawn, JSON.stringify(s).length + 1)
+}
+
+// The rows [from, end) that fit the budget, at least one: alternately below and
+// above start when centred, else down from start and then up once at the end.
+function fitRows(n: number, start: number, centred: boolean, cost: (i: number) => number, budget: number): [number, number] {
+  let lo = start
+  let hi = start
+  let used = 0
+  while (hi - lo < n) {
+    const down = hi < n && (!centred || lo === 0 || hi - start <= start - lo)
+    const c = cost(down ? hi : lo - 1)
+    if (used + c > budget && hi > lo) break
+    used += c
+    if (down) hi++
+    else lo--
+  }
+  return [lo, hi]
+}
+
 function fitSerialized(lines: string[], max: number): string[] {
   let size = 0
   for (let i = 0; i < lines.length; i++) {
@@ -1123,7 +1155,12 @@ export const register: Register = (on, options) => {
     const data = e.data as { press?: unknown; key?: unknown; ctrl?: unknown; shift?: unknown; scrollTo?: unknown; copy?: unknown }
     void sync($)
     const t = await get($)
-    if (typeof data.copy === 'string') {
+    if (data.press === MORE_ABOVE || data.press === MORE_BELOW) {
+      const to = data.press === MORE_ABOVE ? Math.max(0, view.from - Math.max(1, view.size - 1)) : Math.min(view.max, view.from + Math.max(1, view.size - 1))
+      if (to !== t.scroll) await patch($, () => ({ scroll: to }))
+      return {}
+    }
+    if (typeof data.copy === 'string' && data.copy !== MORE_ABOVE && data.copy !== MORE_BELOW) {
       await copyPath($, data.copy, Boolean(data.shift), e.surface)
       return {}
     }
@@ -1299,28 +1336,6 @@ export const register: Register = (on, options) => {
     const untracked = new Set(t.untrackedDirs)
     const width = Math.max(24, e.props.bodyColumns)
     const rows = visibleRows(t)
-    const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0)
-    const room = nativeScroll ? Math.max(1, rows.length) : Math.max(5, (e.props.scroll?.bodyRows ?? 40) - fixed)
-    const isLit = (id: string) => bright.has(id) || dimmed.has(id)
-    const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
-    const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
-    const lit = followClaude && t.flashOn ? rows.findIndex(r => isLit(r.node.id)) : -1
-    const cap = Math.max(1, Math.floor(room / 3))
-    let from = Math.max(0, Math.min(lit >= 0 && at - lit < room - 2 ? Math.max(0, lit - 1) : at - Math.floor(room / 2), rows.length - room))
-    let pinned = !nativeScroll && followClaude && t.flashOn ? rows.slice(0, from).filter(r => isLit(r.node.id)).slice(-cap) : []
-    if (pinned.length) {
-      const rest = Math.max(3, room - pinned.length)
-      from = Math.max(0, Math.min(at - Math.floor(rest / 2), rows.length - rest))
-      pinned = rows.slice(0, from).filter(r => isLit(r.node.id)).slice(-cap)
-    }
-    const max = Math.max(0, rows.length - room)
-    if (t.scroll !== null) {
-      from = Math.max(0, Math.min(t.scroll, max))
-      pinned = []
-    }
-    view = { from, max }
-    const shown = rows.slice(from, from + room - pinned.length)
-    if (t.showSize) wantSizes($, [...pinned, ...shown].filter(r => r.node.kind === 'dir' && !(r.node.id in t.dirSizes)).map(r => r.node.id))
     const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
     const countSegs = (c: [number, number, number] | undefined): Seg[] => {
       if (!c) return []
@@ -1384,11 +1399,64 @@ export const register: Register = (on, options) => {
     }
 
     const note = (text: string): RowSpec => ({ id: '', left: [{ t: text, c: theme.muted }], right: [] })
+    const more = (id: string, n: number): RowSpec => ({ id, left: [{ t: `  ⋮ ${n.toLocaleString('en')} more`, c: theme.muted }], right: [] })
+    const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0)
+    const isLit = (id: string) => bright.has(id) || dimmed.has(id)
+    const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
+    const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
+    const lit = followClaude && t.flashOn ? rows.findIndex(r => isLit(r.node.id)) : -1
+    const made = new Map<number, RowSpec>()
+    const specAt = (i: number): RowSpec => {
+      let s = made.get(i)
+      if (!s) made.set(i, (s = rowSpec(rows[i]!)))
+      return s
+    }
+    const costAt = (i: number) => rowCost(specAt(i))
+    let from: number
+    let end: number
+    let max: number
+    let pinned: typeof rows = []
+    if (nativeScroll) {
+      // The desktop draws every row it is handed, so it is handed as many as fit the
+      // budget: around the focus, or down from where a click or a "more" row left it.
+      const start = t.scroll === null ? at : Math.max(0, Math.min(t.scroll, rows.length - 1))
+      ;[from, end] = fitRows(rows.length, start, t.scroll === null, costAt, ROWS_BUDGET - MORE_COST)
+      max = Math.max(0, rows.length - 1)
+    } else {
+      const room = Math.max(5, (e.props.scroll?.bodyRows ?? 40) - fixed)
+      const cap = Math.max(1, Math.floor(room / 3))
+      from = Math.max(0, Math.min(lit >= 0 && at - lit < room - 2 ? Math.max(0, lit - 1) : at - Math.floor(room / 2), rows.length - room))
+      pinned = followClaude && t.flashOn ? rows.slice(0, from).filter(r => isLit(r.node.id)).slice(-cap) : []
+      if (pinned.length) {
+        const rest = Math.max(3, room - pinned.length)
+        from = Math.max(0, Math.min(at - Math.floor(rest / 2), rows.length - rest))
+        pinned = rows.slice(0, from).filter(r => isLit(r.node.id)).slice(-cap)
+      }
+      max = Math.max(0, rows.length - room)
+      if (t.scroll !== null) {
+        from = Math.max(0, Math.min(t.scroll, max))
+        pinned = []
+      }
+      end = Math.min(rows.length, from + room - pinned.length)
+      // A tall pane of shimmering rows can pass the budget too: drop the rows
+      // farther from the focus, or the bottom ones of a view scrolled by hand.
+      let used = pinned.reduce((n, r) => n + rowCost(rowSpec(r)), 0)
+      for (let i = from; i < end; i++) used += costAt(i)
+      while (used > ROWS_BUDGET && end - from > 1) {
+        if (t.scroll === null && at - from > end - 1 - at) used -= costAt(from++)
+        else used -= costAt(--end)
+      }
+    }
+    view = { from, max, size: end - from }
+    const shown = rows.slice(from, end)
+    if (t.showSize) wantSizes($, [...pinned, ...shown].filter(r => r.node.kind === 'dir' && !(r.node.id in t.dirSizes)).map(r => r.node.id))
     const specs: RowSpec[] = [
       ...(rows.length === 0 ? [note('empty')] : []),
       ...pinned.map(rowSpec),
       ...(pinned.length > 0 ? [note('  ⋮')] : []),
-      ...shown.map(rowSpec),
+      ...(nativeScroll && from > 0 ? [more(MORE_ABOVE, from)] : []),
+      ...shown.map((_, i) => specAt(from + i)),
+      ...(nativeScroll && end < rows.length ? [more(MORE_BELOW, rows.length - end)] : []),
     ]
     const barSize = Math.max(1, Math.round((specs.length * shown.length) / Math.max(1, rows.length)))
     const bar =
