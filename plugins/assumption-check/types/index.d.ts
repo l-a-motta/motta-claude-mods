@@ -4,7 +4,12 @@ export type Category = 'scope' | 'intent' | 'tech' | 'environment' | 'data' | 's
 
 // open: unmarked. wrong: marked wrong, Claude asked to ask what is right.
 // corrected: marked wrong with the right assumption typed in.
-export type Status = 'open' | 'wrong' | 'corrected'
+// confirmed: marked right; Claude never hears of it.
+export type Status = 'open' | 'wrong' | 'corrected' | 'confirmed'
+
+// What a count box at the top narrows the cards to: open ones, open ones of
+// low confidence, those marked wrong, those marked right.
+export type Filter = 'open' | 'low' | 'marked' | 'confirmed'
 
 export type Card = {
   id: string
@@ -31,6 +36,7 @@ declare module 'claude-code' {
       expanded: string[]
       selected: string | null
       fixing: string | null
+      filter: Filter | null
       // Cards ever logged, so a deleted card's id is never reused.
       cardCount: number
       hasAutoOpened: boolean

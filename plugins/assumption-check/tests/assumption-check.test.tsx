@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { groupLabel, INSTRUCTION, parseAssumptions } from '../hooks/register.tsx'
+import { groupLabel, INSTRUCTION, ordered, parseAssumptions, parseSource } from '../hooks/register.tsx'
 import { command, ENGINE_SECTION, LOGGED, PANE_PROPS, typed, world } from './world.tsx'
 
 const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
@@ -78,12 +78,16 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await $.tool.call({ tool: TOOL, ...LOGGED })
 
     const ui = await $.ui.mount({ ...MOUNT, surface })
-    expect(await ui.find({ key: 'card-A1' })).toBeDefined()
+    expect(await ui.find({ text: 'Low confidence' })).toBeDefined()
+    // A1 is of low confidence, so it opens on arrival; a press folds it.
+    expect(await ui.find({ key: 'wrong-A1' })).toBeDefined()
+    await ui.press({ key: 'card-A1' })
     expect(await ui.find({ key: 'wrong-A1' })).toBeUndefined()
 
     await ui.press({ key: 'card-A1' })
-    expect(await ui.find({ text: 'why: POST is not idempotent' })).toBeDefined()
-    expect(await ui.find({ text: 'source: api/client.ts:42' })).toBeDefined()
+    expect(await ui.find({ text: 'POST is not idempotent' })).toBeDefined()
+    expect(await ui.find({ text: 'api/client.ts:42' })).toBeDefined()
+    expect(await ui.find({ key: 'right-A1' })).toBeDefined()
     expect(await ui.find({ key: 'wrong-A1' })).toBeDefined()
     expect(await ui.find({ key: 'why-A1' })).toBeDefined()
     expect(await ui.find({ key: 'delete-A1' })).toBeDefined()
@@ -108,6 +112,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.press({ key: 'delete-A2' })
     expect(await ui.find({ key: 'toggle-P1' })).toBeUndefined()
     expect(await ui.find({ text: 'No assumptions yet.' })).toBeDefined()
+    expect(await ui.find({ text: 'To check' })).toBeUndefined()
     expect(appended()).toBe(0)
 
     // A card logged after the deletes takes a new id, never A1 or A2 again.
@@ -126,7 +131,6 @@ test('an empty correction lets Claude ask, and "why?" asks for the reasoning', a
   await $.tool.call({ tool: TOOL, ...LOGGED })
   const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
 
-  await ui.press({ key: 'card-A1' })
   await ui.press({ key: 'why-A1' })
   expect(seen.submitted.at(-1)).toContain('Why did you assume A1 "Retries apply to GET requests only"?')
 
@@ -134,6 +138,137 @@ test('an empty correction lets Claude ask, and "why?" asks for the reasoning', a
   await ui.input({ key: 'fix-A1', text: '  ' })
   expect(seen.submitted.at(-1)).toContain('Ask me what is incorrect about it and what the right assumption is.')
   await ui.unmount()
+})
+
+test('right and all right confirm cards, and Claude hears of neither', async ($, on) => {
+  const { seen, appended } = world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+
+  await ui.press({ key: 'right-A1' })
+  expect(await ui.find({ key: 'right-A1' })).toBeUndefined()
+  expect(await ui.find({ key: 'undo-A1' })).toBeDefined()
+  await ui.press({ key: 'undo-A1' })
+  expect(await ui.find({ key: 'right-A1' })).toBeDefined()
+
+  await ui.press({ key: 'all-right-P1' })
+  expect(await ui.find({ key: 'all-right-P1' })).toBeUndefined()
+  expect(await ui.find({ text: '· all checked' })).toBeDefined()
+  expect(seen.submitted).toEqual(['add retry'])
+  expect(appended()).toBe(0)
+  await ui.unmount()
+})
+
+test('a count box filters the cards to its own, and pressed again shows them all', async ($, on) => {
+  world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+  await $.prompt.submit(typed('second prompt'))
+  await $.tool.call({ tool: TOOL, assumptions: [{ statement: 'Node 22', why: '', confidence: 'high', category: 'environment', impact: '' }] })
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+
+  await ui.press({ key: 'filter-low' })
+  expect(await ui.find({ key: 'card-A1' })).toBeDefined()
+  expect(await ui.find({ key: 'card-A2' })).toBeUndefined()
+  expect(await ui.find({ key: 'toggle-P2' })).toBeUndefined()
+
+  // "all right" under a filter confirms only the cards it shows.
+  await ui.press({ key: 'all-right-P1' })
+  await ui.press({ key: 'filter-open' })
+  expect(await ui.find({ key: 'card-A1' })).toBeUndefined()
+  expect(await ui.find({ key: 'card-A2' })).toBeDefined()
+  await ui.press({ key: 'filter-open' })
+
+  await ui.press({ key: 'filter-confirmed' })
+  expect(await ui.find({ key: 'card-A1' })).toBeDefined()
+  await ui.press({ key: 'filter-confirmed' })
+  await ui.press({ key: 'filter-marked' })
+  expect(await ui.find({ text: 'None here. Press the box again to show every card.' })).toBeDefined()
+  await ui.press({ key: 'filter-marked' })
+  // P1 was folded when P2 came; with the filter off it is folded again.
+  expect(await ui.find({ key: 'card-A3' })).toBeDefined()
+  expect(await ui.find({ key: 'card-A1' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a low-confidence card opens on arrival, unless a correction is being typed', async ($, on) => {
+  world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+  const low = { statement: 'No auth needed', why: '', confidence: 'low', category: 'scope', impact: '' }
+
+  await ui.press({ key: 'card-A2' })
+  await $.tool.call({ tool: TOOL, assumptions: [low] })
+  expect(await ui.find({ key: 'right-A3' })).toBeDefined()
+
+  await ui.press({ key: 'card-A2' })
+  await ui.press({ key: 'wrong-A2' })
+  await $.tool.call({ tool: TOOL, assumptions: [low] })
+  expect(await ui.find({ key: 'fix-A2' })).toBeDefined()
+  expect(await ui.find({ key: 'right-A4' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('open cards of low confidence come first, the rest in the order they came', () => {
+  const card = (id: string, confidence: 'low' | 'medium' | 'high', status: 'open' | 'confirmed' = 'open') =>
+    ({ id, group: 'P1', statement: id, why: '', confidence, category: 'other' as const, impact: '', status })
+  const list = [card('A1', 'high'), card('A2', 'low', 'confirmed'), card('A3', 'medium'), card('A4', 'low')]
+  expect(ordered(list).map(c => c.id)).toEqual(['A4', 'A1', 'A2', 'A3'])
+})
+
+test('a source reads as path and line, a drive letter kept', () => {
+  expect(parseSource('api/client.ts:42')).toEqual({ path: 'api/client.ts', line: 42 })
+  expect(parseSource('C:\\repo\\a.ts:7:3')).toEqual({ path: 'C:\\repo\\a.ts', line: 7 })
+  expect(parseSource('src/x.ts:10-20')).toEqual({ path: 'src/x.ts', line: 10 })
+  expect(parseSource('README.md')).toEqual({ path: 'README.md' })
+})
+
+test('pressing a source opens it in VS Code at its line, and says so when it cannot', async ($, on) => {
+  const { seen } = world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+
+  await ui.press({ key: 'source-A1' })
+  expect(seen.ran.at(-1)).toEqual(['code', '-g', 'C:/repo/api/client.ts:42'])
+  expect(seen.toasts).toEqual([])
+
+  seen.failRuns = true
+  await ui.press({ key: 'source-A1' })
+  expect(seen.ran.at(-1)).toEqual(['rundll32', 'url.dll,FileProtocolHandler', 'vscode://file/C:/repo/api/client.ts:42'])
+  expect(seen.toasts).toEqual(["Couldn't open api/client.ts:42 in VS Code."])
+  await ui.unmount()
+})
+
+test('a low-confidence card toasts only while the pane is not shown', async ($, on) => {
+  const { seen } = world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  // The first cards open the pane, so they need no toast.
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+  expect(seen.toasts).toEqual([])
+
+  const low = { statement: 'No auth needed', why: '', confidence: 'low', category: 'scope', impact: '' }
+  seen.paneShown = true
+  await $.tool.call({ tool: TOOL, assumptions: [low] })
+  expect(seen.toasts).toEqual([])
+
+  seen.paneShown = false
+  await $.tool.call({ tool: TOOL, assumptions: [{ ...low, confidence: 'high' }] })
+  expect(seen.toasts).toEqual([])
+  await $.tool.call({ tool: TOOL, assumptions: [low] })
+  expect(seen.toasts).toEqual(['Low-confidence assumption A5 "No auth needed". Run /assumption-check to review it.'])
 })
 
 test("leaves a subagent's and a teammate's assumptions out", async ($, on) => {

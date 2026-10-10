@@ -1,10 +1,17 @@
 // assumption-check: a side pane of the assumptions Claude makes.
 //
 //   ● capture on  [ turn off ]
-//   ▾ P4 add retry to fetch · 2 to check
-//     ○ A7 retries = 3, exponential backoff
-//     ✎ A9 use axios
-//   ▸ P3 fix the CI badge · 1 marked
+//   ╭ To check ╮ ╭ Low confidence ╮ ╭ Corrected ╮ ╭ Confirmed ╮
+//   │ 2        │ │ 1              │ │ 1         │ │ 1         │
+//   ▾ P4 add retry to fetch  2 to check              all right
+//     ╭ ▸ A7 ● low  retries = 3, exponential backoff ╮
+//     ╭ ▸ ✎ A9 ● high  use axios                     ╮
+//   ▸ P3 fix the CI badge · all checked
+//
+// Each count box filters the cards to its own; pressed again, it shows all.
+// Within a prompt, open cards of low confidence come first, and the first
+// such card in a batch opens on arrival. One arriving while the pane is not
+// shown raises a toast.
 //
 // On from the session start, unless the startOn option is false.
 // `/assumption-check off` switches it off for the session, and while off the
@@ -21,8 +28,11 @@
 //   field or empty, in which case Claude asks what is right. Either way
 //   Claude first lists what it did that relied on the assumption.
 // - why?: a prompt asking Claude for its reasoning.
+// - right (and a prompt's "all right"): marks it confirmed. Claude never
+//   hears of it; undo puts it back to check.
 // - delete: removes the card from the mod's memory, and Claude never hears
 //   of it. Ids keep counting, so a later card never takes a deleted one's.
+// - its source: opens path:line in VS Code (`code -g`, else a vscode:// link).
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -30,7 +40,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Category, Confidence, Group, Status } from '../types'
+import type { Card, Category, Confidence, Filter, Group, Status } from '../types'
 
 const PANE = 'assumption-check'
 const TITLE = 'Assumptions'
@@ -44,6 +54,7 @@ const cards = atom({ plugin: 'assumption-check', key: 'cards' } as const, [] as 
 const expanded = atom({ plugin: 'assumption-check', key: 'expanded' } as const, [] as string[])
 const selected = atom({ plugin: 'assumption-check', key: 'selected' } as const, null as string | null)
 const fixing = atom({ plugin: 'assumption-check', key: 'fixing' } as const, null as string | null)
+const filter = atom({ plugin: 'assumption-check', key: 'filter' } as const, null as Filter | null)
 const cardCount = atom({ plugin: 'assumption-check', key: 'cardCount' } as const, 0)
 const hasAutoOpened = atom({ plugin: 'assumption-check', key: 'hasAutoOpened' } as const, false)
 
@@ -125,10 +136,73 @@ export function groupLabel(prompt: string): string {
   return line.length > 60 ? `${line.slice(0, 59)}…` : line || '(empty prompt)'
 }
 
-const MARK: Record<Status, string> = { open: '○', wrong: '✗', corrected: '✎' }
+const MARK: Record<Status, string> = { open: '○', wrong: '✗', corrected: '✎', confirmed: '✓' }
+const CONFIDENCE_COLOR: Record<Confidence, string> = { low: 'error', medium: 'warning', high: 'success' }
+const BORDER: Record<Status, string> = { open: 'subtle', wrong: 'error', corrected: 'error', confirmed: 'success' }
+
+export const MATCHES: Record<Filter, (card: Card) => boolean> = {
+  open: c => c.status === 'open',
+  low: c => c.status === 'open' && c.confidence === 'low',
+  marked: c => c.status === 'wrong' || c.status === 'corrected',
+  confirmed: c => c.status === 'confirmed',
+}
+
+// Open cards of low confidence first; the rest keep the order they came in.
+export function ordered(list: readonly Card[]): Card[] {
+  return [...list].sort((a, b) => Number(!MATCHES.low(a)) - Number(!MATCHES.low(b)))
+}
+
+// "path:line", "path:line:col" or "path:start-end"; a drive's colon stays.
+export function parseSource(source: string): { path: string; line?: number } {
+  const match = /^(.+?):(\d+)(?:[-:]\d+)?$/.exec(source.trim())
+  return match?.[1] !== undefined ? { path: match[1], line: Number(match[2]) } : { path: source.trim() }
+}
+
+function absolute(path: string, cwd: string): string {
+  const joined = /^([A-Za-z]:)?[\\/]/.test(path) ? path : `${cwd}/${path}`
+  return joined.replace(/\\/g, '/')
+}
 
 async function setCard($: EngineInterface, id: string, change: (card: Card) => Card) {
   await update($, cards, list => list.map(c => (c.id === id ? change(c) : c)))
+}
+
+async function confirm($: EngineInterface, ids: readonly string[]) {
+  await update($, cards, list => list.map(c => (ids.includes(c.id) && c.status === 'open' ? { ...c, status: 'confirmed' as const } : c)))
+  await update($, fixing, id => (id !== null && ids.includes(id) ? null : id))
+}
+
+// The path is made absolute so it never reads as an option of `code`, and
+// only VS Code is asked to open it: a source is Claude's text, and a file
+// handed to the system's default app could be a program that runs.
+async function openSource($: EngineInterface, source: string) {
+  const { path, line } = parseSource(source)
+  const file = absolute(path, await $.session.cwd())
+  const at = line === undefined ? file : `${file}:${line}`
+  const url = `vscode://file/${encodeURI(at.replace(/^\/+/, ''))}`
+  // Linux has xdg-open and macOS open; Windows hands a URL to rundll32.
+  const openers = /^[A-Za-z]:/.test(file)
+    ? [['code', '-g', at], ['rundll32', 'url.dll,FileProtocolHandler', url]]
+    : [['code', '-g', at], ['xdg-open', url], ['open', url]]
+  for (const argv of openers) {
+    try {
+      if ((await $.process.run(argv, { timeoutMs: 10_000 })).exitCode === 0) return
+    } catch {}
+  }
+  $.ui.toast(`Couldn't open ${source} in VS Code.`)
+}
+
+async function toastIfHidden($: EngineInterface, low: readonly Card[]) {
+  if (low.length === 0) return
+  const panes = await $.ui.panes()
+  if (panes.some(p => p.id === PANE && p.isShown && p.isPlaced)) return
+  const first = low[0]!
+  $.ui.toast(
+    low.length === 1
+      ? `Low-confidence assumption ${quote(first)}. Run /assumption-check to review it.`
+      : `${low.length} low-confidence assumptions: ${low.map(c => c.id).join(', ')}. Run /assumption-check to review them.`,
+    { timeoutMs: 8000 },
+  )
 }
 
 async function turnOn($: EngineInterface) {
@@ -224,13 +298,23 @@ export const register: Register = (on, options) => {
     const added: Card[] = logged.map((one, i) => ({ ...one, id: `A${last - logged.length + 1 + i}`, group, status: 'open' as const }))
     await update($, cards, list => [...list, ...added])
 
+    const low = added.filter(MATCHES.low)
+    // Not while a correction is being typed: that would fold its field.
+    if (low[0] !== undefined && (await read($, fixing)) === null) await update($, selected, () => low[0]!.id)
     if (!(await read($, hasAutoOpened))) {
       await update($, hasAutoOpened, () => true)
       void openPane($)
+    } else {
+      // A toast is a nicety: failing, it must not lose the cards' ids.
+      await toastIfHidden($, low).catch(() => {})
     }
     return { result: `Logged ${added.map(c => c.id).join(', ')}. Carry on; the user reviews them in their pane.` }
   }).catch(() => ({ result: 'assumption-check could not log that; carry on without it.' }))
 
+
+  // A desktop draws each Button as a native button of its own label alone:
+  // colors, bold and spacing inside one are lost. So every styled part here
+  // is a Text beside a Button, and the Buttons hold one plain word or glyph.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const elements = $.ui.resolve(e)
     const { Box, Text, Button } = elements
@@ -242,8 +326,25 @@ export const register: Register = (on, options) => {
     const open = new Set(await read($, expanded))
     const picked = await read($, selected)
     const fix = await read($, fixing)
-    const width = Math.max(20, e.props.bodyColumns - 6)
-    const cut = (s: string) => (s.length > width ? `${s.slice(0, width - 1)}…` : s)
+    const only = await read($, filter)
+    const shown = only === null ? all : all.filter(MATCHES[only])
+
+    // One line, cut with an ellipsis where the pane ends. A flex item is as
+    // wide as its text unless its minimum is 0, so without it the text
+    // overruns the card instead of being cut.
+    const line = (text: string, props: Record<string, unknown> = {}) => (
+      <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+        <Text wrap="truncate-end" {...props}>
+          {text}
+        </Text>
+      </Box>
+    )
+    // A label beside a line, kept whole: it never shrinks or wraps.
+    const fixed = (text: string, props: Record<string, unknown> = {}) => (
+      <Box flexShrink={0}>
+        <Text {...props}>{text}</Text>
+      </Box>
+    )
 
     const header = (
       <Box flexDirection="row" gap={1} flexWrap="wrap">
@@ -254,87 +355,151 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
-    const details = (card: Card) => (
-      <Box flexDirection="column" paddingLeft={4}>
-        <Text>{card.statement}</Text>
-        <Text>
-          <Text color={card.confidence === 'low' ? 'warning' : card.confidence === 'high' ? 'success' : undefined}>
-            {card.confidence} confidence
+    // The counts are over every card, whatever the filter shows. A box's label
+    // filters to its cards; pressed again, it shows them all.
+    const stat = (which: Filter, label: string, color: string) => {
+      const n = all.filter(MATCHES[which]).length
+      const isActive = only === which
+      return (
+        <Box
+          key={`stat-${which}`}
+          flexDirection="column"
+          flexGrow={1}
+          borderStyle="round"
+          borderColor={isActive ? color : 'subtle'}
+          hover={{ borderColor: color }}
+          paddingX={1}
+        >
+          <Button key={`filter-${which}`} label={label} plain dimColor={!isActive} onPress={() => void update($, filter, f => (f === which ? null : which))} />
+          <Text bold color={n > 0 ? color : undefined} dimColor={n === 0}>
+            {String(n)}
           </Text>
-          <Text dimColor> · {card.category}</Text>
-        </Text>
-        {card.why !== '' && <Text dimColor>why: {card.why}</Text>}
-        {card.source !== undefined && <Text dimColor>source: {card.source}</Text>}
-        {card.impact !== '' && <Text dimColor>if wrong: {card.impact}</Text>}
-        {card.correction !== undefined && <Text color="suggestion">→ {card.correction}</Text>}
-        {card.status === 'wrong' && <Text color="error">marked wrong · Claude asks you what's right</Text>}
-        <Box flexDirection="row" gap={1} flexWrap="wrap">
-          {card.status === 'open' && (
-            <Button
-              key={`wrong-${card.id}`}
-              hotkey="w"
-              onPress={() => void (Input === undefined ? markWrong($, card, '') : update($, fixing, () => fix === card.id ? null : card.id))}
-            >
-              <Text color="error">wrong</Text>
-            </Button>
-          )}
-          {card.status === 'open' && (
-            <Button key={`why-${card.id}`} label="why?" hotkey="y" onPress={() => void $.prompt.submit({ text: say.why(card) })} />
-          )}
-          <Button key={`delete-${card.id}`} label="delete" hotkey="d" onPress={() => void remove($, card)} />
         </Box>
-        {fix === card.id && card.status === 'open' && Input !== undefined && (
-          <Input
-            key={`fix-${card.id}`}
-            label="right assumption:"
-            placeholder="leave empty and Claude asks you"
-            submitLabel="send"
-            autoFocus
-            onSubmit={(value: string) => void markWrong($, card, value)}
-          />
-        )}
+      )
+    }
+    const stats = (
+      <Box flexDirection="row" gap={1} flexWrap="wrap">
+        {stat('open', 'To check', 'warning')}
+        {stat('low', 'Low confidence', 'error')}
+        {stat('marked', 'Corrected', 'suggestion')}
+        {stat('confirmed', 'Confirmed', 'success')}
       </Box>
     )
 
-    const row = (card: Card) => (
-      <Box key={`row-${card.id}`} flexDirection="column">
-        <Button
-          key={`card-${card.id}`}
-          plain
-          onPress={() => void update($, selected, () => picked === card.id ? null : card.id)}
-        >
-          <Text color={card.status === 'open' ? undefined : 'error'}>{MARK[card.status]}</Text>{' '}
-          <Text dimColor>{card.id}</Text> <Text strikethrough={card.status !== 'open'}>{cut(card.statement)}</Text>
-          {card.confidence === 'low' && card.status === 'open' && <Text color="warning"> !</Text>}
-        </Button>
-        {picked === card.id && details(card)}
+    const field = (label: string, value: string) => (
+      <Box flexDirection="column">
+        <Text dimColor>{label}</Text>
+        <Text>{value}</Text>
       </Box>
     )
+
+    const card = (c: Card) => {
+      const isPicked = picked === c.id
+      const isOpen = c.status === 'open'
+      const isWrong = c.status === 'wrong' || c.status === 'corrected'
+      return (
+        <Box
+          key={`row-${c.id}`}
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={isOpen && isPicked ? 'text' : BORDER[c.status]}
+          {...(isOpen && !isPicked ? { hover: { borderColor: 'text' } } : {})}
+          paddingX={1}
+          gap={isPicked ? 1 : 0}
+        >
+          <Box flexDirection="row" gap={1}>
+            <Button key={`card-${c.id}`} label={isPicked ? '▾' : '▸'} plain onPress={() => void update($, selected, () => (isPicked ? null : c.id))} />
+            {!isOpen && fixed(MARK[c.status], { color: isWrong ? 'error' : 'success' })}
+            {fixed(c.id, { dimColor: true })}
+            {fixed(`● ${c.confidence}`, { color: CONFIDENCE_COLOR[c.confidence] })}
+            {isPicked && fixed(`· ${c.category}`, { dimColor: true })}
+            {!isPicked && line(c.statement, { strikethrough: isWrong, dimColor: !isOpen })}
+          </Box>
+          {isPicked && (
+            <Text bold strikethrough={isWrong}>
+              {c.statement}
+            </Text>
+          )}
+          {c.correction !== undefined && <Text color="suggestion">→ {c.correction}</Text>}
+          {isPicked && c.status === 'wrong' && <Text color="error">marked wrong · Claude asks you what's right</Text>}
+          {isPicked && c.why !== '' && field('Why', c.why)}
+          {isPicked && c.impact !== '' && field('If wrong', c.impact)}
+          {isPicked && c.source !== undefined && (
+            <Box flexDirection="column">
+              <Text dimColor>Source</Text>
+              <Button key={`source-${c.id}`} label={c.source} plain onPress={() => void openSource($, c.source ?? '')} />
+            </Box>
+          )}
+          {isPicked && (
+            <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+              {isOpen && <Button key={`right-${c.id}`} label="right" hotkey="r" variant="primary" onPress={() => void confirm($, [c.id])} />}
+              {isOpen && (
+                <Button
+                  key={`wrong-${c.id}`}
+                  label="wrong"
+                  hotkey="w"
+                  onPress={() => void (Input === undefined ? markWrong($, c, '') : update($, fixing, () => (fix === c.id ? null : c.id)))}
+                />
+              )}
+              {isOpen && <Button key={`why-${c.id}`} label="why?" hotkey="y" onPress={() => void $.prompt.submit({ text: say.why(c) })} />}
+              {c.status === 'confirmed' && (
+                <Button key={`undo-${c.id}`} label="undo" hotkey="u" onPress={() => void setCard($, c.id, x => ({ ...x, status: 'open' }))} />
+              )}
+              <Box flexGrow={1} />
+              <Button key={`delete-${c.id}`} label="delete" hotkey="d" plain dimColor onPress={() => void remove($, c)} />
+            </Box>
+          )}
+          {isPicked && fix === c.id && isOpen && Input !== undefined && (
+            <Input
+              key={`fix-${c.id}`}
+              label="right assumption:"
+              placeholder="leave empty and Claude asks you"
+              submitLabel="send"
+              autoFocus
+              onSubmit={(value: string) => void markWrong($, c, value)}
+            />
+          )}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" gap={1}>
         {header}
+        {all.length > 0 && stats}
         {all.length === 0 && (
           <Text dimColor>
             {on_ ? 'No assumptions yet. They show here as Claude logs them.' : 'Capture is off, so Claude works as without this mod. Turn it on to see its assumptions.'}
           </Text>
         )}
+        {all.length > 0 && shown.length === 0 && <Text dimColor>None here. Press the box again to show every card.</Text>}
         {[...allGroups].reverse().map(group => {
-          const mine = all.filter(c => c.group === group.id)
+          const mine = shown.filter(c => c.group === group.id)
           if (mine.length === 0) return null
-          const toCheck = mine.filter(c => c.status === 'open')
-          const isOpen = open.has(group.id)
+          const toCheck = all.filter(c => c.group === group.id && c.status === 'open')
+          // "all right" confirms only what the filter shows.
+          const visible = mine.filter(c => c.status === 'open')
+          // A filter shows what it found, folded prompts included.
+          const isOpen = only !== null || open.has(group.id)
           return (
-            <Box key={`group-${group.id}`} flexDirection="column">
-              <Button
-                key={`toggle-${group.id}`}
-                plain
-                onPress={() => void update($, expanded, list => (list.includes(group.id) ? list.filter(id => id !== group.id) : [...list, group.id]))}
-              >
-                {isOpen ? '▾' : '▸'} <Text bold>{group.id}</Text> {cut(group.label)}{' '}
-                <Text dimColor>· {toCheck.length > 0 ? `${toCheck.length} to check` : `${mine.length} marked`}</Text>
-              </Button>
-              {isOpen && <Box flexDirection="column" paddingLeft={2}>{mine.map(row)}</Box>}
+            <Box key={`group-${group.id}`} flexDirection="column" gap={1}>
+              <Box flexDirection="row" gap={1} alignItems="center">
+                <Button
+                  key={`toggle-${group.id}`}
+                  label={isOpen ? '▾' : '▸'}
+                  plain
+                  onPress={() => void update($, expanded, list => (list.includes(group.id) ? list.filter(id => id !== group.id) : [...list, group.id]))}
+                />
+                {fixed(group.id, { bold: true })}
+                {line(group.label)}
+                {toCheck.length > 0 ? fixed(`${toCheck.length} to check`, { color: 'warning' }) : fixed('· all checked', { dimColor: true })}
+                {visible.length > 0 && <Button key={`all-right-${group.id}`} label="all right" onPress={() => void confirm($, visible.map(c => c.id))} />}
+              </Box>
+              {isOpen && (
+                <Box flexDirection="column" paddingLeft={2} gap={1}>
+                  {ordered(mine).map(card)}
+                </Box>
+              )}
             </Box>
           )
         })}

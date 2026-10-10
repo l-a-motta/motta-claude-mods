@@ -39,7 +39,16 @@ export const LOGGED = {
 }
 
 export function world(on: Parameters<TestBody>[1]) {
-  const seen = { tools: [] as string[], opened: [] as string[], submitted: [] as string[] }
+  const seen = {
+    tools: [] as string[],
+    opened: [] as string[],
+    submitted: [] as string[],
+    toasts: [] as string[],
+    ran: [] as (readonly string[])[],
+    // Whether the pane is the one shown, and whether every command fails.
+    paneShown: false,
+    failRuns: false,
+  }
   mock.clock(on)
   const session = mock.session(on)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -51,6 +60,16 @@ export function world(on: Parameters<TestBody>[1]) {
   on('ui.open', ($, e) => {
     seen.opened.push(e.id)
     return { value: { isPlaced: true as const } }
+  })
+  on('ui.panes', () => ({ value: [{ id: 'assumption-check', title: 'Assumptions', isShown: seen.paneShown, isFocused: false, isPlaced: true }] }))
+  on('ui.toast', ($, e) => {
+    seen.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('session.cwd', () => ({ value: 'C:/repo' }))
+  on('process.run', ($, e) => {
+    seen.ran.push(e.argv)
+    return { value: { exitCode: seen.failRuns ? 1 : 0, stdout: '', stderr: '' } }
   })
   on('tool.describe', ($, e) => ({ description: e.description }))
   on('prompt.submit', ($, e) => {
