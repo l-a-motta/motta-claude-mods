@@ -57,6 +57,9 @@ type Setup = {
   canFork?: boolean
   // Each model call takes the next one: a reply's text, or `fail` for a 529.
   replies?: string[]
+  // A plugin beneath drawing in the band: motta-statusline's lines, as it
+  // draws them on the desktop, unkeyed.
+  hasStatusLine?: boolean
 }
 
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
@@ -79,7 +82,16 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
 
   const clock = mock.clock(on)
   // The engine's own band, empty: the opaque reference it hands back.
-  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 1 }) as never)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column" paddingX={1} flexGrow={1}>
+        <Text>📁 motta-claude-mods 🌿 main</Text>
+        <Text>CTX 36% 360k/1M</Text>
+      </Box>
+    )
+  })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('prompt.read', () => ({ value: { text: hasComposer ? (setup.box ?? '') : '', cursor: 0 } }))

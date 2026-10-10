@@ -192,3 +192,32 @@ test('the chip stays out of the way during a turn and under a survey', async ($,
   const survey = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, hasSurvey: true } })
   expect(await survey.find({ key: 'enhance' })).toBeUndefined()
 })
+
+type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
+
+test('above the status line on the desktop, the chip draws at the right of it and a card under it', async ($, on) => {
+  world(on, { box: DRAFT, hasStatusLine: true, replies: ['NO QUESTIONS', VARIANTS] })
+  await $.session.start({ ...START, surface: 'desktop' as const })
+  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+
+  expect(await ui.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
+  expect(await ui.find({ key: 'enhance' })).toBeDefined()
+  const idle = (await ui.drawn()) as Node
+  expect(idle.props?.flexDirection).toBe('row')
+  expect(idle.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+
+  await ui.press({ key: 'enhance' })
+  expect(await ui.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
+  const card = (await ui.drawn()) as Node
+  expect(card.props?.flexDirection).toBe('column')
+  expect(card.children?.at(-1)?.props?.key).toBe('band-under:prompt-enhancer')
+})
+
+test('alone in the band, its trees carry the keys motta-statusline reads', async ($, on) => {
+  world(on, { box: DRAFT, replies: ['NO QUESTIONS', VARIANTS] })
+  await $.session.start({ ...START, surface: 'desktop' as const })
+  const ui = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(((await ui.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
+  await ui.press({ key: 'enhance' })
+  expect(((await ui.drawn()) as Node).props?.key).toBe('band-under:prompt-enhancer')
+})
