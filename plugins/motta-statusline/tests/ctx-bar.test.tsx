@@ -15,13 +15,15 @@ describe('ctxLevel', () => {
 })
 
 describe('barCells', () => {
-  test('fills the used share of 14 cells and puts the tick at the compact point', () => {
-    expect(barCells(360_000, 1_000_000, 835_000)).toEqual({ filled: 5, mark: 12 })
+  test('fills the used share of 10 cells and puts the tick at the compact point', () => {
+    expect(barCells(360_000, 1_000_000, 835_000)).toEqual({ filled: 4, mark: 8 })
     expect(barCells(0, 1_000_000, null)).toEqual({ filled: 0, mark: null })
   })
 
   test('keeps the tick inside the bar and the fill within it', () => {
-    expect(barCells(1_200_000, 1_000_000, 1_000_000)).toEqual({ filled: 14, mark: 13 })
+    expect(barCells(1_200_000, 1_000_000, 1_000_000)).toEqual({ filled: 10, mark: 9 })
+    // A 1M window compacts near 967k: the tick goes before the last cell, not on it.
+    expect(barCells(338_000, 1_000_000, 967_000)).toEqual({ filled: 3, mark: 9 })
     expect(barCells(10, 0, 5)).toEqual({ filled: 0, mark: null })
   })
 })
@@ -34,10 +36,11 @@ test('draws the bar with its compact tick and the tokens, without a percentage',
     component: 'PromptHint',
     props: { isDraft: false, isWorking: true, hint: 'esc to interrupt' },
   })
-  // 360k of 1M: five cells used (yellow at 36%), the tick in cell 12.
-  expect(await ui.find({ type: 'Text', text: '█████' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '·······' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '│' })).toBeDefined()
+  // 360k of 1M: four dashes used (yellow at 36%), four free, the tick before
+  // cell 8, and the two cells past it still drawn.
+  expect(await ui.find({ type: 'Text', text: '----' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '|' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '--' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: ' 360k/1M' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '36%' })).toBeUndefined()
   await ui.unmount()
