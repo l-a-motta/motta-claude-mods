@@ -285,9 +285,13 @@ export const register: Register = (on, options) => {
     if (data === null) await refreshAll($, true)
     // The desktop app never raises PromptHint, so `below` draws in the band there.
     const isBand = placement === 'above' || e.surface === 'desktop'
-    if (!isBand || e.props.hasSurvey) return next(e)
+    if (!isBand || e.props.hasSurvey) {
+      trace($, `motta-statusline ${e.surface}: passes (band ${isBand}, survey ${e.props.hasSurvey})`)
+      return next(e)
+    }
     const below = await next(e)
     const share = bandShare(below)
+    trace($, `motta-statusline ${e.surface}: below ${shape(below)}, share ${share}, data ${data === null ? 'null' : 'ok'}`)
     if (share === 'taken' || data === null) return below
     const { Box, Text, Link } = $.ui.resolve(e)
     const ours = (
@@ -385,8 +389,9 @@ async function refreshAll($: EngineInterface, withGit = true) {
     }
     if (withGit) await refreshGit($)
     else await paint($)
-  } catch {
+  } catch (err) {
     // Keep the last reading; the next step, turn or timer tries again.
+    trace($, `motta-statusline refreshAll failed: ${String(err)}`)
   }
 }
 
@@ -841,4 +846,23 @@ export function httpsUrl(remote: string) {
     .replace(/^git@([^:]+):/, 'https://$1/')
     .replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
     .replace(/\.git$/, '')
+}
+
+// Band trace (temporary, to find why the desktop band drops the status
+// line): each distinct line once, five at most, in the transcript.
+const traced = new Set<string>()
+
+function trace($: EngineInterface, line: string) {
+  if (traced.has(line) || traced.size >= 5) return
+  traced.add(line)
+  $.ui.log(`[band trace] ${line}`)
+}
+
+function shape(node: unknown): string {
+  if (node === null || node === undefined || node === false || node === '') return String(node)
+  if (typeof node !== 'object') return typeof node
+  const el = node as { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
+  const key = typeof el.props?.key === 'string' ? `#${el.props.key}` : ''
+  const kids = Array.isArray(el.children) ? `[${el.children.map(shape).join(',')}]`.slice(0, 200) : ''
+  return `${String(el.type)}${key}${kids}`
 }

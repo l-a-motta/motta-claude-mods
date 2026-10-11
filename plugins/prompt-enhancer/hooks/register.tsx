@@ -437,7 +437,9 @@ export const register: Register = (on, options) => {
         {hasBox ? <Button key="enhance" plain label="enhance" onPress={() => void chip($)} /> : <Text dimColor>{'/enhance <your prompt>'}</Text>}
       </Box>
     )
-    return withChip(Box, below, ours, 'prompt-enhancer', true)
+    const drawn = withChip(Box, below, ours, 'prompt-enhancer', true)
+    trace($, `prompt-enhancer ${e.surface}: below ${shape(below)} -> ${shape(drawn)}`)
+    return drawn
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -533,4 +535,23 @@ export const register: Register = (on, options) => {
       </Box>
     )
   })
+}
+
+// Band trace (temporary, to find why the desktop band drops the status
+// line): each distinct line once, five at most, in the transcript.
+const traced = new Set<string>()
+
+function trace($: EngineInterface, line: string) {
+  if (traced.has(line) || traced.size >= 5) return
+  traced.add(line)
+  $.ui.log(`[band trace] ${line}`)
+}
+
+function shape(node: unknown): string {
+  if (node === null || node === undefined || node === false || node === '') return String(node)
+  if (typeof node !== 'object') return typeof node
+  const el = node as { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
+  const key = typeof el.props?.key === 'string' ? `#${el.props.key}` : ''
+  const kids = Array.isArray(el.children) ? `[${el.children.map(shape).join(',')}]`.slice(0, 200) : ''
+  return `${String(el.type)}${key}${kids}`
 }

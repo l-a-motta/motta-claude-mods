@@ -141,7 +141,9 @@ export const register: Register = (on, options) => {
         <Button key="keep-warm" plain label={label} onPress={() => void toggle($)} />
       </Box>
     )
-    return withChip(Box, below, chip, 'cache-warmer', false)
+    const drawn = withChip(Box, below, chip, 'cache-warmer', false)
+    trace($, `cache-warmer ${e.surface}: below ${shape(below)} -> ${shape(drawn)}`)
+    return drawn
   })
 }
 
@@ -319,4 +321,23 @@ function duration(ms: number) {
   const h = Math.floor(ms / HOUR_MS)
   const m = Math.floor((ms % HOUR_MS) / 60_000)
   return h > 0 ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`
+}
+
+// Band trace (temporary, to find why the desktop band drops the status
+// line): each distinct line once, five at most, in the transcript.
+const traced = new Set<string>()
+
+function trace($: EngineInterface, line: string) {
+  if (traced.has(line) || traced.size >= 5) return
+  traced.add(line)
+  $.ui.log(`[band trace] ${line}`)
+}
+
+function shape(node: unknown): string {
+  if (node === null || node === undefined || node === false || node === '') return String(node)
+  if (typeof node !== 'object') return typeof node
+  const el = node as { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
+  const key = typeof el.props?.key === 'string' ? `#${el.props.key}` : ''
+  const kids = Array.isArray(el.children) ? `[${el.children.map(shape).join(',')}]`.slice(0, 200) : ''
+  return `${String(el.type)}${key}${kids}`
 }
