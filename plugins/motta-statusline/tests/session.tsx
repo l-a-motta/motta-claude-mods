@@ -31,14 +31,20 @@ export const PR_JSON = JSON.stringify({
 // its hint line, and the opaque reference it hands back for an empty band;
 // with `beneath`, what a plugin beneath draws in the band instead:
 // prompt-enhancer's chip or card, or a tree that takes the band, as
-// replay-theater's does.
+// replay-theater's does. With `worktree`, the session runs in a worktree of
+// the repository, on its own branch, while the repository's root is the main
+// checkout. Every process run is recorded in `runs`.
 type GhAnswer = string | null | { stderr: string }
 
 export type Beneath = 'nothing' | 'chip' | 'card' | 'taken'
 
-export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing') {
+export type Worktree = { cwd: string; status: string }
+
+export const runs: { argv: string[]; cwd?: string }[] = []
+
+export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing', worktree: Worktree | null = null) {
   const clock = mock.clock(on)
-  on('session.cwd', () => ({ value: 'C:/code/vtex-copilot-fse' }))
+  on('session.cwd', () => ({ value: worktree?.cwd ?? 'C:/code/vtex-copilot-fse' }))
   on('session.repo', () => ({
     value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
   }))
@@ -58,10 +64,11 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
   }))
   on('settings.read', () => ({ value: { effortLevel: 'high' } }))
   on('process.run', ($, e) => {
+    runs.push({ argv: e.argv, cwd: e.init?.cwd })
     const json = typeof prJson === 'function' ? prJson() : prJson
     const run =
       e.argv[0] !== 'gh'
-        ? { exitCode: 0, stdout: '## dev\n', stderr: '' }
+        ? { exitCode: 0, stdout: worktree && e.init?.cwd === worktree.cwd ? worktree.status : '## dev\n', stderr: '' }
         : json === null
           ? { exitCode: 1, stdout: '', stderr: 'no pull requests found for branch "dev"' }
           : typeof json === 'object'

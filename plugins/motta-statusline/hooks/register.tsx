@@ -97,7 +97,10 @@ export type Rate = { kind: 'exact' | 'live'; perSec: number } | { kind: 'waiting
 type Step = { sentAt: number; firstAt: number | null; chars: number; isDone: boolean }
 
 let data: Data | null = null
-let gitRoot: string | null = null
+// The folder git and gh run in: the session's own, which in a worktree is the
+// worktree, where the repository's root is the main checkout. Null outside a
+// repository.
+let gitDir: string | null = null
 let outTokens = 0
 let rate: Rate | null = null
 let lastExact: Rate | null = null
@@ -290,7 +293,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
   try {
     const cwd = await $.session.cwd()
     const repo = await $.session.repo().catch(() => null)
-    gitRoot = repo?.root ?? null
+    gitDir = repo ? cwd : null
     const repoUrl = repo?.remote ? httpsUrl(repo.remote) : null
     const usage = await readUsage($, withGit)
     const ctx = usage.context
@@ -391,14 +394,14 @@ export function exactRate(tokens: number, firstAt: number | null, endAt: number)
 
 async function refreshGit($: EngineInterface) {
   if (data === null) return
-  if (gitRoot === null) {
+  if (gitDir === null) {
     data = { ...data, git: null }
     await paint($)
     return
   }
   try {
     const run = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], {
-      cwd: gitRoot,
+      cwd: gitDir,
       timeoutMs: 5_000,
     })
     if (run.exitCode === 0) data = { ...data, git: parseStatus(run.stdout) }
@@ -414,7 +417,7 @@ async function refreshGit($: EngineInterface) {
 // stale, when gh fails for any reason other than there being no PR.
 async function refreshPr($: EngineInterface, isNow = false) {
   const branch = data?.git?.branch
-  if (data === null || gitRoot === null || !branch || branch === 'HEAD' || isAskingPr) return
+  if (data === null || gitDir === null || !branch || branch === 'HEAD' || isAskingPr) return
   const now = await $.clock.now()
   const isNewBranch = branch !== prBranch
   const cadence = data.pr?.state === 'OPEN' && data.pr.checks.pending > 0 ? PR_PENDING_MS : PR_SETTLED_MS
@@ -427,7 +430,7 @@ async function refreshPr($: EngineInterface, isNow = false) {
   prBranch = branch
   prAskedAt = now
   try {
-    const run = await $.process.run(['gh', 'pr', 'view', '--json', PR_FIELDS], { cwd: gitRoot, timeoutMs: 15_000 })
+    const run = await $.process.run(['gh', 'pr', 'view', '--json', PR_FIELDS], { cwd: gitDir, timeoutMs: 15_000 })
     let pr: Pr | null
     if (run.exitCode === 0) pr = parsePr(run.stdout)
     else if (/no (open )?pull requests? found/i.test(run.stderr)) pr = null
