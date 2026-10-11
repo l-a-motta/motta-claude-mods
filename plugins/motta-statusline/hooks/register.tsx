@@ -1,7 +1,7 @@
 // motta-statusline: a two-line status line.
 //
 //   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
-//   [model | effort] · CTX -------|-- used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
+//   [model | effort] · CTX -------|-- used/window · 5h n% ~reset · 7d n% ~reset · cache 42m · In n Out n @n/s
 //
 // The desktop app leaves out [model | effort], which its model picker shows,
 // and the PR, which its PR bar shows. A narrow band wraps between segments.
@@ -16,6 +16,17 @@
 // ends. While one streams it reads `@~n/s`, estimated from the text received
 // so far, and before its first token, past a second, `waiting ns`.
 // Subagents are left out, as they are from Out.
+//
+// `cache 42m` is how long the main conversation's prompt cache stays warm:
+// the cache's TTL from the last request that read or wrote it, a main-session
+// step or any mod's fork ($.model.fork, cache-warmer's pings included), since
+// each read restarts the TTL. Yellow in its last 3 minutes, `cold` once it
+// ran out, after a model switch, a compaction or a /clear. The engine says the
+// TTL only when the model switches (PostModelSwitch's `cache_ttl`). `cacheTtl`
+// sets it; under `auto` the engine's word wins, then a fork that found the
+// cache already lapsed reads it as 5 minutes, and before either a
+// subscription (rate limits reported) is read as 1 hour and anything else as
+// 5 minutes. cache-warmer reads it the same way.
 //
 // The PR segment is the current branch's PR as `gh pr view` reads it: CI
 // checks, conflicts or behind its base, review decision. It refreshes every
@@ -53,6 +64,8 @@ const PR_PENDING_MS = 30_000
 const PR_SETTLED_MS = 120_000
 // GitHub takes a few seconds to start the checks of a pushed commit.
 const PR_AFTER_PUSH_MS = 20_000
+const HOUR_MS = 3_600_000
+const CACHE_LOW_MS = 3 * 60_000
 const PR_FIELDS = 'number,url,state,isDraft,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup'
 
 type Git = { branch: string; staged: number; modified: number }
@@ -86,7 +99,12 @@ type Data = {
   limits: { label: string; percent: number; resetsAt: number | null }[]
   outTokens: number
   rate: Rate | null
+  cache: Cache | null
 }
+
+// When the main conversation's prompt cache was last read or written, null
+// once it is known cold, and how long it lives from then.
+export type Cache = { hitAt: number | null; ttlMs: number }
 
 // The main session's rate: the last finished request's (`exact`), the one
 // streaming now (`live`), or how long it has waited for its first token.
@@ -111,9 +129,17 @@ let prBranch: string | null = null
 let prAskedAt = 0
 let isAskingPr = false
 let placement: 'above' | 'below' = 'below'
+let cacheTtl: 'auto' | '5m' | '1h' = 'auto'
+// The last request that read or wrote the main conversation's cache, and the
+// session model it was made on: a switch forfeits it. `at` null once known
+// cold.
+let cacheHit: { at: number | null; model: string } | null = null
+// The TTL the engine said, or a lapsed fork showed; null before either.
+let learnedTtl: '5m' | '1h' | null = null
 
 export const register: Register = (on, options) => {
   placement = options.placement === 'above' ? 'above' : 'below'
+  cacheTtl = options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto'
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -121,6 +147,7 @@ export const register: Register = (on, options) => {
     liveEffort = null
     rate = null
     lastExact = null
+    cacheHit = null
     await refreshAll($)
     return started
   })
@@ -164,6 +191,7 @@ export const register: Register = (on, options) => {
       outTokens += tokens
       const exact = exactRate(tokens, step.firstAt, endAt ?? (await $.clock.now()))
       if (exact !== null) lastExact = exact
+      if (isCacheHit(result.usage)) await markCacheHit($)
       return result
     } finally {
       next.signal.removeEventListener('abort', onAbort)
@@ -176,6 +204,47 @@ export const register: Register = (on, options) => {
     if (e.agentId === undefined) await refreshAll($)
     return result
   })
+
+  // A fork re-sends the main thread's last request, so one that read the
+  // cache restarted its TTL: prompt-enhancer's Expanded, cache-warmer's pings.
+  on('model.fork', async ($, e, next) => {
+    const forked = await next(e)
+    const reply = 'value' in forked ? forked.value : null
+    if (reply?.isAnswered) {
+      // Read nothing and wrote the prefix afresh while the hour still ran:
+      // it lapsed early, so the TTL is five minutes.
+      const u = reply.usage
+      const isLapsed = u.cache_read_input_tokens === 0 && u.cache_creation_input_tokens > 0
+      if (isLapsed && cacheTtl === 'auto' && data?.cache && cacheLeft(data.cache, await $.clock.now()) > 0) learnedTtl = '5m'
+      if (isCacheHit(u)) await markCacheHit($)
+      await refreshAll($, false)
+    }
+    return forked
+  }).catch(($, e, next) => next(e))
+
+  // The one place the engine says the TTL. A switch forfeits the cache.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    learnedTtl = e.cache_ttl
+    await markCacheCold($)
+    await refreshAll($, false)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A compaction rewrites the conversation and a /clear starts a new one:
+  // nothing of the old prefix is read again. A precompute installs nothing.
+  on('session.compact', async ($, e, next) => {
+    const compacted = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.messages !== undefined) {
+      await markCacheCold($)
+      await refreshAll($, false)
+    }
+    return compacted
+  }).catch(($, e, next) => next(e))
+
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') await markCacheCold($)
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // The engine's push when a rate-limit window moves a whole point or the
   // context fill moves, from any response: a subagent's too, and a background
@@ -293,6 +362,8 @@ async function refreshAll($: EngineInterface, withGit = true) {
     gitRoot = repo?.root ?? null
     const repoUrl = repo?.remote ? httpsUrl(repo.remote) : null
     const usage = await readUsage($, withGit)
+    const model = await $.session.model()
+    if (cacheHit !== null && cacheHit.model !== model) cacheHit = { at: null, model }
     const ctx = usage.context
     const breakdown = ctx.breakdown
     if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
@@ -303,19 +374,43 @@ async function refreshAll($: EngineInterface, withGit = true) {
       git: data?.git ?? null,
       pr: data?.pr ?? null,
       isPrStale: data?.isPrStale ?? false,
-      model: modelLabel(await $.session.model()),
+      model: modelLabel(model),
       effort: liveEffort ?? (await settingsEffort($)),
       ...contextFigures(ctx),
       compactAt,
       limits: limitsOf(usage.rateLimits),
       outTokens,
       rate,
+      cache: cacheHit === null ? null : { hitAt: cacheHit.at, ttlMs: ttlMs(cacheTtl, learnedTtl, usage.rateLimits.length > 0) },
     }
     if (withGit) await refreshGit($)
     else await paint($)
   } catch {
     // Keep the last reading; the next step, turn or timer tries again.
   }
+}
+
+// A request that read the cache, or wrote it, holds the prefix warm; one
+// with both zero cached nothing (caching off, a prompt under the minimum).
+export function isCacheHit(usage: { cache_read_input_tokens: number; cache_creation_input_tokens: number } | null | undefined) {
+  return usage != null && usage.cache_read_input_tokens + usage.cache_creation_input_tokens > 0
+}
+
+async function markCacheHit($: EngineInterface) {
+  cacheHit = { at: await $.clock.now(), model: await $.session.model() }
+}
+
+// Known cold: drawn `cold` until a request reads or writes the cache again.
+async function markCacheCold($: EngineInterface) {
+  if (cacheHit !== null) cacheHit = { at: null, model: await $.session.model() }
+}
+
+// The cache's TTL: as set; under `auto` as the engine said or a lapsed fork
+// showed, else an hour on a subscription (the one session that reports rate
+// limits) and five minutes on anything else.
+export function ttlMs(setting: 'auto' | '5m' | '1h', learned: '5m' | '1h' | null, isSubscription: boolean) {
+  const ttl = setting !== 'auto' ? setting : (learned ?? (isSubscription ? '1h' : '5m'))
+  return ttl === '1h' ? HOUR_MS : 5 * 60_000
 }
 
 function contextFigures(ctx: SessionContextUsage) {
@@ -600,6 +695,7 @@ function lines(Box: any, Text: any, Link: any, d: Data, now: number, onDesktop =
     if (left) limit.push(<Text color="subtle"> ~{left}</Text>)
     line2.push(seg(limit))
   }
+  if (d.cache) line2.push(seg([sep, <Text>cache </Text>, ...cacheSegment(Text, d.cache, now)]))
   const io = [sep, <Text>In </Text>, <Text color="subtle">{short(d.ctxTokens)}</Text>]
   io.push(<Text>  Out </Text>, <Text color="subtle">{short(d.outTokens)}</Text>)
   if (d.rate) io.push(...rateSegment(Text, d.rate))
@@ -634,6 +730,18 @@ function prSegment(Text: any, Link: any, pr: Pr, isStale: boolean) {
   else if (pr.review === 'pending') parts.push(T('subtle', ' · review pending'))
   if (pr.isReady) parts.push(T('subtle', ' · ready to merge'))
   return parts
+}
+
+// `42m` while warm, in the warning color in its last CACHE_LOW_MS, `<1m` in
+// its last minute, `cold` once it ran out.
+function cacheSegment(Text: any, c: Cache, now: number) {
+  const left = cacheLeft(c, now)
+  if (left <= 0) return [<Text color="subtle">cold</Text>]
+  return [<Text color={left <= CACHE_LOW_MS ? 'warning' : 'success'}>{left < 60_000 ? '<1m' : resetIn(left)}</Text>]
+}
+
+export function cacheLeft(c: Cache, now: number) {
+  return c.hitAt === null ? 0 : c.hitAt + c.ttlMs - now
 }
 
 // ` @84/s` once a request ended, ` @~84/s` while one streams (the estimate
