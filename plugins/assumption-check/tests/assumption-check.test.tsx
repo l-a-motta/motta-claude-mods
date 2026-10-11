@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { groupLabel, INSTRUCTION, ordered, parseAssumptions, parseSource } from '../hooks/register.tsx'
+import { groupLabel, ordered, parseAssumptions, parseSource, TOOL_DESCRIPTION } from '../hooks/register.tsx'
 import { command, ENGINE_SECTION, LOGGED, PANE_PROPS, typed, world } from './world.tsx'
 
 const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
@@ -48,14 +48,13 @@ test('changes nothing Claude reads while capture is off', OFF, async ($, on) => 
   expect(appended()).toBe(0)
 })
 
-test('/assumption-check on adds the tool and the instruction; cards open the pane once', OFF, async ($, on) => {
+test('/assumption-check on adds the tool, its description the instruction; cards open the pane once', OFF, async ($, on) => {
   const { seen } = world(on)
   await $.session.start(START)
   await $.command.run(command('on'))
   expect(seen.tools).toEqual(['note_assumption'])
 
-  const composed = await $.prompt.compose(COMPOSE)
-  expect(composed.sections).toEqual([ENGINE_SECTION, { id: 'assumption-check:capture', text: INSTRUCTION, scope: 'session' }])
+  expect(seen.described).toEqual([TOOL_DESCRIPTION])
 
   await $.prompt.submit(typed('add retry to fetch'))
   const ran = await $.tool.call({ tool: TOOL, ...LOGGED })
@@ -64,7 +63,6 @@ test('/assumption-check on adds the tool and the instruction; cards open the pan
   expect(seen.opened).toEqual(['assumption-check'])
 
   await $.command.run(command('off'))
-  expect((await $.prompt.compose(COMPOSE)).sections).toEqual([ENGINE_SECTION])
   const described = await $.tool.describe({ tool: TOOL, description: 'Log assumptions', provider: { plugin: 'assumption-check', tier: 'user' } } as never)
   expect(described.description).toBe('Inactive: assumption-check is off. Do not call this tool.')
 })
@@ -283,9 +281,6 @@ test("leaves a subagent's and a teammate's assumptions out", async ($, on) => {
   const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
   expect(await ui.find({ key: 'card-A1' })).toBeUndefined()
   await ui.unmount()
-
-  const teammate = await $.prompt.compose({ ...COMPOSE, surfaces: [], traits: ['teammate'] })
-  expect(teammate.sections).toEqual([ENGINE_SECTION])
 })
 
 test('a call while capture is off logs no card and opens no pane, before it was on and after', OFF, async ($, on) => {
@@ -340,9 +335,19 @@ test('each prompt gets its own dropdown, the newest open, and a task notificatio
   await ui.unmount()
 })
 
+test('capture switched off stays off when the module loads again', async ($, on) => {
+  const { seen } = world(on)
+  await $.session.start(START)
+  await $.command.run(command('off'))
+  await $.session.start(START)
+  expect(seen.tools).toEqual(['note_assumption'])
+  const described = await $.tool.describe({ tool: TOOL, description: 'Log assumptions', provider: { plugin: 'assumption-check', tier: 'user' } } as never)
+  expect(described.description).toBe('Inactive: assumption-check is off. Do not call this tool.')
+})
+
 test('capture is on from the session start when the startOn option is unset', async ($, on) => {
   const { seen } = world(on)
   await $.session.start(START)
   expect(seen.tools).toEqual(['note_assumption'])
-  expect((await $.prompt.compose(COMPOSE)).sections.at(-1)).toEqual({ id: 'assumption-check:capture', text: INSTRUCTION, scope: 'session' })
+  expect(seen.described).toEqual([TOOL_DESCRIPTION])
 })

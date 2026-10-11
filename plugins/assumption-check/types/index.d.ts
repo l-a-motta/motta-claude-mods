@@ -30,7 +30,8 @@ export type Group = { id: string; label: string }
 declare module 'claude-code' {
   interface PluginState {
     'assumption-check': {
-      isOn: boolean
+      // null until capture is first switched: the startOn option stands for it.
+      isOn: boolean | null
       groups: Group[]
       cards: Card[]
       expanded: string[]

@@ -41,6 +41,8 @@ export const LOGGED = {
 export function world(on: Parameters<TestBody>[1]) {
   const seen = {
     tools: [] as string[],
+    // Each registered tool's description, what the model reads.
+    described: [] as string[],
     opened: [] as string[],
     submitted: [] as string[],
     toasts: [] as string[],
@@ -55,6 +57,7 @@ export function world(on: Parameters<TestBody>[1]) {
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('tool.register', ($, e) => {
     seen.tools.push(e.name)
+    seen.described.push(e.description)
     return { value: { tool: `mcp__assumption-check__${e.name}` } }
   })
   on('ui.open', ($, e) => {

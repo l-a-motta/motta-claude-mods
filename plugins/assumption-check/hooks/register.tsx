@@ -16,12 +16,13 @@
 // On from the session start, unless the startOn option is false.
 // `/assumption-check off` switches it off for the session, and while off the
 // mod adds nothing Claude reads: no instruction, no tool, no note. On, it
-// registers the note_assumption tool and adds a short section to the system
-// prompt asking Claude to log, through that tool, the assumptions that
-// shape its work. Each call lands as a card under the prompt it was logged in.
-// Only the main session's: a subagent's or a teammate's call is answered
-// without a card, and a teammate's prompt gets no instruction. Their
-// assumptions are theirs to show in their own session.
+// registers the note_assumption tool, whose description is the instruction:
+// when to log the assumptions that shape Claude's work, and how. It rides
+// the tool and not a prompt.compose section because this engine's build
+// sends no plugin's section to the model. Each call lands as a card under
+// the prompt it was logged in. Only the main session's: a subagent's or a
+// teammate's call is answered without a card. Their assumptions are theirs
+// to show in their own session.
 //
 // Nothing in the pane reaches the session unless the person asks for it:
 // - wrong: a prompt of its own, typed with the right assumption in the card's
@@ -45,10 +46,9 @@ import type { Card, Category, Confidence, Filter, Group, Status } from '../types
 const PANE = 'assumption-check'
 const TITLE = 'Assumptions'
 const TOOL = 'note_assumption'
-const TOOL_ID = `mcp__assumption-check__${TOOL}`
 const TAG = '[assumption-check]'
 
-const isOn = atom({ plugin: 'assumption-check', key: 'isOn' } as const, false)
+const isOn = atom({ plugin: 'assumption-check', key: 'isOn' } as const, null as boolean | null)
 const groups = atom({ plugin: 'assumption-check', key: 'groups' } as const, [] as Group[])
 const cards = atom({ plugin: 'assumption-check', key: 'cards' } as const, [] as Card[])
 const expanded = atom({ plugin: 'assumption-check', key: 'expanded' } as const, [] as string[])
@@ -61,17 +61,14 @@ const hasAutoOpened = atom({ plugin: 'assumption-check', key: 'hasAutoOpened' } 
 const CONFIDENCES: readonly Confidence[] = ['low', 'medium', 'high']
 const CATEGORIES: readonly Category[] = ['scope', 'intent', 'tech', 'environment', 'data', 'style', 'other']
 
-export const INSTRUCTION = `# Assumption check
+export const TOOL_DESCRIPTION = `Log the assumptions you act on, for the user to review in their assumption-check pane. When something you act on was neither stated by the user nor verified by you (what they meant, the scope, a technology or library, the environment, the data, a style), log it here. Log only assumptions that shape what you do, not trivia, and each once; batch several in one call.
 
-The user turned on assumption-check, a side pane where they review the assumptions you make. When something you act on was neither stated by the user nor verified by you (what they meant, the scope, a technology or library, the environment, the data, a style), log it with ${TOOL_ID}. Log only assumptions that shape what you do, not trivia, and log each once.
-
-- Send the call in the same response as your other tool calls. In a reply with no other tool use, make the one call before you answer.
+- Send the call in the same response as your other tool calls. In a reply with no other tool use, make this one call before you answer.
 - Logging must not change your plan: do not stop to ask about what you logged, and do not repeat it in your reply.
-- Only the main session logs. If you are a subagent or a teammate, never call ${TOOL_ID}.
-- Prompts marked ${TAG} are the user's own feedback from that pane. A corrected assumption replaces what you assumed.`
+- Main session only: a subagent or teammate never calls it.
+- Prompts marked ${TAG} are the user's own feedback from that pane. A corrected assumption replaces what you assumed.
 
-const TOOL_DESCRIPTION =
-  'Log assumptions you are acting on, for the user to review in their assumption-check pane. Main session only: a subagent or teammate never calls it. Batch several in one call. Returns their ids (A1, A2, ...).'
+Returns their ids (A1, A2, ...).`
 
 const TOOL_SCHEMA = {
   type: 'object',
@@ -205,6 +202,12 @@ async function toastIfHidden($: EngineInterface, low: readonly Card[]) {
   )
 }
 
+// Whether capture is on. Until it is first switched, the startOn option
+// answers; once switched, the switch holds when the module loads again.
+async function capturing($: EngineInterface, startOn: boolean) {
+  return (await read($, isOn)) ?? startOn
+}
+
 async function turnOn($: EngineInterface) {
   await $.tool.register({ name: TOOL, description: TOOL_DESCRIPTION, inputSchema: TOOL_SCHEMA, isDeferred: false })
   await update($, isOn, () => true)
@@ -234,13 +237,15 @@ async function remove($: EngineInterface, card: Card) {
 }
 
 export const register: Register = (on, options) => {
+  const startOn = options.startOn !== false
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'assumption-check',
       description: 'Open the assumptions pane; `on` or `off` switches capture',
       argumentHint: '[on|off]',
     })
-    if (options.startOn !== false || (await read($, isOn))) await turnOn($)
+    if (await capturing($, startOn)) await turnOn($)
 
     return next(e)
   })
@@ -256,26 +261,18 @@ export const register: Register = (on, options) => {
       return { text: 'Assumption capture is off. Your cards stay in the pane.' }
     }
     await openPane($)
-    return { text: (await read($, isOn)) ? 'Assumptions pane opened.' : 'Assumptions pane opened. Capture is off: `/assumption-check on` starts it.' }
-  })
-
-  // The capture instruction, only while on. Added after the engine's
-  // sections, on the session side of the cache boundary.
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
-    if (!(await read($, isOn)) || e.traits.includes('teammate')) return composed
-    return { sections: [...composed.sections, { id: 'assumption-check:capture', text: INSTRUCTION, scope: 'session' as const }] }
+    return { text: (await capturing($, startOn)) ? 'Assumptions pane opened.' : 'Assumptions pane opened. Capture is off: `/assumption-check on` starts it.' }
   })
 
   // A tool cannot be unregistered: once capture is off its description
   // tells Claude to leave it alone.
   on('tool.describe', { tool: 'mcp__assumption-check__note_assumption' }, async ($, e, next) =>
-    (await read($, isOn)) ? next(e) : { description: 'Inactive: assumption-check is off. Do not call this tool.' },
+    (await capturing($, startOn)) ? next(e) : { description: 'Inactive: assumption-check is off. Do not call this tool.' },
   )
 
   // A new dropdown per prompt, while capture is on.
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind !== 'task-notification' && (await read($, isOn))) {
+    if (e.origin.kind !== 'task-notification' && (await capturing($, startOn))) {
       const list = await update($, groups, all => [...all, { id: `P${all.length + 1}`, label: groupLabel(e.text) }])
       await update($, expanded, () => [list.at(-1)?.id ?? 'P1'])
     }
@@ -284,7 +281,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__assumption-check__note_assumption' }, async ($, e) => {
     if (e.agentId !== undefined) return { result: 'Not logged: assumption-check shows the main session only. Do not call this tool again.' }
-    if (!(await read($, isOn))) return { result: 'assumption-check is off; nothing was logged. Stop logging assumptions.' }
+    if (!(await capturing($, startOn))) return { result: 'assumption-check is off; nothing was logged. Stop logging assumptions.' }
     const logged = parseAssumptions(e)
     if (logged.length === 0) return { deny: 'No assumption to log: pass `assumptions`, each with at least a `statement`.' }
 
@@ -320,7 +317,7 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button } = elements
     // Mobile draws no Input: there "wrong" always lets Claude ask.
     const Input = 'Input' in elements ? elements.Input : undefined
-    const on_ = await read($, isOn)
+    const on_ = await capturing($, startOn)
     const allGroups = await read($, groups)
     const all = await read($, cards)
     const open = new Set(await read($, expanded))
