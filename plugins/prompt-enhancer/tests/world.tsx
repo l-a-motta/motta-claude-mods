@@ -61,6 +61,9 @@ type Setup = {
   hasStatusLine?: boolean
   // A card beneath that shares the band (`band-under:`), as savvy-progress's bar.
   hasCard?: boolean
+  // cache-warmer's chip column beneath, alone or at the right of the status
+  // line's lines.
+  hasWarmChip?: boolean
 }
 
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
@@ -94,13 +97,30 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
         </Box>
       )
     }
-    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
-    return (
+    const warm = (
+      <Box key="band-beside:cache-warmer" flexDirection="column" alignItems="flex-end">
+        <Box flexDirection="row">
+          <Text>🔥 42m</Text>
+        </Box>
+      </Box>
+    )
+    const lines = (
       <Box flexDirection="column" paddingX={1} flexGrow={1}>
         <Text>📁 motta-claude-mods 🌿 main</Text>
         <Text>CTX 36% 360k/1M</Text>
       </Box>
     )
+    if (setup.hasWarmChip && setup.hasStatusLine) {
+      return (
+        <Box flexDirection="row">
+          {lines}
+          {warm}
+        </Box>
+      )
+    }
+    if (setup.hasWarmChip) return warm
+    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
+    return lines
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))

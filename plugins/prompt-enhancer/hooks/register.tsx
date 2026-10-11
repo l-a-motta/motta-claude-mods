@@ -41,9 +41,10 @@
 // The band holds the chip alone, during a turn too, so the status line
 // keeps its rows; the choice, the call and the result live in the pane. The
 // band is shared, and the hooks on it run in an order no mod picks, so the
-// chip's root Box is keyed `band-beside:prompt-enhancer`: beneath
-// motta-statusline, the status line draws it at the right of its lines;
-// above it, this hook does the same with what the plugins beneath drew.
+// chip goes in the band's chip column (withChip), keyed `band-beside:`:
+// beneath motta-statusline, the status line draws it at the right of its
+// lines; above it, this hook does the same with what the plugins beneath
+// drew; cache-warmer's chip stacks under it.
 // Under a survey nothing is drawn, so its number keys are the only ones.
 // Use it, Send, Cancel, Discard and Dismiss close the pane; closing it
 // yourself cancels the job.
@@ -330,6 +331,55 @@ async function copy($: EngineInterface, text: string, surface: RenderSurface) {
   $.ui.toast(r.isCopied ? 'Prompt copied.' : `Could not copy (${r.reason}).`)
 }
 
+// The band's chips stack in one column at its right: this one on top,
+// cache-warmer's under it. The hooks on the band run in an order no mod
+// picks, so each chip mod finds the column wherever it is: the root of what
+// the plugins beneath drew when that is keyed `band-beside:`, else a
+// `band-beside:` Box inside it (motta-statusline draws one at the right of
+// its lines). The column is rebuilt keyed for this mod with the chip first
+// (`isFirst`) or last. With no column yet, the chip starts one, beside their
+// tree; a tree that shares the band from under the status line
+// (`band-under:`) keeps sharing it, so a plugin above, such as
+// motta-statusline, still draws its lines over both. cache-warmer holds the
+// same function.
+export function withChip(Box: any, below: unknown, chip: unknown, mod: string, isFirst: boolean) {
+  const column = (inner: unknown[]) => (
+    <Box key={`band-beside:${mod}`} flexDirection="column" alignItems="flex-end">
+      {isFirst ? [chip, ...inner] : [...inner, chip]}
+    </Box>
+  )
+  if (isFree(below)) return column([])
+  const swapped = swapBeside(below, beside => column([beside]))
+  if (swapped !== undefined) return swapped
+  const belowKey = (below as { props?: { key?: unknown } }).props?.key
+  const isUnder = typeof belowKey === 'string' && belowKey.startsWith('band-under:')
+  return (
+    <Box {...(isUnder ? { key: `band-under:${mod}` } : {})} flexDirection="row" alignItems="flex-start">
+      <Box flexDirection="column" flexGrow={1}>
+        {below}
+      </Box>
+      {column([])}
+    </Box>
+  )
+}
+
+type Node = { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
+
+// The tree with its outermost `band-beside:` Box swapped for `swap`'s, or
+// undefined when it holds none.
+function swapBeside(node: unknown, swap: (beside: unknown) => unknown, depth = 0): unknown {
+  if (node === null || typeof node !== 'object' || depth > 8) return undefined
+  const el = node as Node
+  if (el.type !== 'Box') return undefined
+  if (typeof el.props?.key === 'string' && el.props.key.startsWith('band-beside:')) return swap(node)
+  const children = el.children ?? []
+  for (let i = 0; i < children.length; i++) {
+    const swapped = swapBeside(children[i], swap, depth + 1)
+    if (swapped !== undefined) return { ...el, children: children.map((c, j) => (j === i ? swapped : c)) }
+  }
+  return undefined
+}
+
 // What `next(e)` hands back when no plugin beneath drew in the band.
 function isFree(node: unknown): boolean {
   if (node === null || node === undefined || node === false || node === '') return true
@@ -382,25 +432,12 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
     const ours = (
-      <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" gap={1} paddingX={1}>
+      <Box flexDirection="row" justifyContent="flex-end" gap={1} paddingX={1}>
         <Text color="suggestion">✦</Text>
         {hasBox ? <Button key="enhance" plain label="enhance" onPress={() => void chip($)} /> : <Text dimColor>{'/enhance <your prompt>'}</Text>}
       </Box>
     )
-    if (isFree(below)) return ours
-    // Above the plugins that drew: the chip at the right of their tree. A tree
-    // that shares the band (`band-under:`) keeps sharing it with the chip, so a
-    // plugin above, such as motta-statusline, still draws its lines over both.
-    const belowKey = (below as { props?: { key?: unknown } }).props?.key
-    const isUnder = typeof belowKey === 'string' && belowKey.startsWith('band-under:')
-    return (
-      <Box {...(isUnder ? { key: 'band-under:prompt-enhancer' } : {})} flexDirection="row" alignItems="flex-start">
-        <Box flexDirection="column" flexGrow={1}>
-          {below}
-        </Box>
-        {ours}
-      </Box>
-    )
+    return withChip(Box, below, ours, 'prompt-enhancer', true)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
