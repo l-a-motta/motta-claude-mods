@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, ToolSpec } from 'claude-code'
 
 import type { AgentRun, Flow, Panel, Phase, PlannedTask } from '../types'
 
@@ -364,6 +364,53 @@ const tierOf = (type: string): string => {
   return t in TIER_COLOR && bare.startsWith('savvy-') ? t : 'other'
 }
 
+// A role read off the agent's name, word by word: `hd-auditor` is `audit`.
+// The first rule a word matches wins, so review outranks build.
+const ROLE_WORDS: [RegExp, string][] = [
+  [/^(scout|explor|search|research|recon)/, 'explore'],
+  [/^(audit|review|critic|critique|inspect)/, 'heavy'],
+  [/^(architect|plan|design)/, 'fable'],
+  [/^(develop|implement|engineer|build|fix)/, 'careful'],
+  [/^(compar|judge|rank)/, 'medium'],
+  [/^(qa|test|verif)/, 'light'],
+]
+
+// The tier a model and effort run at, as TIER_MODEL spells the savvy ones.
+const tierOfModel = (model: string, effort?: string): string | null => {
+  const m = model.toLowerCase()
+  if (/fable|mythos/.test(m)) return 'fable'
+  if (/haiku/.test(m)) return 'light'
+  if (/sonnet/.test(m)) return 'medium'
+  if (!/opus/.test(m)) return null
+  if (effort === 'xhigh' || effort === 'max') return 'heavy'
+  if (effort === 'high') return 'careful'
+  if (effort === 'medium') return 'medium'
+  if (effort === 'low') return 'light'
+  return null
+}
+
+// Agents no rule places keep the plain crab, in a color their type always gets.
+const SPARE_COLORS = ['#C2577A', '#4E9A8E', '#8A6FC0', '#B08A3E', '#5A86B8', '#9C6B54']
+
+const spareColor = (type: string): string => {
+  let h = 0
+  for (const ch of type) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0
+  return SPARE_COLORS[h % SPARE_COLORS.length] ?? '#888780'
+}
+
+type Role = { costume: string; color: string; label: string }
+
+// Costume and color of any agent: a savvy tier by its name, else a role its
+// name spells out, else the tier its model and effort run at, else the plain crab.
+export const roleOf = (a: Pick<AgentRun, 'type' | 'model' | 'effort'>): Role => {
+  const savvy = tierOf(a.type)
+  if (savvy !== 'other') return { costume: savvy, color: colorOf(savvy), label: savvy }
+  const words = a.type.replace(/^[^:]*:/, '').toLowerCase().split(/[^a-z0-9]+/)
+  const named = ROLE_WORDS.find(([re]) => words.some(w => re.test(w)))?.[1]
+  const costume = named ?? tierOfModel(a.model, a.effort) ?? 'other'
+  return { costume, color: TIER_COLOR[costume] && costume !== 'other' ? colorOf(costume) : spareColor(a.type), label: a.type }
+}
+
 const modelName = (id: string): string => {
   const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
   const [, family = '', major = '', minor] = m ?? []
@@ -514,8 +561,6 @@ const COSTUMES: Record<string, (f: Fill, t: string) => void> = {
   other: f => crabBody(f),
 }
 
-const costumeOf = (type: string): string => (type === 'Explore' ? 'explore' : tierOf(type))
-
 const CRAB_SCALE = 1.1
 
 // Body and props nest inside `bd` so a prop rides the bob and adds its own motion;
@@ -575,8 +620,7 @@ const ctxOf = (a: AgentRun): number => (a.contextMax ? Math.min(100, Math.round(
 
 const agentSvg = (W: number, a: AgentRun, at: number): string => {
   const s = tr()
-  const tier = tierOf(a.type)
-  const color = colorOf(tier)
+  const { costume, color, label: role } = roleOf(a)
   const ctx = ctxOf(a)
   const textW = W - 42 - 22
   const meta = [a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)]
@@ -592,9 +636,9 @@ const agentSvg = (W: number, a: AgentRun, at: number): string => {
   return svg(
     W,
     66,
-    `${crab(0, 14, costumeOf(a.type), false, a.status === 'running')}
+    `${crab(0, 14, costume, false, a.status === 'running')}
 <text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(a.description || a.type, 13, textW))}</text>
-<text x="42" y="34" font-family="${FONT}" font-size="11"><tspan fill="${color}">${xml(tier === 'other' ? a.type : tier)}</tspan><tspan class="s">  ${xml(meta.join('  ·  '))}</tspan></text>
+<text x="42" y="34" font-family="${FONT}" font-size="11"><tspan fill="${color}">${xml(role)}</tspan><tspan class="s">  ${xml(meta.join('  ·  '))}</tspan></text>
 ${steps && stepsW > 30 ? `<text class="t" x="42" y="49" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(fitText(steps, 11, stepsW))}</text>` : ''}
 <text class="s" x="${42 + barW}" y="49" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${stats}</text>
 <rect class="k" x="42" y="55" width="${barW}" height="4" rx="2"/><rect${progress === null ? ' class="m"' : ''} x="42" y="55" width="${fillW}" height="4" rx="2"${progress === null ? '' : ` fill="${color}"`}/>
@@ -622,8 +666,8 @@ ${statusMark(W - 8, 16, 'planned', color)}
 
 const compactSvg = (W: number, list: AgentRun[], planned: Planned[], t: ReturnType<typeof totals>): string => {
   const icons = [
-    ...list.filter(a => a.status === 'running').map(a => ({ k: costumeOf(a.type), c: colorOf(tierOf(a.type)), s: 'running', dim: false })),
-    ...list.filter(a => a.status !== 'running').map(a => ({ k: costumeOf(a.type), c: colorOf(tierOf(a.type)), s: a.status, dim: false })),
+    ...list.filter(a => a.status === 'running').map(a => ({ k: roleOf(a).costume, c: roleOf(a).color, s: 'running', dim: false })),
+    ...list.filter(a => a.status !== 'running').map(a => ({ k: roleOf(a).costume, c: roleOf(a).color, s: a.status, dim: false })),
     ...planned.map(p => ({ k: p.tier in TIER_COLOR ? p.tier : 'other', c: colorOf(p.tier), s: 'planned', dim: true })),
   ]
   const fit = Math.max(1, Math.floor((W - 150) / 36))
@@ -677,6 +721,41 @@ async function retally($: EngineInterface, anchor: string | undefined, title: st
   await update($, rows, m => keepRows({ ...m, [anchor]: tally(anchor, list, m[anchor]?.title ?? title) }))
 }
 
+const STEP_SCHEMA = {
+  type: 'object',
+  properties: {
+    done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
+    total: { type: 'integer', minimum: 1, description: 'Steps planned; may change if the plan changes.' },
+    note: { type: 'string', description: 'The step in progress, a few words.' },
+  },
+  required: ['done'],
+}
+
+// With `stepReports` on (the default) the tool sits in every subagent's tool
+// list and its description asks them all to report; off, it waits behind tool
+// search as upstream has it, for savvy-flow workers told to call it.
+export const stepTool = (isAsked: boolean): ToolSpec =>
+  isAsked
+    ? {
+        name: 'step',
+        description:
+          'Subagents only: never call this from the main conversation. ' +
+          'Reports progress on your own task to the agents panel; it only draws a bar and answers ok. ' +
+          'Skip it for a task of only a few tool calls. Otherwise, with your first real tool call, ' +
+          'call it with `total` (your plan in 3-8 steps) and `done: 0`, then again as each step finishes. ' +
+          'Always send it in the same response as your next real tool call, never in a response of its own.',
+        inputSchema: STEP_SCHEMA,
+        isDeferred: false,
+      }
+    : {
+        name: 'step',
+        description:
+          'For savvy-flow workers: report progress on your own task to the agents panel. ' +
+          'Right after reading the brief, call it with `total` (your plan in 3-8 steps) and `done: 0`; ' +
+          'call it again as each step finishes. Cheap and silent: it only draws a bar.',
+        inputSchema: STEP_SCHEMA,
+      }
+
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -712,22 +791,9 @@ export const register: Register = (on, options) => {
         },
       },
     })
-    await $.tool.register({
-      name: 'step',
-      description:
-        'For savvy-flow workers: report progress on your own task to the agents panel. ' +
-        'Right after reading the brief, call it with `total` (your plan in 3-8 steps) and `done: 0`; ' +
-        'call it again as each step finishes. Cheap and silent: it only draws a bar.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          done: { type: 'integer', minimum: 0, description: 'Steps finished so far.' },
-          total: { type: 'integer', minimum: 1, description: 'Steps planned; may change if the plan changes.' },
-          note: { type: 'string', description: 'The step in progress, a few words.' },
-        },
-        required: ['done'],
-      },
-    })
+    await $.tool.register(stepTool(options.stepReports !== false))
+    // A /config change reloads the module: drop the cached description so the switch lands now.
+    $.ui.invalidate('tool.describe')
     await $.command.register({
       name: 'agents-info',
       description: 'Show or hide the panel of subagents: running, finished and planned, with model, context, cost and time',
@@ -992,8 +1058,7 @@ export const register: Register = (on, options) => {
     const cols = Math.max(24, e.props.bodyColumns || 40)
     const barW = Math.max(6, Math.min(20, cols - 34))
     const row = (a: AgentRun) => {
-      const tier = tierOf(a.type)
-      const color = colorOf(tier)
+      const { color, label: role } = roleOf(a)
       const ctx = ctxOf(a)
       const progress = progressOf(a)
       const model = a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)
@@ -1009,7 +1074,7 @@ export const register: Register = (on, options) => {
           </Box>
           <Text dimColor wrap="truncate-end">
             {'  '}
-            {tier === 'other' ? a.type : tier} · {model}
+            {role} · {model}
             {a.round > 1 ? ` · ${s.round} ${a.round}` : ''}
           </Text>
           <Text wrap="truncate-end">
@@ -1038,7 +1103,7 @@ export const register: Register = (on, options) => {
         {p.isCompact ? (
           <Text wrap="truncate-end">
             {[...running, ...finished].map(a => (
-              <Text key={a.id} color={colorOf(tierOf(a.type))}>
+              <Text key={a.id} color={roleOf(a).color}>
                 {STATUS_GLYPH[a.status]}{' '}
               </Text>
             ))}

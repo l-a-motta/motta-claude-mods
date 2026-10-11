@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { tally } from '../hooks/register.tsx'
+import { roleOf, stepTool, tally } from '../hooks/register.tsx'
 import type { AgentRun } from '../types'
 
 type $ = Parameters<TestBody>[0]
@@ -139,4 +139,57 @@ test('a plain subagent opens the agents panel once per call', async ($, on) => {
   const { opened } = engine(on)
   await spawn($, 't1')
   expect(opened).toEqual(['savvy-agents'])
+})
+
+describe('roleOf', () => {
+  const role = (type: string, model = 'claude-opus-5-5', effort?: string) => roleOf({ type, model, effort })
+
+  test('a savvy agent wears its tier, named by it', () => {
+    expect(role('savvy-flow:savvy-careful')).toEqual({ costume: 'careful', color: '#BA7517', label: 'careful' })
+  })
+
+  test("a role the name spells out comes before the model's tier", () => {
+    expect(role('hd-auditor', 'claude-haiku-5-5').costume).toBe('heavy')
+    expect(role('hd-scout').costume).toBe('explore')
+    expect(role('hd-developer').costume).toBe('careful')
+    expect(role('code-reviewer').costume).toBe('heavy')
+    expect(role('Explore').costume).toBe('explore')
+    expect(role('hd-auditor').label).toBe('hd-auditor')
+  })
+
+  test('an unnamed role takes the tier its model and effort run at', () => {
+    expect(role('general-purpose', 'claude-opus-5-5', 'xhigh').costume).toBe('heavy')
+    expect(role('general-purpose', 'claude-opus-5-5', 'low').costume).toBe('light')
+    expect(role('general-purpose', 'claude-haiku-5-5').costume).toBe('light')
+    expect(role('general-purpose', 'claude-fable-5-1').costume).toBe('fable')
+  })
+
+  test('the rest keep the plain crab, in a color their type always gets', () => {
+    const a = role('general-purpose')
+    expect(a.costume).toBe('other')
+    expect(role('general-purpose').color).toBe(a.color)
+  })
+})
+
+describe('stepTool', () => {
+  test('on, it rides in every tool list and asks subagents only, batched', () => {
+    const t = stepTool(true)
+    expect(t.isDeferred).toBe(false)
+    expect(t.description).toContain('Subagents only')
+    expect(t.description).toContain('same response as your next real tool call')
+  })
+
+  test('off, it waits behind tool search, as upstream has it', () => {
+    const t = stepTool(false)
+    expect(t.isDeferred).toBeUndefined()
+    expect(t.description.startsWith('For savvy-flow workers')).toBe(true)
+  })
+})
+
+test('a step from a subagent fills its own bar', async ($, on) => {
+  engine(on)
+  await spawn($, 't1')
+  await $.tool.call({ tool: 'mcp__savvy-progress__step', tool_use_id: 's1', agentId: 'a1', done: 1, total: 4, note: 'reading' } as never)
+  const drawing = await $.ui.mount({ plugin: 'savvy-progress', surface: 'terminal', component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 80 } } as never)
+  expect(await drawing.find({ type: 'Text', text: /1\/4 reading/ } as never)).toBeDefined()
 })

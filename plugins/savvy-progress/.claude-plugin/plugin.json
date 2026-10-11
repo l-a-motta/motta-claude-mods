@@ -1,6 +1,6 @@
 {
   "name": "savvy-progress",
-  "version": "1.4.0",
+  "version": "1.5.1",
   "description": "Live progress bars under each Agent, Workflow and /savvy-flow call in the transcript, plus an agents panel (/agents-info): running, finished and planned subagents with model, task progress, context, cost and time.",
   "author": {
     "name": "johnnyvizz",
@@ -18,6 +18,12 @@
         "en",
         "ru"
       ]
+    },
+    "stepReports": {
+      "type": "boolean",
+      "title": "Step reports from subagents",
+      "description": "Ask every subagent to report its steps, for a real progress bar per agent. Turn off when accuracy matters more than the bar: subagents are no longer asked and show their context fill instead.",
+      "default": true
     }
   },
   "homepage": "https://github.com/johnnyvizz/claude-kit/tree/main/plugins/savvy-progress",
