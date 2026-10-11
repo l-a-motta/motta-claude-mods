@@ -1,0 +1,32 @@
+{
+  "name": "cache-warmer",
+  "version": "0.1.0",
+  "description": "One button under ✦ enhance, 🔥 with keep-warm on or ❄ with it off, beside how long the prompt cache stays warm and the pings sent: while you are away it re-reads the cache with a one-word fork a few minutes before it expires, so your next prompt is not billed the whole conversation again.",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "leadMinutes": {
+      "type": "number",
+      "title": "Ping lead",
+      "description": "How many minutes before the cache expires the ping is sent.",
+      "default": 3
+    },
+    "maxIdleHours": {
+      "type": "number",
+      "title": "Stop after",
+      "description": "Hours without a turn of yours after which pinging stops, so a session left open overnight does not keep spending. The next turn starts it again.",
+      "default": 4
+    },
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache TTL",
+      "description": "How long the prompt cache lives after each request. auto: what the engine says on a model switch, or 5m once a fork finds the cache lapsed early; before either, 1h on a Claude subscription (rate limits reported) and 5m otherwise. 5m or 1h to set it.",
+      "default": "auto",
+      "options": ["auto", "5m", "1h"]
+    }
+  }
+}

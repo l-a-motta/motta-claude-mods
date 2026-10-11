@@ -250,3 +250,17 @@ test('over a card that shares the band, the chip keeps it shared, so the status 
   expect(await band.find({ text: 'Subagents 2/2' })).toBeDefined()
   expect(drawn.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
 })
+
+for (const hasStatusLine of [false, true]) {
+  test(`over cache-warmer's chip, the chip goes on top of it in one column (status line: ${hasStatusLine})`, async ($, on) => {
+    world(on, { hasWarmChip: true, hasStatusLine })
+    await $.session.start({ ...START, surface: 'desktop' as const })
+    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+    const drawn = (await band.drawn()) as Node
+    const column = hasStatusLine ? drawn.children?.at(-1) : drawn
+    expect(column?.props?.key).toBe('band-beside:prompt-enhancer')
+    expect(JSON.stringify(column?.children?.[0])).toContain('enhance')
+    expect(column?.children?.[1]?.props?.key).toBe('band-beside:cache-warmer')
+    if (hasStatusLine) expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
+  })
+}
