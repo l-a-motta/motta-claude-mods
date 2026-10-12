@@ -10,6 +10,7 @@ const agents = atom({ plugin: 'savvy-progress', key: 'agents' } as const, [])
 const panel = atom({ plugin: 'savvy-progress', key: 'panel' } as const, {
   isCompact: false,
   isDoneCollapsed: false,
+  isFailedCollapsed: false,
   autoOpenedFor: '',
 })
 const now = atom({ plugin: 'savvy-progress', key: 'now' } as const, 0)
@@ -48,8 +49,8 @@ const STRINGS = {
     cost: 'Cost',
     tokens: 'Processed',
     time: 'Time',
-    collapse: 'Collapse',
-    expand: 'Expand',
+    collapse: 'Compact view',
+    expand: 'Full view',
     running: 'Running',
     finished: 'Finished',
     planned: 'Planned',
@@ -87,8 +88,8 @@ const STRINGS = {
     cost: 'Стоимость',
     tokens: 'Обработано',
     time: 'Время',
-    collapse: 'Свернуть',
-    expand: 'Развернуть',
+    collapse: 'Компактно',
+    expand: 'Подробно',
     running: 'Работают',
     finished: 'Завершены',
     planned: 'Запланированы',
@@ -647,7 +648,8 @@ const PANE_CSS = `<style>
 </style>`
 
 // Pixel Clawd from DockCrab (Clawdy): a 24×18 crab on a 30×28 grid, one costume per tier.
-// The body keeps the brand clay; the tier's color lives in the costume's accent.
+// Drawn in the brand clay; an agent's crab wears its model's color as the body
+// and the clay moves to the costume's accent.
 const CLAY = '#D97757'
 const INK = '#1F1E1D'
 
@@ -663,8 +665,8 @@ const crabBody = (f: Fill, armFront = 0, armCls?: string): void => {
   f(7, 10, 16, 12, CLAY)
   f(3, 14, 4, 4, CLAY)
   f(23, 14 + armFront, 4, 4, CLAY, armCls)
-  f(9, 12, 2, 2, INK)
-  f(19, 12, 2, 2, INK)
+  f(9, 12, 2, 2, INK, 'eye')
+  f(19, 12, 2, 2, INK, 'eye')
   f(7, 22, 2, 4, CLAY, 'la')
   f(17, 22, 2, 4, CLAY, 'la')
   f(11, 22, 2, 4, CLAY, 'lb')
@@ -750,19 +752,46 @@ const COSTUMES: Record<string, (f: Fill, t: string) => void> = {
 const CRAB_SCALE = 1.1
 
 // Body and props nest inside `bd` so a prop rides the bob and adds its own motion;
-// legs stay outside it and step on their own.
-const crab = (x: number, y: number, costume: string, dim = false, isWalking = false, scale = CRAB_SCALE, accent = colorOf(costume)): string => {
+// legs stay outside it and step on their own. `body` repaints the clay; an
+// asleep crab (an agent gone quiet) shuts its eyes under an amber z.
+const crab = (
+  x: number,
+  y: number,
+  costume: string,
+  dim = false,
+  isWalking = false,
+  scale = CRAB_SCALE,
+  accent = colorOf(costume),
+  look: { body?: string; isAsleep?: boolean } = {},
+): string => {
   const groups = new Map<string, string[]>([['bd', []]])
   const f: Fill = (cx, cy, w, h, c, cls = 'bd') => {
+    if (cls === 'eye') return f(cx, look.isAsleep ? cy + 1 : cy, w, look.isAsleep ? 1 : h, c)
     if (!groups.has(cls)) groups.set(cls, [])
-    groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c}"/>`)
+    groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c === CLAY && look.body ? look.body : c}"/>`)
   }
   const draw = COSTUMES[costume] ?? ((g: Fill) => crabBody(g))
   draw(f, accent)
   const group = (cls: string) => `<g class="${cls}">${(groups.get(cls) ?? []).join('')}</g>`
   const props = [...groups.keys()].filter(k => k !== 'bd' && k !== 'la' && k !== 'lb')
   const body = `<g class="bd">${(groups.get('bd') ?? []).join('')}${props.map(group).join('')}</g>`
-  return `<g transform="translate(${x},${y}) scale(${scale})" opacity="${dim ? 0.45 : 1}" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`
+  const zs = look.isAsleep ? `<text x="24" y="7" font-family="${FONT}" font-size="7" font-weight="700" fill="${WARN}">z</text><text x="27" y="3" font-family="${FONT}" font-size="5" font-weight="700" fill="${WARN}">z</text>` : ''
+  return `<g transform="translate(${x},${y}) scale(${scale})" opacity="${dim ? 0.45 : 1}" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g>${zs}</g>`
+}
+
+// An agent's crab: its model's color as the body, its role's costume; walks
+// while it works, sleeps once it is overdue.
+const agentCrab = (a: AgentRun, x: number, y: number, at: number, dim: boolean, scale = CRAB_SCALE): string => {
+  const { costume, color } = roleOf(a)
+  const isAsleep = isOverdue(a, at)
+  return crab(x, y, costume, dim, a.status === 'running' && !isAsleep, scale, CLAY, { body: color, isAsleep })
+}
+
+// A stopped agent's bar ends where it stopped: a cap, then the rest hatched.
+const cutBar = (x: number, y: number, w: number, h: number, share: number): string => {
+  const fw = Math.max(2, Math.round(w * share))
+  const rest = w - fw - 3
+  return `<rect x="${x}" y="${y}" width="${fw}" height="${h}" rx="${h / 2}" fill="${STOPPED}"/><rect x="${x + fw}" y="${y - 3}" width="1.5" height="${h + 6}" fill="${STOPPED}"/>${rest > 0 ? `<rect x="${x + fw + 3}" y="${y}" width="${rest}" height="${h}" rx="${h / 2}" fill="url(#sv-hatch)"/>` : ''}`
 }
 
 const statusMark = (x: number, y: number, status: string, color: string): string => {
@@ -774,8 +803,10 @@ const statusMark = (x: number, y: number, status: string, color: string): string
   return `<circle cx="${x}" cy="${y}" r="5" fill="none" stroke="#9a9a96" stroke-width="1.4"/><path d="M${x} ${y - 2.5}v2.8l1.8 1.2" fill="none" stroke="#9a9a96" stroke-width="1.4" stroke-linecap="round"/>`
 }
 
+const HATCH = `<defs><pattern id="sv-hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="4" fill="${STOPPED}" opacity=".6"/></pattern></defs>`
+
 const svg = (W: number, H: number, body: string): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${HATCH}${body}</svg>`
 
 // The pane's own title already says "Agents": the header names the flow, if any.
 const headerSvg = (W: number, title: string, t: ReturnType<typeof totals>): string => {
@@ -852,9 +883,12 @@ const CARD_BASE = 62
 const LINE = 15
 const CHIP_ROW = 20
 
+// Without reported steps, the file chips ride the stats line's empty left side.
+const chipsOnStats = (a: AgentRun): boolean => !a.stepTotal
+
 export const agentHeight = (a: AgentRun, at: number): number => {
   const p = cardParts(a, at)
-  return CARD_BASE + (p.mix ? LINE : 0) + p.trail.length * LINE + (p.idle ? LINE : 0) + (p.files ? CHIP_ROW : 0) + (p.result ? LINE : 0) + 6
+  return CARD_BASE + (p.mix ? LINE : 0) + p.trail.length * LINE + (p.idle ? LINE : 0) + (p.files && !chipsOnStats(a) ? CHIP_ROW : 0) + (p.result ? LINE : 0) + 6
 }
 
 // A trail entry as words, and a tool call's outcome beside it.
@@ -983,22 +1017,29 @@ const agentSvg = (W: number, a: AgentRun, at: number): string => {
     rows.push(`<text x="42" y="${y + 11}" font-family="${FONT}" font-size="11" fill="${WARN}">◷ ${xml(fitText(parts.idle, 11, barW - 14))}</text>`)
     y += LINE
   }
-  if (parts.files) {
-    let x = 42
+  // The changed and read files as chips from x 42, as many as fit in `room`, then +N.
+  const chips = (top: number, room: number): string => {
+    const out: string[] = []
     const files = a.files ?? []
+    let x = 42
     let shown = 0
     for (const f of files) {
       const name = fitText(baseName(f.path), 10.5, 160)
       const w = Math.round(textWidth(name, 10.5) + 12)
-      if (x + w > 42 + barW - 30) break
+      if (x + w > 42 + room - 30) break
       const c = toolColor(fileFamily(f), f.reach ?? 'machine')
-      rows.push(
-        `<rect x="${x}" y="${y + 3}" width="${w}" height="15" rx="4" fill="${c}" fill-opacity=".14" stroke="${c}" stroke-width="1"/><text class="t" x="${x + 6}" y="${y + 14}" font-family="${FONT}" font-size="10.5">${xml(name)}</text>`,
+      out.push(
+        `<rect x="${x}" y="${top}" width="${w}" height="15" rx="4" fill="${c}" fill-opacity=".14" stroke="${c}" stroke-width="1"/><text class="t" x="${x + 6}" y="${top + 11}" font-family="${FONT}" font-size="10.5">${xml(name)}</text>`,
       )
       x += w + 4
       shown++
     }
-    if (files.length > shown) rows.push(`<text class="m" x="${x + 2}" y="${y + 14}" font-family="${FONT}" font-size="10.5">+${files.length - shown}</text>`)
+    if (files.length > shown) out.push(`<text class="m" x="${x + 2}" y="${top + 11}" font-family="${FONT}" font-size="10.5">+${files.length - shown}</text>`)
+    return out.join('')
+  }
+  const isChipsUp = parts.files && chipsOnStats(a)
+  if (parts.files && !isChipsUp) {
+    rows.push(chips(y + 3, barW))
     y += CHIP_ROW
   }
   if (parts.result) {
@@ -1009,12 +1050,12 @@ const agentSvg = (W: number, a: AgentRun, at: number): string => {
   return svg(
     W,
     H,
-    `${a.status === 'running' ? actBubble(22, 1, a.trail?.at(-1)) : ''}${crab(0, 14, costume, false, a.status === 'running', CRAB_SCALE, color)}
+    `${a.status === 'running' ? actBubble(22, 1, a.trail?.at(-1)) : ''}${agentCrab(a, 0, 14, at, a.status === 'stopped')}
 <text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(a.description || a.type, 13, titleW))}</text>
 <text x="42" y="34" font-family="${FONT}" font-size="11"><tspan class="t" font-weight="600">${xml(role)}</tspan><tspan fill="${color}">  ${xml(modelName(a.model))}</tspan>${a.effort ? `<tspan class="s"> ${xml(a.effort)}</tspan>` : ''}${meta.length ? `<tspan class="s">  ·  ${xml(meta.join('  ·  '))}</tspan>` : ''}${overdue ? `<tspan fill="${WARN}">  ·  ${s.overdue}</tspan>` : ''}</text>
-${steps && stepsW > 30 ? `<text class="t" x="42" y="49" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(fitText(steps, 11, stepsW))}</text>` : ''}
+${isChipsUp ? chips(38, stepsW + 30) : ''}${steps && stepsW > 30 ? `<text class="t" x="42" y="49" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(fitText(steps, 11, stepsW))}</text>` : ''}
 <text class="s" x="${42 + barW}" y="49" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${stats}</text>
-<rect class="k" x="42" y="55" width="${barW}" height="4" rx="2"/><rect class="${progress === null ? 'm' : 's'}" x="42" y="55" width="${fillW}" height="4" rx="2"/>
+${a.status === 'stopped' ? cutBar(42, 55, barW, 4, fillW / barW) : `<rect class="k" x="42" y="55" width="${barW}" height="4" rx="2"/><rect class="${progress === null ? 'm' : 's'}" x="42" y="55" width="${fillW}" height="4" rx="2"/>`}
 ${rows.join('\n')}
 ${badge}${statusMark(W - 8, 16, overdue ? 'overdue' : a.status, color)}
 <line class="ln" x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}"/>`,
@@ -1181,7 +1222,7 @@ const rollSvg = (W: number, mine: AgentRun[], at: number): string => {
     .map((a, i) => {
       const x = i * 25
       const fail = a.status === 'failed' ? `<path d="M${x + 17} 1l5 5M${x + 22} 1l-5 5" stroke="${FAIL}" stroke-width="1.6" stroke-linecap="round"/>` : ''
-      return crab(x, 1, roleOf(a).costume, a.status !== 'running', a.status === 'running', 0.72, roleOf(a).color) + fail
+      return agentCrab(a, x, 1, at, a.status !== 'running', 0.72) + fail
     })
     .join('')
   const x = shown.length * 25 + 6
@@ -1233,7 +1274,7 @@ const plannedSvg = (W: number, p: Planned): string => {
   return svg(
     W,
     46,
-    `${crab(0, 6, tier, true)}
+    `${crab(0, 6, tier, true, false, CRAB_SCALE, CLAY, { body: color })}
 <text class="s" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(`${p.n}. ${p.title}`, 13, textW))}</text>
 <text x="42" y="34" font-family="${FONT}" font-size="11"><tspan fill="${color}">${xml(tier)}</tspan><tspan class="m">  ${xml(meta.filter(Boolean).join('  ·  '))}</tspan></text>
 ${statusMark(W - 8, 16, 'planned', color)}
@@ -1241,24 +1282,62 @@ ${statusMark(W - 8, 16, 'planned', color)}
   )
 }
 
-const compactSvg = (W: number, list: AgentRun[], planned: Planned[], t: ReturnType<typeof totals>): string => {
-  const icons = [
-    ...list.filter(a => a.status === 'running').map(a => ({ k: roleOf(a).costume, c: roleOf(a).color, s: 'running', dim: false })),
-    ...list.filter(a => a.status !== 'running').map(a => ({ k: roleOf(a).costume, c: roleOf(a).color, s: a.status, dim: false })),
-    ...planned.map(p => ({ k: p.tier in TIER_COLOR ? p.tier : 'other', c: colorOf(p.tier), s: 'planned', dim: true })),
-  ]
-  const fit = Math.max(1, Math.floor((W - 150) / 36))
-  const shown = icons.slice(0, fit)
-  const more = icons.length - shown.length
-  const body = shown
-    .map((ic, i) => crab(i * 36, 0, ic.k, ic.dim, ic.s === 'running', CRAB_SCALE, ic.c) + (ic.s === 'running' ? `<circle class="live" cx="${i * 36 + 32}" cy="4" r="3" fill="${ic.c}"/>` : ''))
-    .join('')
-  const x = shown.length * 36 + (more ? 4 : 0)
+// A crab's name tag: the title's first word, past a `Prefix:` the titles share
+// ("Demo: stopped midway" is "stopped"), cut to the crab's width.
+export const shortName = (title: string): string => {
+  const rest = title.includes(': ') ? title.slice(title.indexOf(': ') + 2) : title
+  return fitText((rest.trim().split(/\s+/)[0] ?? '').replace(/[.,:;]+$/, ''), 9.5, 34)
+}
+
+// The strip groups the crabs by status, failed first, each group led by its
+// mark and count; over each crab its name, under it a mini bar: its steps,
+// else its context. On top of the full view it drops the stats the tiles show.
+const COMPACT_H = 54
+// Room between the strip and the tiles under it in the full view.
+const STRIP_GAP = 12
+const COMPACT_ORDER = ['failed', 'running', 'stopped', 'done'] as const
+const compactSvg = (W: number, list: AgentRun[], planned: Planned[], t: ReturnType<typeof totals>, at: number, hasStats = true, padBottom = 0): string => {
+  const stats = hasStats ? `≈${fmtCost(t.cost)} · ${fmtTokens(t.tokens)} · ${fmtTime(t.time)}` : ''
+  const name = (x: number, title: string) => `<text class="s" x="${x + 16.5}" y="9" text-anchor="middle" font-family="${FONT}" font-size="9.5">${xml(shortName(title))}</text>`
+  const groups = [
+    ...COMPACT_ORDER.map(st => ({ st, agents: list.filter(a => a.status === st), planned: [] as Planned[] })),
+    { st: 'planned', agents: [] as AgentRun[], planned },
+  ].filter(g => g.agents.length + g.planned.length > 0)
+  // Past the room left of the stats a group shows fewer crabs; its count stays true.
+  const room = hasStats ? W - textWidth(stats, 12) - 12 : W
+  const parts: string[] = []
+  let x = 0
+  for (const [i, g] of groups.entries()) {
+    if (i) {
+      parts.push(`<line class="ln" x1="${x + 5.5}" y1="18" x2="${x + 5.5}" y2="46"/>`)
+      x += 12
+    }
+    const count = String(g.agents.length + g.planned.length)
+    parts.push(`${statusMark(x + 6, 29, g.st, RUNNING)}<text class="s" x="${x + 14}" y="33" font-family="${FONT}" font-size="12" font-variant-numeric="tabular-nums">${count}</text>`)
+    x += 14 + textWidth(count, 12) + 6
+    for (const a of g.agents) {
+      if (x + 34 > room) break
+      const progress = progressOf(a)
+      const share = a.status === 'done' ? 1 : progress ?? ctxOf(a) / 100
+      const fill = a.status === 'failed' ? `fill="${FAIL}"` : a.status === 'done' ? `fill="${OK}"` : `class="${progress === null ? 'm' : 's'}"`
+      const bar =
+        a.status === 'stopped'
+          ? cutBar(x + 2, 48, 28, 3, share)
+          : `<rect class="k" x="${x + 2}" y="48" width="28" height="3" rx="1.5"/><rect ${fill} x="${x + 2}" y="48" width="${Math.max(2, Math.round(28 * share))}" height="3" rx="1.5"/>`
+      parts.push(name(x, a.description || a.type) + agentCrab(a, x, 12, at, a.status === 'stopped') + bar)
+      x += 36
+    }
+    for (const p of g.planned) {
+      if (x + 34 > room) break
+      parts.push(name(x, p.title) + crab(x, 12, p.tier in TIER_COLOR ? p.tier : 'other', true, false, CRAB_SCALE, CLAY, { body: colorOf(p.tier) }))
+      x += 36
+    }
+  }
   return svg(
     W,
-    32,
-    `${body}${more ? `<text class="s" x="${x}" y="21" font-family="${FONT}" font-size="12">+${more}</text>` : ''}
-<text class="s" x="${W}" y="21" text-anchor="end" font-family="${FONT}" font-size="12" font-variant-numeric="tabular-nums">≈${fmtCost(t.cost)} · ${fmtTokens(t.tokens)} · ${fmtTime(t.time)}</text>`,
+    COMPACT_H + padBottom,
+    `${parts.join('')}
+${stats && `<text class="s" x="${W}" y="33" text-anchor="end" font-family="${FONT}" font-size="12" font-variant-numeric="tabular-nums">${stats}</text>`}`,
   )
 }
 
@@ -1839,11 +1918,12 @@ export const register: Register = (on, options) => {
     // The pane's title says "Agents"; inside, only the flow's own name.
     const title = f && !f.isFinished ? f.title : ''
 
+    // A real button, apart from the section toggles below it: it changes the
+    // whole pane, not one section.
     const toggleCompact = (
       <Button
         key="compact"
         label={p.isCompact ? s.expand : s.collapse}
-        plain
         onPress={() => update($, panel, prev => ({ ...prev, isCompact: !prev.isCompact }))}
       />
     )
@@ -1855,6 +1935,17 @@ export const register: Register = (on, options) => {
         onPress={() => update($, panel, prev => ({ ...prev, isDoneCollapsed: !prev.isDoneCollapsed }))}
       />
     )
+    // Failed folds as Finished does; its label stays red.
+    const toggleFailed = (
+      <Button
+        key="failed"
+        label={`${s.failedGroup} · ${failed.length}`}
+        plain
+        onPress={() => update($, panel, prev => ({ ...prev, isFailedCollapsed: !prev.isFailedCollapsed }))}
+      >
+        <Text color={FAIL}>{`${p.isFailedCollapsed ? '▸' : '▾'} ${s.failedGroup} · ${failed.length}`}</Text>
+      </Button>
+    )
     const isEmpty = list.length === 0 && planned.length === 0
     const summary = `≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
     // A group of two or more gets a header line; a lone agent is its own card.
@@ -1863,8 +1954,8 @@ export const register: Register = (on, options) => {
     if (e.surface === 'desktop' && 'Svg' in ui) {
       const { Svg } = ui
       const W = Math.max(240, Math.min(900, (e.props.bodyColumns || 40) * 8 - 8))
-      const section = (key: string, text: string, color?: string) => (
-        <Text key={key} dimColor={!color} color={color}>
+      const section = (key: string, text: string) => (
+        <Text key={key} dimColor>
           {text}
         </Text>
       )
@@ -1882,18 +1973,21 @@ export const register: Register = (on, options) => {
       if (p.isCompact) {
         return (
           <Box flexDirection="column" gap={1}>
-            <Svg source={compactSvg(W, all, planned, t)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={32} />
+            <Svg source={compactSvg(W, all, planned, t, at)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={COMPACT_H} />
             {toggleCompact}
           </Box>
         )
       }
       return (
         <Box flexDirection="column">
+          {!isEmpty && <Svg key="strip" source={compactSvg(W, all, planned, t, at, false, STRIP_GAP)} alt={`${list.length} ${s.agentsCount}`} width={W} height={COMPACT_H + STRIP_GAP} />}
           <Svg source={headerSvg(W, title, t)} alt={title ? `${title}: ${summary}` : summary} width={W} height={headerHeight(title)} />
-          {toggleCompact}
+          <Box flexDirection="row" justifyContent="flex-end" marginBottom={1}>
+            {toggleCompact}
+          </Box>
           {isEmpty && <Text dimColor>{s.empty}</Text>}
-          {failed.length > 0 && section('h-fail', `${s.failedGroup} · ${failed.length}`, FAIL)}
-          {failed.map(card)}
+          {failed.length > 0 && toggleFailed}
+          {!p.isFailedCollapsed && failed.map(card)}
           {runningCount > 0 && section('h-run', `${s.running} · ${runningCount}`)}
           {running.flatMap(group)}
           {finishedCount > 0 && toggleDone}
@@ -2024,8 +2118,8 @@ export const register: Register = (on, options) => {
         ) : (
           <Box flexDirection="column" marginTop={1}>
             {isEmpty && <Text dimColor>{s.empty}</Text>}
-            {failed.length > 0 && <Text color={FAIL}>{`${s.failedGroup} · ${failed.length}`}</Text>}
-            {failed.map(row)}
+            {failed.length > 0 && toggleFailed}
+            {!p.isFailedCollapsed && failed.map(row)}
             {runningCount > 0 && <Text dimColor>{`${s.running} · ${runningCount}`}</Text>}
             {running.flatMap(group)}
             {finishedCount > 0 && toggleDone}
