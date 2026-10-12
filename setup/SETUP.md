@@ -47,6 +47,9 @@ Add this checkout as a folder marketplace and install the mods from it. A sessio
 ```powershell
 claude plugin marketplace add "$HOME\Documents\Coding\motta-claude-mods"
 claude plugin install motta-statusline@motta-claude-mods --scope user
+claude plugin install context-drill@motta-claude-mods --scope user
+claude plugin install changes-drill@motta-claude-mods --scope user
+claude plugin install usage-drill@motta-claude-mods --scope user
 claude plugin install assumption-check@motta-claude-mods --scope user
 claude plugin install prompt-enhancer@motta-claude-mods --scope user
 claude plugin install cache-warmer@motta-claude-mods --scope user
@@ -59,7 +62,7 @@ claude plugin enable cc-plugin-you-should-know@builtin
 
 `cc-plugin-you-should-know` is off by default: a side agent that flags things in a reply worth knowing.
 
-Check: `claude plugin list` shows the seven mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
+Check: `claude plugin list` shows the eleven mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
 
 ## 4. Settings
 
@@ -140,7 +143,7 @@ In VS Code's `settings.json`:
 
 ## 9. The last check
 
-Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar, and **✦ enhance** sits above the prompt, with the cache button (`❄ --`) under it. `/filetree` opens the file tree, `/assumption-check` the assumptions pane (capture is on; `/assumption-check off` stops it), `/agents-info` the agents panel and `/enhance <text>` the prompt enhancer.
+Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar, and **✦ enhance** sits above the prompt, with the cache button (`❄ --`) under it. `/filetree` opens the file tree, `/assumption-check` the assumptions pane (capture is on; `/assumption-check off` stops it), `/agents-info` the agents panel, `/enhance <text>` the prompt enhancer, and `/context-drill`, `/changes-drill` and `/usage-drill` (or the status line's `ctx`, `files`, `5h` and `7d`) their panes.
 
 ## Keeping this in step
 
