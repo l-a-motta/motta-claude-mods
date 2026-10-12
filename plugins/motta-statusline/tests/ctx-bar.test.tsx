@@ -113,7 +113,7 @@ test('draws the context as braille cells with its compact tick, the share and th
   })
   // 36% of 1M: three full cells and five dots of the fourth (yellow), the
   // track to the tick before cell 8, and the two cells past it still drawn.
-  // `ctx` is the button that opens the Context pane, a space, then the bar.
+  // `ctx` is the button that opens context-drill's Context pane, a space, then the bar.
   expect((await ui.find({ key: 'context' }))?.props.label).toBe('ctx')
   const texts = await ui.findAll({ type: 'Text' })
   const at = texts.findIndex(t => t.text?.startsWith('⣿'))

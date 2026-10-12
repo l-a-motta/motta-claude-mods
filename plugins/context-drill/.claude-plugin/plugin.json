@@ -1,0 +1,11 @@
+{
+  "name": "context-drill",
+  "version": "0.1.0",
+  "description": "A Context pane that drills into what fills the window: each /context category, where auto-compact fires (with Compact now), then the memory files, MCP tools by server, agents and skills behind it. Opened by /context-drill, or by $.contextDrill.open() from another mod (motta-statusline's ctx).",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
