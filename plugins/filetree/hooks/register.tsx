@@ -490,7 +490,9 @@ function keepTop(cur: FileTree, expanded: string[]): Partial<FileTree> {
   return at < 0 ? {} : { scroll: at }
 }
 
-async function flash($: EngineInterface, tones: Record<string, string>): Promise<void> {
+// `verbs` names what Claude did to each file (reading, editing, …); a lit file
+// row shows it beside the name in its tone's color.
+async function flash($: EngineInterface, tones: Record<string, string>, verbs: Record<string, string> = {}): Promise<void> {
   const unique = Object.keys(tones)
   if (unique.length === 0) return
   const mine = ++generation
@@ -503,12 +505,15 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
     const bright = new Set([...(cur.flashOn ? cur.flash.filter(id => !unique.includes(id)) : []), ...unique])
     const dim = new Set<string>()
     const all: Record<string, string> = cur.flashOn ? { ...cur.flashTones } : {}
+    const said: Record<string, string> = cur.flashOn ? { ...cur.flashVerbs } : {}
     if (cur.flashOn) {
       for (const id of cur.flashDim) dim.add(id)
     }
     for (const id of unique) {
       const tone = tones[id] ?? 'change'
       all[id] = tone
+      if (id in verbs) said[id] = verbs[id] ?? ''
+      else delete said[id]
       if (id === BRANCH_ROW) continue
       const chain = ancestorsOf(id, cur.root)
       if (!chain.some(a => !open.has(a))) continue
@@ -526,6 +531,7 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
       flashDim: [...dim],
       flashOn: true,
       flashTones: all,
+      flashVerbs: said,
       expanded: [...open],
       ...keepTop(cur, [...open]),
     }
@@ -534,7 +540,7 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
   blink = $.clock.after(FLASH_MS, () => {
     if (generation !== mine) return
     blink = null
-    void patch($, cur => (generation === mine ? { flash: [], flashDim: [], flashOn: false, flashTones: {} } : {}))
+    void patch($, cur => (generation === mine ? { flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} } : {}))
   })
 }
 
@@ -727,6 +733,7 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
   const fresh = await get($)
   const ignored = new Set(fresh.ignored)
   const tones: Record<string, string> = {}
+  const verbs: Record<string, string> = {}
   if (writes) {
     const found = fresh.top
       ? await changedInRepo($, t.root, since, before, fresh.ignored)
@@ -743,8 +750,13 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       return { expanded: cur.expanded.filter(id => ids.has(id)) }
     })
     const present = new Set((await get($)).nodes.map(n => n.id))
-    const touchTone = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))?.tone ?? 'change'
-    if (showWrites) for (const id of hits) if (present.has(id)) tones[id] = touchTone
+    const touch = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))
+    if (showWrites)
+      for (const id of hits)
+        if (present.has(id)) {
+          tones[id] = touch?.tone ?? 'change'
+          verbs[id] = touch?.running ?? 'writing'
+        }
   }
   if (showReads) {
     const found: string[] = []
@@ -759,7 +771,11 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
     if (found.length) {
       await revealPaths($, found)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const r of found) if (shown.has(r) && !tones[r]) tones[r] = 'read'
+      for (const r of found)
+        if (shown.has(r) && !tones[r]) {
+          tones[r] = 'read'
+          verbs[r] = 'reading'
+        }
     }
   }
   if (showWrites && actions.length) {
@@ -769,13 +785,17 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       const paths = (await gitPaths($, final.root, final.prefix, committed)).filter(x => !underAny(x, ignored, final.root)).slice(0, READ_REVEAL_LIMIT)
       await revealPaths($, paths)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const x of paths) if (shown.has(x)) tones[x] = 'commit'
+      for (const x of paths)
+        if (shown.has(x)) {
+          tones[x] = 'commit'
+          verbs[x] = committed ? 'committing' : 'staging'
+        }
     }
     const pushLike = actions.find(a => ['push', 'pull', 'fetch', 'checkout', 'switch', 'branch', 'merge', 'rebase', 'tag'].includes(a.verb) || a.kind.startsWith('gh '))
     if (pushLike) tones[BRANCH_ROW] = pushLike.tone
     else if (committed) tones[BRANCH_ROW] = 'commit'
   }
-  await flash($, tones)
+  await flash($, tones, verbs)
 }
 
 function scheduleScan($: EngineInterface, job: Job): void {
@@ -797,7 +817,7 @@ function scheduleScan($: EngineInterface, job: Job): void {
   })
 }
 
-async function touched($: EngineInterface, paths: string[], tone: string, show: boolean): Promise<void> {
+async function touched($: EngineInterface, paths: string[], tone: string, verb: string, show: boolean): Promise<void> {
   if (tone !== 'read' && previewed && paths.map(posix).includes(previewed.path)) previewed = null
   if (await followCwd($)) return
   const t = await get($)
@@ -816,8 +836,12 @@ async function touched($: EngineInterface, paths: string[], tone: string, show: 
   } else await revealPaths($, within)
   if (!show) return
   const tones: Record<string, string> = {}
-  for (const p of within) tones[p] = tone
-  await flash($, tones)
+  const verbs: Record<string, string> = {}
+  for (const p of within) {
+    tones[p] = tone
+    verbs[p] = verb
+  }
+  await flash($, tones, verbs)
 }
 
 async function reveal($: EngineInterface, paths: string[]): Promise<void> {
@@ -1117,7 +1141,7 @@ export const register: Register = (on, options) => {
       themePoll?.cancel()
       themePoll = themeMtime ? $.clock.every(THEME_POLL_MS, () => void loadTheme($)) : null
       const t = await get($)
-      if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {} }))
+      if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} }))
       if (t.preview) await patch($, () => ({ preview: '', previewTop: 0 }))
       await setActivities($, cur => cur.map(a => (a.state === 'running' ? { ...a, state: 'failed', label: `${a.kind} interrupted` } : a)))
       const cwd = await cwdOf($)
@@ -1152,6 +1176,7 @@ export const register: Register = (on, options) => {
     const before = actions.some(a => a.verb === 'commit') ? await get($) : null
     const head = before?.top ? await headOf($, before.root) : ''
     const pending: Pending | null = actions.length ? { actions, ids: await startGit($, actions), command, head } : null
+    const creates = e.tool === 'Write' && !(await exists($, posix(e.file_path)))
     let result: Awaited<ReturnType<typeof next>>
     try {
       result = await next(e)
@@ -1187,7 +1212,7 @@ export const register: Register = (on, options) => {
           : 'notebook_path' in e && typeof e.notebook_path === 'string'
             ? e.notebook_path
             : ''
-      if (file) void touched($, [file], 'change', showWrites)
+      if (file) void touched($, [file], 'change', e.tool === 'Write' ? (creates ? 'creating' : 'writing') : 'editing', showWrites)
     }
     return result
   })
@@ -1195,7 +1220,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const result = await next(e)
     if (result.deny || result.isError || e.tool !== 'Read' || !showReads) return result
-    void touched($, [posix(e.file_path)], 'read', true)
+    void touched($, [posix(e.file_path)], 'read', 'reading', true)
     return result
   })
 
@@ -1416,27 +1441,32 @@ export const register: Register = (on, options) => {
       const isBright = bright.has(n.id)
       const isDim = !isBright && dimmed.has(n.id)
       const tone = t.flashTones[n.id] ?? 'change'
+      // What Claude is doing to the file, beside its name while it shimmers, in place
+      // of the date or size; a folder lit only because it was opened to show one says nothing.
+      const verb = isBright ? (t.flashVerbs[n.id] ?? '') : ''
       const iconColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : n.kind === 'dir' ? theme.accent : theme.muted))
       const nameColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : theme.fg || undefined))
       const loc = t.diff[n.id]
-      const meta = t.showSize
-        ? n.kind === 'dir'
-          ? n.id in t.dirSizes
-            ? formatSize(t.dirSizes[n.id] ?? -1)
-            : '…'
-          : n.kind === 'file' || (n.kind === 'link' && n.size > 0)
-            ? formatSize(n.size)
-            : ''
-        : loc
-          ? ''
-          : n.kind === 'file'
-            ? stamp(n.mtime)
-            : ''
+      const meta = verb
+        ? ''
+        : t.showSize
+          ? n.kind === 'dir'
+            ? n.id in t.dirSizes
+              ? formatSize(t.dirSizes[n.id] ?? -1)
+              : '…'
+            : n.kind === 'file' || (n.kind === 'link' && n.size > 0)
+              ? formatSize(n.size)
+              : ''
+          : loc
+            ? ''
+            : n.kind === 'file'
+              ? stamp(n.mtime)
+              : ''
       const locText = loc ? `${loc[0] ? ` +${loc[0]}` : ''}${loc[1] ? ` -${loc[1]}` : ''}` : ''
       const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
       const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
       const countsText = dirCounts.map(c => c.t).join('')
-      const cols = Math.max(4, width - r.depth * 2 - 6 - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length)
+      const cols = Math.max(4, width - r.depth * 2 - 6 - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - (verb ? verb.length + 1 : 0))
       const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
       const caret = n.kind === 'dir' ? (unicode ? (r.open ? '▾' : '▸') : r.open ? CHEVRON_OPEN : CHEVRON_CLOSED) + ' ' : '  '
       const isRepo = n.kind === 'dir' && n.id === t.top
@@ -1448,6 +1478,7 @@ export const register: Register = (on, options) => {
         lit ? { t: glyph + ' ', sh: tone, dim: isDim, one: true } : { t: glyph + ' ', c: iconColor },
         lit ? { t: name, sh: tone, dim: isDim, b: isBright } : { t: name, c: nameColor, b: n.id === t.selected, s: status === 'D' && n.kind !== 'dir' },
       ]
+      if (verb) left.push({ t: ` ${verb}`, c: TONES[tone]?.solid ?? theme.accent })
       const right: Seg[] = []
       if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
       if (loc && loc[0] > 0) right.push({ t: ` +${loc[0]}`, c: VSCODE.linesAdded })

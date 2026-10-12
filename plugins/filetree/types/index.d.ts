@@ -56,6 +56,7 @@ export type FileTree = {
   flashDim: string[]
   flashOn: boolean
   flashTones: Record<string, string>
+  flashVerbs: Record<string, string>
   scroll: number | null
   preview: string
   previewTop: number

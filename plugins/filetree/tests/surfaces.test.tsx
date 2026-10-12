@@ -562,6 +562,40 @@ test('follow on: the tree scrolls to the file Claude reads', { timeoutMs: 20_000
   await ui.unmount()
 })
 
+test('a lit file says what Claude is doing to it, in its tool-borders color, and the folder opened to show it says nothing', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: Ran = []
+  const root = '/home/k/proj'
+  const w: World = { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: root, dirs: { [root]: [['src', 'dir'], ['a.txt', 'file']], [`${root}/src`]: [['b.ts', 'file']] }, status: '## main\0', numstat: '' }
+  const clock = world(on, w, ran)
+  await $.session.start({ cwd: root, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
+  await clock.settle()
+  const label = (verb: string, color: string) => `"t":" ${verb}","c":"${color}"`
+  await $.tool.call({ tool: 'Read', file_path: `${root}/src/b.ts` } as any)
+  await clock.settle()
+  let shown = await texts(ui)
+  expect(shown).toContain(shimmer('b.ts', 'read') + ',"dim":false')
+  expect(shown).toContain(label('reading', '#3f5670'))
+  expect(JSON.stringify(await ui.drawn()).match(/"t":" reading"/g)?.length).toBe(1)
+  await clock.advance(5_000)
+  await clock.settle()
+  expect(await texts(ui)).not.toContain('" reading"')
+  await $.tool.call({ tool: 'Edit', file_path: `${root}/a.txt`, old_string: 'a', new_string: 'b' } as any)
+  await clock.settle()
+  expect(await texts(ui)).toContain(label('editing', '#6b6233'))
+  await $.tool.call({ tool: 'Write', file_path: `${root}/a.txt`, content: 'x' } as any)
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain(label('writing', '#6b6233'))
+  expect(shown).not.toContain('" editing"')
+  await $.tool.call({ tool: 'Write', file_path: `${root}/new.txt`, content: 'x' } as any)
+  w.dirs[root] = [...(w.dirs[root] ?? []), ['new.txt', 'file']]
+  await clock.settle()
+  expect(await texts(ui)).toContain(label('creating', '#6b6233'))
+  await ui.unmount()
+})
+
 test('follow off: reads, writes and folders Claude opens above the view never move it', { timeoutMs: 20_000, options: { follow: 'off' } }, async ($, on) => {
   const { root, clock, ui, ids } = await scrolledTree($, on)
   await $.tool.call({ tool: 'Read', file_path: `${root}/f55.txt` } as any)
