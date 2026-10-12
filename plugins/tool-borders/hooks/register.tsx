@@ -6,22 +6,21 @@ import type { Register } from 'claude-code'
 // bright). All of it is read from the tool's name and input; it is a guess
 // from text, never from what the call actually touched.
 
-export type Family = 'bookkeeping' | 'read' | 'change' | 'delete' | 'delegate' | 'run'
+export type Family = 'bookkeeping' | 'read' | 'change' | 'delegate' | 'run'
 export type Reach = 'project' | 'machine' | 'internet'
 
 export const COLORS: Record<Family, Record<Reach, string>> = {
   bookkeeping: { project: '#6f6f6f', machine: '#6f6f6f', internet: '#6f6f6f' }, // gray
   read: { project: '#3f5670', machine: '#5b8fcc', internet: '#7dd3fc' }, // blue
-  change: { project: '#6e5a35', machine: '#b07f2e', internet: '#fbbf24' }, // amber
-  delete: { project: '#6e3a3a', machine: '#b84545', internet: '#ff6b6b' }, // red
-  delegate: { project: '#4f4870', machine: '#7e6cc4', internet: '#c4b5fd' }, // violet
+  change: { project: '#6b6233', machine: '#b8a531', internet: '#fde047' }, // yellow: create, update, delete
+  delegate: { project: '#6f4636', machine: '#c0674a', internet: '#f09a76' }, // Anthropic clay
   run: { project: '#6b456b', machine: '#b14fb8', internet: '#f0abfc' }, // magenta
 }
 
 export type Kind = { family: Family; reach: Reach }
 
 // Shell commands rank by risk: of several (`a && b`), the riskiest decides.
-const RANK: Record<Family, number> = { bookkeeping: 0, read: 1, change: 2, delegate: 3, run: 4, delete: 5 }
+const RANK: Record<Family, number> = { bookkeeping: 0, read: 1, change: 2, delegate: 3, run: 4 }
 const REACH_RANK: Record<Reach, number> = { project: 0, machine: 1, internet: 2 }
 const riskier = (a: Family, b: Family) => (RANK[b] > RANK[a] ? b : a)
 const farther = (a: Reach, b: Reach) => (REACH_RANK[b] > REACH_RANK[a] ? b : a)
@@ -96,8 +95,7 @@ const WORDS: Record<Exclude<Family, 'bookkeeping'>, string[]> = {
     'close', 'reopen', 'lock', 'unlock', 'archive', 'unarchive', 'restore', 'untrash', 'sync', 'refresh',
     'reorder', 'sort', 'format', 'convert', 'transform', 'save', 'commit', 'sign', 'fill', 'annotate', 'link',
     'unlink', 'connect', 'disconnect', 'subscribe', 'unsubscribe', 'follow', 'unfollow', 'react', 'vote', 'grant',
-  ],
-  delete: [
+    // delete
     'delete', 'remove', 'destroy', 'drop', 'purge', 'erase', 'wipe', 'clear', 'trash', 'discard', 'kill',
     'terminate', 'cancel', 'abort', 'revoke', 'uninstall', 'detach', 'prune', 'truncate', 'empty', 'stop',
   ],
@@ -233,12 +231,12 @@ export const judgeCommand = (tokens: string[], root: string): Verdict => {
     const sub = lower.find(a => !a.startsWith('-')) ?? ''
     if (GIT_NET_CHANGE.has(sub)) return { family: 'change', reach: 'internet' }
     if (GIT_NET_READ.has(sub)) return { family: 'read', reach: 'internet' }
-    if (sub === 'rm' || sub === 'clean') return { family: 'delete', reach }
-    if (sub === 'reset' && lower.includes('--hard')) return { family: 'delete', reach }
-    if (sub === 'stash' && (lower.includes('drop') || lower.includes('clear'))) return { family: 'delete', reach }
-    if (sub === 'worktree' && lower.includes('remove')) return { family: 'delete', reach }
+    if (sub === 'rm' || sub === 'clean') return { family: 'change', reach }
+    if (sub === 'reset' && lower.includes('--hard')) return { family: 'change', reach }
+    if (sub === 'stash' && (lower.includes('drop') || lower.includes('clear'))) return { family: 'change', reach }
+    if (sub === 'worktree' && lower.includes('remove')) return { family: 'change', reach }
     if (sub === 'branch') {
-      if (lower.some(a => a === '-d' || a === '--delete')) return { family: 'delete', reach }
+      if (lower.some(a => a === '-d' || a === '--delete')) return { family: 'change', reach }
       return { family: lower.some(a => !a.startsWith('-') && a !== 'branch') ? 'change' : 'read', reach }
     }
     if (GIT_READ.has(sub)) return { family: 'read', reach }
@@ -249,7 +247,7 @@ export const judgeCommand = (tokens: string[], root: string): Verdict => {
   if (WEB_CLIENTS.has(head)) {
     const at = lower.findIndex(a => a === '-x' || a === '--request' || a === '-method')
     const method = at >= 0 ? lower[at + 1] : undefined
-    if (method === 'delete') return { family: 'delete', reach: 'internet' }
+    if (method === 'delete') return { family: 'change', reach: 'internet' }
     const sends = lower.some(a => /^(-d|--data.*|-f|--form|-t|--upload-file|-body|-infile)$/.test(a))
     if (sends || (method && method !== 'get' && method !== 'head')) return { family: 'change', reach: 'internet' }
     return { family: 'read', reach: 'internet' }
@@ -258,18 +256,18 @@ export const judgeCommand = (tokens: string[], root: string): Verdict => {
   if (NET_RUN.has(head)) return { family: 'run', reach: 'internet' }
   if (PACKAGE_MANAGERS.has(head)) {
     const sub = lower.find(a => !a.startsWith('-')) ?? ''
-    if (sub === 'uninstall' || sub === 'remove' || sub === 'rm') return { family: 'delete', reach }
+    if (sub === 'uninstall' || sub === 'remove' || sub === 'rm') return { family: 'change', reach }
     if (PACKAGE_NET.has(sub)) return { family: 'change', reach: 'internet' }
     return { family: 'run', reach }
   }
   if (head === 'find') {
     if (lower.includes('-delete') || lower.some((a, k) => a === '-exec' && /^rm$/.test(lower[k + 1] ?? ''))) {
-      return { family: 'delete', reach }
+      return { family: 'change', reach }
     }
     return { family: 'read', reach }
   }
   if (head === 'sed') return { family: lower.some(a => /^-i/.test(a) || a === '--in-place') ? 'change' : 'read', reach }
-  if (SHELL_DELETE.has(head)) return { family: 'delete', reach }
+  if (SHELL_DELETE.has(head)) return { family: 'change', reach }
   if (SHELL_CHANGE.has(head)) return { family: 'change', reach }
   if (SHELL_READ.has(head)) return { family: 'read', reach }
   return { family: 'run', reach }
@@ -314,7 +312,6 @@ export const classify = (tool: string, input: unknown, root: string): Kind => {
   // 2. Built-in tools by name.
   const builtin = BUILTIN[tool]
   if (builtin) {
-    if (tool === 'NotebookEdit' && obj.edit_mode === 'delete') return { family: 'delete', reach: pathReach() }
     return { family: builtin, reach: BUILTIN_REACH[tool] ?? (builtin === 'bookkeeping' ? 'project' : pathReach()) }
   }
 

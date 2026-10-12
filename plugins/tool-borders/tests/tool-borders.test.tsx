@@ -24,7 +24,7 @@ describe('built-in tools', () => {
     expect(k('Write', { file_path: 'C:\\Users\\me\\repo\\new.md', content: 'x' })).toBe('change/project')
     expect(k('Edit', { file_path: '/c/Users/me/repo/a.ts', old_string: 'a', new_string: 'b' })).toBe('change/project')
     expect(k('Edit', { file_path: 'C:\\Users\\me\\.bashrc', old_string: 'a', new_string: 'b' })).toBe('change/machine')
-    expect(k('NotebookEdit', { notebook_path: 'n.ipynb', edit_mode: 'delete' })).toBe('delete/project')
+    expect(k('NotebookEdit', { notebook_path: 'n.ipynb', edit_mode: 'delete' })).toBe('change/project')
   })
 
   test('delegating, bookkeeping', () => {
@@ -48,14 +48,14 @@ describe('shell commands', () => {
     expect(sh('git add -A && git commit -m "feat: x"')).toBe('change/project')
     expect(sh('echo hi > notes.txt')).toBe('change/project')
     expect(sh('ls 2>/dev/null')).toBe('read/project')
-    expect(sh('rm -rf dist')).toBe('delete/project')
-    expect(sh('rm C:/Users/me/Downloads/x.zip')).toBe('delete/machine')
-    expect(sh('git reset --hard HEAD~1')).toBe('delete/project')
-    expect(sh('git branch -D old')).toBe('delete/project')
-    expect(sh('find . -name "*.tmp" -delete')).toBe('delete/project')
+    expect(sh('rm -rf dist')).toBe('change/project')
+    expect(sh('rm C:/Users/me/Downloads/x.zip')).toBe('change/machine')
+    expect(sh('git reset --hard HEAD~1')).toBe('change/project')
+    expect(sh('git branch -D old')).toBe('change/project')
+    expect(sh('find . -name "*.tmp" -delete')).toBe('change/project')
     expect(sh('npm test')).toBe('run/project')
     // The riskiest piece decides.
-    expect(sh('ls && rm a.txt')).toBe('delete/project')
+    expect(sh('ls && rm a.txt')).toBe('change/project')
   })
 
   test('reaching the internet', () => {
@@ -65,11 +65,11 @@ describe('shell commands', () => {
     expect(sh('git fetch')).toBe('read/internet')
     expect(sh('gh pr view 12')).toBe('read/internet')
     expect(sh('gh pr create --title x')).toBe('change/internet')
-    expect(sh('gh repo delete x')).toBe('delete/internet')
+    expect(sh('gh repo delete x')).toBe('change/internet')
     expect(sh('npm install left-pad')).toBe('change/internet')
     expect(sh('ssh host uptime')).toBe('run/internet')
     expect(k('PowerShell', { command: 'Invoke-WebRequest https://x.dev -OutFile a.zip' })).toBe('read/internet')
-    expect(k('PowerShell', { command: 'Remove-Item -Recurse C:\\Users\\me\\repo\\tmp' })).toBe('delete/project')
+    expect(k('PowerShell', { command: 'Remove-Item -Recurse C:\\Users\\me\\repo\\tmp' })).toBe('change/project')
   })
 })
 
@@ -77,7 +77,7 @@ describe('MCP tools and tools no list knows', () => {
   test('the words of the name decide the family; a service is the internet', () => {
     expect(k('mcp__slack__slack_send_message', { channel: 'x', text: 'hi' })).toBe('change/internet')
     expect(k('mcp__slack__slack_read_channel', { channel: 'x' })).toBe('read/internet')
-    expect(k('mcp__gmail__trash_message', { id: '1' })).toBe('delete/internet')
+    expect(k('mcp__gmail__trash_message', { id: '1' })).toBe('change/internet')
     expect(k('mcp__jira__transitionJiraIssue', {})).toBe('change/internet')
     expect(k('mcp__Claude_Browser__computer', { action: 'click' })).toBe('run/internet')
     expect(k('mcp__acme__widget', {})).toBe('run/internet')
@@ -89,14 +89,14 @@ describe('MCP tools and tools no list knows', () => {
     expect(k(`${dc}read_file`, { path: 'C:\\Users\\me\\repo\\a.md' })).toBe('read/project')
     expect(k(`${dc}write_file`, { path: 'D:\\notes.md', content: 'x' })).toBe('change/machine')
     expect(k(`${dc}list_processes`, {})).toBe('read/machine')
-    expect(k(`${dc}kill_process`, { pid: 1 })).toBe('delete/machine')
+    expect(k(`${dc}kill_process`, { pid: 1 })).toBe('change/machine')
   })
 
   test('nothing in the name: the shape of the input, gray last', () => {
     expect(k('Fetcher9', { url: 'https://x.dev' })).toBe('read/internet')
     expect(k('Thing', { file_path: 'a.md', content: 'x' })).toBe('change/project')
     expect(k('Thing', { file_path: 'a.md' })).toBe('read/project')
-    expect(k('Thing', { command: 'rm x' })).toBe('delete/project')
+    expect(k('Thing', { command: 'rm x' })).toBe('change/project')
     expect(k('Thing', { n: 1 })).toBe('bookkeeping/project')
   })
 })
@@ -113,7 +113,7 @@ test("the terminal draws the row inside a border of its color", async ($, on) =>
   on('ui.render', { component: 'ToolUse' }, () => ({ type: 'engine', ref: 1 }) as never)
   const ui = await $.ui.mount(ROW('terminal', 'Bash', { command: 'rm -rf dist' }))
   const [box] = await ui.findAll({ type: 'Box' })
-  expect(box?.props).toEqual(expect.objectContaining({ borderStyle: 'round', borderColor: COLORS.delete.project }))
+  expect(box?.props).toEqual(expect.objectContaining({ borderStyle: 'round', borderColor: COLORS.change.project }))
   await ui.unmount()
 })
 
