@@ -39,8 +39,9 @@ test('names the worktree, links the branch as a compare view, and opens the fold
   // The name is the button; the icon before it an image on the desktop.
   expect((await band.find({ key: 'folder' }))?.props.label).toBe('ui-tweaks')
   expect(JSON.stringify(await band.drawn())).toContain('"alt":"folder"')
-  // The repo link beside it already names vtex-copilot-fse.
-  expect(await band.find({ type: 'Text', text: 'worktree' })).toBeDefined()
+  // The repository it is a worktree of: a two-folder icon, then its name.
+  expect(JSON.stringify(await band.drawn())).toContain('"alt":"worktree"')
+  expect(await band.find({ type: 'Text', text: 'vtex-copilot-fse' })).toBeDefined()
   const drawn = JSON.stringify(await band.drawn())
   expect(drawn).toContain('https://github.com/o/vtex-copilot-fse/compare/main...feat/ui-tweaks')
   // Two commits to push, so the last one has no page yet: plain text, no link.

@@ -18,7 +18,7 @@ test("draws the branch's PR with its CI and conflicts in the terminal, and leave
   await terminal.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
-  expect(await desktop.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await desktop.find({ key: 'folder' })).toBeDefined()
   expect(await desktop.find({ type: 'Text', text: /CI / })).toBeUndefined()
   await desktop.unmount()
 })

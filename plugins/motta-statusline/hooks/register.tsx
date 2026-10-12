@@ -1,6 +1,6 @@
 // motta-statusline: a two-line status line.
 //
-//   📁 folder  worktree of repo  🔗 repo  🌿 branch  +staged ~modified ?untracked | clean  ↑ahead ↓behind  last 12m ago  #pr ✓ CI 7/7
+//   📁 folder  ⧉ repo  ⎇ branch  +staged ~modified ?untracked | clean  ↑ahead ↓behind  last 12m ago  #pr ✓ CI 7/7
 //   [model | effort]  ctx ⣿⣿⣿⣄⣀⣀⣀⣀|⣀⣀ n% used/window   5h ⣿⣀⣀⣀|⣀⣀⣀⣀⣀⣀ n% reset   7d ⣿⣿⣿⣿⣦⣀⣀|⣀⣀⣀ n% reset   out n @n/s
 //
 // The desktop app leaves out [model | effort], which its model picker shows,
@@ -11,9 +11,13 @@
 // below it, and the repository a worktree belongs to; then `↳ folder` when
 // a shell `cd` has taken the shell away from the root), the branch's files, how it stands
 // against its upstream (`not pushed` when it has none) and its last commit.
+// The branch's icon and color say where it stands, as the desktop's sidebar
+// does (branchLook): its PR merged, closed, draft or open (red with failed CI,
+// conflicts or changes requested, yellow while checks run), or with no PR,
+// files changed, commits not pushed, or clean and in step.
 // What can be pressed is a dim word, full strength under the pointer (a
 // desktop button draws plain), or an underlined link: the root's name and
-// the `↳` folder open in the file explorer, the repo and branch open GitHub (the branch as
+// the `↳` folder open in the file explorer, the branch opens GitHub (as
 // a compare view against origin's default), the last commit its page once
 // pushed, and `files`, `ctx`, `5h` and `7d` the panes of changes-drill,
 // context-drill and usage-drill (a mod opens only its own panes, so each is
@@ -122,7 +126,6 @@ type Data = {
   where: Where
   // The shell's folder, which a `cd` moves while the root stays.
   cwd: string
-  repoName: string | null
   repoUrl: string | null
   git: Git | null
   commit: Commit | null
@@ -401,7 +404,6 @@ async function refreshAll($: EngineInterface, withGit = true) {
     data = {
       where: withGit || data === null ? await readWhere($, await $.session.root().catch(() => cwd), repo?.root ?? null) : data.where,
       cwd,
-      repoName: repoUrl ? basename(repoUrl) : null,
       repoUrl,
       git: data?.git ?? null,
       commit: data?.commit ?? null,
@@ -718,13 +720,6 @@ export function whereOf(root: string, top: string, repoRoot: string): Where {
   }
 }
 
-// `worktree`, naming the repository only when the repo link beside it
-// does not: there is none (no remote), or the main checkout's folder has
-// another name than the remote's repository.
-export function worktreeLabel(worktreeOf: string, repoName: string | null) {
-  return repoName !== null && repoName.toLowerCase() === worktreeOf.toLowerCase() ? 'worktree' : `worktree of ${worktreeOf}`
-}
-
 // Where the shell has gone from the root: null while it is there, the path
 // below the root when inside it (`plugins/x`), else the whole path.
 export function driftOf(root: string, cwd: string): string | null {
@@ -768,7 +763,7 @@ type Ui = { Box: any; Text: any; Link: any; Button: any }
 // the desktop app draws itself: the model and effort (its picker) and the PR
 // (its PR bar), and draws the bars as square grids (squaresSvg), not braille.
 // What can be pressed is underlined: the folder (opens
-// the file explorer there), the repo and the branch (GitHub, the branch as a compare
+// the file explorer there), the branch (GitHub, as a compare
 // view against origin's default), the file counts (the Changes pane), the
 // last commit once pushed (its page), the percentages (the Context and Usage
 // panes) and the last slot (cycles what it shows).
@@ -802,11 +797,11 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       : tight(meter(Text, cellDots(points), color, mark))
 
   // An icon before a name: drawn as an outline image on the desktop (iconSvg),
-  // an emoji elsewhere.
+  // a glyph in its color elsewhere.
   const icon = (name: Icon, color: string) =>
     Svg !== null
       ? <Svg source={iconSvg(name, color)} alt={name} width={ICON_SIZE} height={ICON_SIZE} />
-      : <Text color={color}>{ICON_EMOJI[name]}</Text>
+      : <Text color={color}>{ICON_GLYPHS[name]}</Text>
   // A pressable label: a desktop draws a Button as a native button of its
   // plain label, dropping any color or underline, so what can be pressed is a
   // word drawn dim, full strength under the pointer, and the colored figures
@@ -827,16 +822,14 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       icon('folder', 'suggestion'),
       press('folder', w.label, () => void openFolder($, w.path)),
       ...(drift === null ? [] : [<Text color="suggestion">↳</Text>, press('cwd', drift, () => void openFolder($, d.cwd))]),
-      ...(w.worktreeOf ? [<Text color="subtle">{worktreeLabel(w.worktreeOf, d.repoName)}</Text>] : []),
+      ...(w.worktreeOf ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
     ]),
   ]
-  if (d.repoUrl && d.repoName) {
-    line1.push(seg([icon('link', 'suggestion'), <Link href={d.repoUrl}><Text color="suggestion" underline>{d.repoName}</Text></Link>]))
-  }
   if (d.git) {
     const g = d.git
-    const branch = <Text color="success" underline={d.repoUrl !== null}>{g.branch}</Text>
-    line1.push(seg([icon('branch', 'success'), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]))
+    const look = branchLook(g, d.pr, d.base)
+    const branch = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale} underline={d.repoUrl !== null}>{g.branch}</Text>
+    line1.push(seg([icon(look.icon, look.color), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]))
     const files = fileCounts(Text, g)
     const state = files.length > 0 ? [press('changes', 'files', () => void openChanges($)), ...files] : [<Text color="subtle">clean</Text>]
     line1.push(seg([...state, ...syncParts(Text, g, d.base)]))
@@ -938,13 +931,51 @@ function slotParts(Text: any, tight: (parts: unknown[]) => unknown, d: Data, now
 // The word each slot is pressed by.
 const SLOT_LABELS: Record<Slot, string> = { rate: 'out', cost: 'cost', session: 'session', runway: 'compact' }
 
-type Icon = 'folder' | 'link' | 'branch'
+// The branch's icon and color: its PR's state when it has one (a stale
+// reading keeps its look, drawn dim), else how the branch stands locally.
+// The first that holds:
+//   PR merged                                  merged icon, purple
+//   PR closed                                  closed icon, red
+//   PR draft                                   draft icon, subtle
+//   PR open, CI failed, conflicts or changes   PR icon, red
+//   PR open, checks running                    PR icon, yellow
+//   PR open                                    PR icon, green
+//   no PR, files changed                       branch icon, yellow
+//   no PR, commits to push or never pushed     branch icon, blue
+//   no PR, clean and in step                   branch icon, green
+export type BranchLook = { icon: Icon; color: string }
+
+export function branchLook(g: Git, pr: Pr | null, base: string): BranchLook {
+  if (pr !== null) {
+    if (pr.state === 'MERGED') return { icon: 'merged', color: 'merged' }
+    if (pr.state === 'CLOSED') return { icon: 'closed', color: 'error' }
+    if (pr.isDraft) return { icon: 'draft', color: 'subtle' }
+    if (pr.checks.failed.length > 0 || pr.hasConflicts || pr.review === 'changes') return { icon: 'pr', color: 'error' }
+    if (pr.checks.pending > 0) return { icon: 'pr', color: 'warning' }
+    return { icon: 'pr', color: 'success' }
+  }
+  if (g.staged + g.modified + g.untracked > 0) return { icon: 'branch', color: 'warning' }
+  const isUnpushed = g.upstream === null ? g.branch !== base && g.branch !== 'HEAD' : g.ahead > 0
+  return { icon: 'branch', color: isUnpushed ? 'suggestion' : 'success' }
+}
+
+export type Icon = 'folder' | 'worktree' | 'branch' | 'pr' | 'draft' | 'merged' | 'closed'
 const ICON_SIZE = 14
-const ICON_EMOJI: Record<Icon, string> = { folder: '📁', link: '🔗', branch: '🌿' }
+// The terminal's icons: glyphs that take the color, the folder excepted.
+const ICON_GLYPHS: Record<Icon, string> = { folder: '📁', worktree: '⧉', branch: '⎇', pr: '⇄', draft: '◌', merged: '✔', closed: '✕' }
+// GitHub's shapes, after Tabler's outlines, on a 14-unit grid: a pull
+// request's two ends and its arrow, a draft's dots, a merge's bend, a closed
+// one's cross.
+const PR_ENDS = '<circle cx="3.5" cy="3.5" r="1.3"/><circle cx="3.5" cy="10.5" r="1.3"/><circle cx="10.5" cy="10.5" r="1.3"/><path d="M3.5 4.8v4.4"/>'
 const ICON_PATHS: Record<Icon, string> = {
   folder: '<path d="M2 4.2a1 1 0 0 1 1-1h2.7l1.5 1.6H11a1 1 0 0 1 1 1v4.9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
-  link: '<path d="M5.9 8.1a2.3 2.3 0 0 0 3.3 0l2-2a2.3 2.3 0 0 0-3.3-3.3l-.6.6"/><path d="M8.1 5.9a2.3 2.3 0 0 0-3.3 0l-2 2a2.3 2.3 0 0 0 3.3 3.3l.6-.6"/>',
   branch: '<circle cx="4.5" cy="3.3" r="1.3"/><circle cx="4.5" cy="10.7" r="1.3"/><circle cx="9.5" cy="4.6" r="1.3"/><path d="M4.5 4.6v4.8"/><path d="M9.5 5.9c0 2.4-5 1.6-5 3.5"/>',
+  pr: `${PR_ENDS}<path d="M6.4 3.5h2.9a1.2 1.2 0 0 1 1.2 1.2v4.5"/><path d="M8.2 5.3 6.4 3.5l1.8-1.8"/>`,
+  draft: `${PR_ENDS}<path d="M10.5 3.5h.01M10.5 6.6h.01"/>`,
+  merged: '<circle cx="4.1" cy="3.5" r="1.3"/><circle cx="4.1" cy="10.5" r="1.3"/><circle cx="9.9" cy="7" r="1.3"/><path d="M4.1 4.8v4.4"/><path d="M4.1 4.8a2.3 2.3 0 0 0 2.3 2.2h2.2"/>',
+  closed: `${PR_ENDS}<path d="M10.5 6.4v2.8"/><path d="m9.3 1.8 2.4 2.4m0-2.4-2.4 2.4"/>`,
+  // Two folders, one behind the other: another checkout of the repository.
+  worktree: '<path d="M5.3 2.3h1.7l1.2 1.2h2.9a1.2 1.2 0 0 1 1.2 1.2v4.1a1.2 1.2 0 0 1-1.2 1.2H5.3a1.2 1.2 0 0 1-1.2-1.2V3.5a1.2 1.2 0 0 1 1.2-1.2z"/><path d="M9.9 9.9v1.2a1.2 1.2 0 0 1-1.2 1.2H2.9a1.2 1.2 0 0 1-1.2-1.2V5.8a1.2 1.2 0 0 1 1.2-1.2h1.2"/>',
 }
 
 // An outline icon, Tabler's look: strokes in the band's color, no fill.
@@ -1138,7 +1169,7 @@ const SQ_TRACK = SQ_COLS * SQ_PITCH + 1
 const SQ_STRIDE = SQ_TRACK + SQ_GAP
 const SQ_W = 10 * SQ_STRIDE - SQ_GAP
 const SQ_H = SQ_ROWS * SQ_PITCH + 1
-const SVG_COLORS: Record<string, string> = { success: '#4eba65', warning: '#e5b84b', error: '#ef5350', suggestion: '#6a9ef5' }
+const SVG_COLORS: Record<string, string> = { success: '#4eba65', warning: '#e5b84b', error: '#ef5350', suggestion: '#6a9ef5', merged: '#a371f7', subtle: '#8a8a8a' }
 
 // The strength of the bar's first square; each square after it, in the
 // order they light, across the blocks, is a step brighter, the newest at full.

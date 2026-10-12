@@ -17,6 +17,10 @@ test("reads git and the PR in the session's worktree, not the repository's root"
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /feat\/ui-tweaks/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /~1/ })).toBeDefined()
+  // The repository it is a worktree of: a two-folder icon, then the name.
+  expect(await ui.find({ type: 'Text', text: '⧉' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'vtex-copilot-fse' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /worktree of/ })).toBeUndefined()
   expect(runs.find(r => r.argv[0] === 'git')?.cwd).toBe(cwd)
   expect(runs.find(r => r.argv[0] === 'gh')?.cwd).toBe(cwd)
   await ui.unmount()

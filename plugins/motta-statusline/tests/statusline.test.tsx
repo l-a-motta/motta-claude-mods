@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { ago, branchUrl, driftOf, httpsUrl, worktreeLabel, modelLabel, parseCommit, parsePr, parseStatus, prChange, whereOf } from '../hooks/register.tsx'
+import { ago, branchUrl, driftOf, httpsUrl, modelLabel, parseCommit, parsePr, parseStatus, prChange, whereOf } from '../hooks/register.tsx'
 import type { Pr } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS, PR_JSON } from './session.tsx'
 
@@ -36,14 +36,6 @@ describe('whereOf', () => {
     expect(whereOf('C:\\code\\app\\src', 'C:/code/app', 'C:/code/app').label).toBe('app/src')
     const wt = 'C:/code/app/.claude/worktrees/wt-1'
     expect(whereOf(wt, wt, 'C:/code/app')).toEqual({ label: 'wt-1', path: wt, worktreeOf: 'app' })
-  })
-})
-
-describe('worktreeLabel', () => {
-  test('names the repository only when the repo link does not', () => {
-    expect(worktreeLabel('motta-claude-mods', 'motta-claude-mods')).toBe('worktree')
-    expect(worktreeLabel('mods', 'motta-claude-mods')).toBe('worktree of mods')
-    expect(worktreeLabel('mods', null)).toBe('worktree of mods')
   })
 })
 
@@ -126,7 +118,7 @@ test('draws both lines above the engine hint in the terminal hint line', async (
     component: 'PromptHint',
     props: { isDraft: false, isWorking: true, hint: 'esc to interrupt' },
   })
-  expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await ui.find({ key: 'folder' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '360k/1M' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
@@ -136,13 +128,13 @@ test('draws both lines above the engine hint in the terminal hint line', async (
 test('draws in the band on the desktop, which has no hint line, and leaves the terminal band free', async ($, on) => {
   answerSession(on)
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
-  expect(await desktop.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await desktop.find({ key: 'folder' })).toBeDefined()
   expect(await desktop.find({ type: 'Text', text: '360k/1M' })).toBeDefined()
   // The app's model picker already shows the model and effort.
   expect(await desktop.find({ type: 'Text', text: /Opus 5\.5/ })).toBeUndefined()
   await desktop.unmount()
 
   const terminal = await $.ui.mount({ plugin: 'motta-statusline', surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS })
-  expect(await terminal.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeUndefined()
+  expect(await terminal.find({ key: 'folder' })).toBeUndefined()
   await terminal.unmount()
 })
