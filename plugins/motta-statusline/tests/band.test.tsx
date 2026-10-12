@@ -67,7 +67,7 @@ describe('liftBeside', () => {
   })
 })
 
-test('gives the band to a tree that takes it, as replay-theater does', async ($, on) => {
+test('gives the band to a tree that takes it', async ($, on) => {
   answerSession(on, null, 'taken')
   const band = await desktopBand($)
   expect(await band.find({ type: 'Text', text: 'Edit 1 of 3' })).toBeDefined()
