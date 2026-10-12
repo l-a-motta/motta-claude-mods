@@ -26,7 +26,7 @@ type Node = { type?: string; props?: { key?: string; flexDirection?: string }; c
 test("draws prompt-enhancer's chip at the right of its lines on the desktop", async ($, on) => {
   answerSession(on, null, 'chip')
   const band = await desktopBand($)
-  expect(await band.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await band.find({ key: 'folder' })).toBeDefined()
   expect(await band.find({ key: 'enhance' })).toBeDefined()
 
   const root = (await band.drawn()) as Node
@@ -37,7 +37,7 @@ test("draws prompt-enhancer's chip at the right of its lines on the desktop", as
 test("draws prompt-enhancer's card under its lines", async ($, on) => {
   answerSession(on, null, 'card')
   const band = await desktopBand($)
-  expect(await band.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await band.find({ key: 'folder' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '✦ Enhanced' })).toBeDefined()
 
   const root = (await band.drawn()) as Node
@@ -71,5 +71,5 @@ test('gives the band to a tree that takes it', async ($, on) => {
   answerSession(on, null, 'taken')
   const band = await desktopBand($)
   expect(await band.find({ type: 'Text', text: 'Edit 1 of 3' })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeUndefined()
+  expect(await band.find({ key: 'folder' })).toBeUndefined()
 })

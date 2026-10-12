@@ -11,7 +11,7 @@ test('draws no PR segment when the branch has none', async ($, on) => {
     props: { isDraft: false, isWorking: false, hint: 'esc to interrupt' },
   })
   await clock.settle()
-  expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
+  expect(await ui.find({ key: 'folder' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /CI / })).toBeUndefined()
   await ui.unmount()
 })
