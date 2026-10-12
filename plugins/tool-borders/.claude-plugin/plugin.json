@@ -1,7 +1,7 @@
 {
   "name": "tool-borders",
-  "version": "0.1.0",
-  "description": "Marks each tool call with a color: the hue says what it does (read, change, delete, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet).",
+  "version": "0.2.0",
+  "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet).",
   "author": {
     "name": "l-a-motta"
   },

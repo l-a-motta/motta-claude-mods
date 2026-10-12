@@ -35,7 +35,7 @@
     {
       "name": "tool-borders",
       "source": "./plugins/tool-borders",
-      "description": "Marks each tool call with a color: the hue says what it does (read, change, delete, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). A border in the CLI, a thin bar on the desktop app."
+      "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). A border in the CLI, a thin bar on the desktop app."
     },
     {
       "name": "replay-theater",
