@@ -65,7 +65,7 @@ const STRINGS = {
     busy: 'running',
     autoTitle: 'Subagents',
     workflow: 'Workflow',
-    more: 'more running',
+    steps: 'Steps',
   },
   ru: {
     pane: 'Агенты',
@@ -96,7 +96,7 @@ const STRINGS = {
     busy: 'в работе',
     autoTitle: 'Субагенты',
     workflow: 'Воркфлоу',
-    more: 'ещё в работе',
+    steps: 'Шаги',
   },
 } as const
 
@@ -164,6 +164,7 @@ const label = (f: Flow): string => {
   if (f.phase === 'plan') return s.plan
   if (f.phase === 'design') return s.design
   if (f.kind === 'agents') return `${s.pane} ${f.done}/${f.total}`
+  if (f.kind === 'steps') return f.total ? `${s.steps} ${f.done}/${f.total}` : s.busy
   const count = f.total ? `${f.done}/${f.total}` : `${f.running} ${s.busy}`
   return `${f.phase === 'review' ? s.review : s.tasks} ${count}`
 }
@@ -338,24 +339,63 @@ function barRow(ui: any, surface: string, columns: number, f: Flow, isWorking: b
   )
 }
 
-// How many bars the band shows; the rest are counted on a line under them.
-const BAND_MAX = 3
-
-// The bars still running, for the band: the live flow first, then each Agent
-// or Workflow call's, oldest first. A call with one agent is titled by its
-// description; a live flow's own workers count on the flow's bar.
-export const liveBars = (f: Flow | null, m: Record<string, Flow>, list: AgentRun[]): { key: string; bar: Flow }[] => {
-  const bars: { key: string; bar: Flow }[] = []
-  const isFlowLive = f !== null && !f.isFinished
-  if (f !== null && !f.isFinished) bars.push({ key: f.anchor ?? 'flow', bar: f })
-  for (const [anchor, bar] of Object.entries(m)) {
-    if (bar.kind !== 'agents' || bar.isFinished) continue
-    const mine = list.filter(a => a.anchor === anchor)
-    if (isFlowLive && mine.length > 0 && mine.every(a => a.type.startsWith('savvy-'))) continue
-    const only = mine.length === 1 ? mine[0] : undefined
-    bars.push({ key: anchor, bar: only?.description ? { ...bar, title: only.description } : bar })
+// The agents working together now: from the earliest that still runs, back
+// through every run that overlapped it, and all started since. Empty once
+// none runs, so the next agent starts a new batch.
+export const batchOf = (list: AgentRun[]): AgentRun[] => {
+  const running = list.filter(a => a.status === 'running')
+  if (running.length === 0) return []
+  let start = Math.min(...running.map(a => a.startedAt))
+  for (let isMoved = true; isMoved; ) {
+    isMoved = false
+    for (const a of list) {
+      if (a.startedAt < start && (a.endedAt ?? a.startedAt) >= start) {
+        start = a.startedAt
+        isMoved = true
+      }
+    }
   }
-  return bars
+  return list.filter(a => a.startedAt >= start)
+}
+
+// One agent's bar: the steps it reported, or that it runs.
+export const agentBar = (a: AgentRun): Flow => {
+  const isFinished = a.status !== 'running'
+  return {
+    ...blank(),
+    title: a.description || a.type,
+    total: a.stepTotal ?? 0,
+    done: a.stepDone ?? 0,
+    running: isFinished ? 0 : 1,
+    isFinished,
+    phase: isFinished ? 'close' : 'delegate',
+    kind: 'steps',
+  }
+}
+
+// The band's one bar and the key its dismiss holds: the agent whose
+// transcript is open, else a live savvy flow, else the batch of agents
+// working now, titled by its agent when it has one. Null leaves the band.
+export const bandBar = (f: Flow | null, list: AgentRun[], viewed: string | undefined, since: number | undefined): { key: string; bar: Flow } | null => {
+  if (viewed !== undefined) {
+    const a = list.find(x => x.agentId === viewed)
+    return a ? { key: `agent:${viewed}`, bar: agentBar(a) } : null
+  }
+  if (f !== null && !f.isFinished) return { key: `flow:${since ?? 0}`, bar: f }
+  const batch = batchOf(list)
+  if (batch.length === 0) return null
+  const running = batch.filter(a => a.status === 'running').length
+  const only = batch.length === 1 ? batch[0] : undefined
+  const bar: Flow = {
+    ...blank(),
+    title: only?.description || tr().autoTitle,
+    total: batch.length,
+    done: batch.length - running,
+    running,
+    phase: 'delegate',
+    kind: 'agents',
+  }
+  return { key: `batch:${Math.min(...batch.map(a => a.startedAt))}`, bar }
 }
 
 // What `next(e)` hands back when no plugin beneath drew in the band: the
@@ -811,6 +851,7 @@ async function autoOpen($: EngineInterface, key: string): Promise<void> {
 // agents, or for a flow the panel's crew, its agents and the tasks still planned.
 async function crewOf($: EngineInterface, f: Flow): Promise<{ crew: number; isWorking: boolean }> {
   if (f.kind === 'agents') return { crew: f.total, isWorking: f.running > 0 }
+  if (f.kind === 'steps') return { crew: 1, isWorking: f.running > 0 }
   const p = await read($, panel)
   const list = (await read($, agents)).filter(a => a.status === 'running' || a.startedAt >= (p.since ?? 0))
   return { crew: list.length + plannedOf(f, list).length, isWorking: list.some(a => a.status === 'running') }
@@ -1271,29 +1312,29 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The band above the prompt carries the bars still running, under the status
-  // line (shareBand). The rows above keep every call's bar; the band shows
-  // what is working now, and is left alone once nothing is.
+  // The band above the prompt carries one bar, under the status line
+  // (shareBand): the open agent's, a live flow's or the batch working now
+  // (bandBar). The rows above keep every call's bar. Its ✕ hides that bar
+  // until the next one; with none, the band is left alone.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    const bars = liveBars(await read($, flow), await read($, rows), await read($, agents))
-    if (bars.length === 0) return next(e)
+    const p = await read($, panel)
+    const shown = bandBar(await read($, flow), await read($, agents), e.props.view.agentId, p.since)
+    if (shown === null || shown.key === p.bandDismissed) return next(e)
     const below = await next(e)
 
     const ui = $.ui.resolve(e)
-    const { Box, Text, Button } = ui
+    const { Box, Button } = ui
+    const { key, bar } = shown
+    const { crew, isWorking } = await crewOf($, bar)
+    const buttons = [
+      <Button key="savvy-band-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />,
+      <Button key="savvy-band-dismiss" label="✕" plain role="dismiss" onPress={() => update($, panel, q => ({ ...q, bandDismissed: key }))} />,
+    ]
     const columns = e.props.bodyColumns || e.viewport?.columns || 100
-    const drawn: ReturnType<typeof barRow>[] = []
-    for (const { key, bar } of bars.slice(0, BAND_MAX)) {
-      const { crew, isWorking } = await crewOf($, bar)
-      const crewButton = <Button key={`savvy-agents-${key}`} label={`×${crew}`} plain onPress={() => void togglePane($)} />
-      drawn.push(barRow(ui, e.surface, columns, bar, isWorking, crewButton, `savvy-bar-${key}`))
-    }
-    const more = bars.length - BAND_MAX
     const card = (
       <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1}>
-        {drawn}
-        {more > 0 && <Text dimColor>{`  +${more} ${tr().more}`}</Text>}
+        {barRow(ui, e.surface, columns, bar, isWorking, buttons, 'savvy-band-bar')}
       </Box>
     )
     return shareBand(Box, below, card)
