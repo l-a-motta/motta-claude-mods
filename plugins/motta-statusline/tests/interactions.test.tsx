@@ -47,7 +47,9 @@ test('names the worktree, links the branch as a compare view, and opens the fold
   // Two commits to push, so the last one has no page yet: plain text, no link.
   expect(drawn).not.toContain('/commit/abc1234def')
   expect(await band.find({ type: 'Text', text: '↑2' })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: '?1' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: '↓0' })).toBeDefined()
+  expect((await band.find({ key: 'changes' }))?.props.label).toBe('files')
+  expect(await band.find({ type: 'Text', text: 'changed' })).toBeDefined()
 
   await band.press({ key: 'folder' })
   expect(runs.some(r => r.argv[2] === 'start' && r.argv.at(-1) === WORKTREE.cwd.replace(/\//g, '\\'))).toBe(true)

@@ -1,6 +1,6 @@
 // motta-statusline: a two-line status line.
 //
-//   📁 folder  ⧉ repo  ⎇ branch  +staged ~modified ?untracked | clean  ↑ahead ↓behind  last 12m ago  #pr ✓ CI 7/7
+//   📁 folder  ⧉ repo  ⎇ branch  files changed|clean  ↑ahead ↓behind | not pushed  committed 12m ago  #pr ✓ CI 7/7
 //   [model | effort]  ctx ⣿⣿⣿⣄⣀⣀⣀⣀|⣀⣀ n% used/window   5h ⣿⣀⣀⣀|⣀⣀⣀⣀⣀⣀ n% reset   7d ⣿⣿⣿⣿⣦⣀⣀|⣀⣀⣀ n% reset   out n @n/s
 //
 // The desktop app leaves out [model | effort], which its model picker shows,
@@ -830,9 +830,11 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     const look = branchLook(g, d.pr, d.base)
     const branch = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale} underline={d.repoUrl !== null}>{g.branch}</Text>
     line1.push(seg([icon(look.icon, look.color), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]))
-    const files = fileCounts(Text, g)
-    const state = files.length > 0 ? [press('changes', 'files', () => void openChanges($)), ...files] : [<Text color="subtle">clean</Text>]
-    line1.push(seg([...state, ...syncParts(Text, g, d.base)]))
+    // `files changed` or `files clean`: the word in the branch's color, as part
+    // of how the branch stands.
+    const isChanged = g.staged + g.modified + g.untracked > 0
+    const files = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale}>{isChanged ? 'changed' : 'clean'}</Text>
+    line1.push(seg([press('changes', 'files', () => void openChanges($)), files, ...syncParts(Text, g, d.base)]))
     if (d.commit) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
   }
   if (d.pr && !onDesktop) line1.push(seg([tight(prSegment(Text, Link, d.pr, d.isPrStale))]))
@@ -878,30 +880,22 @@ const TERMINAL_SPACE = { inner: 1, outer: 3 }
 // measured from the band, about four fifths of a cell.
 const DESKTOP_BUTTON_PAD = 0.75
 
-// `+2 ~7 ?1`: staged, modified and untracked files, the ones there are.
-function fileCounts(Text: any, g: Git) {
-  const parts = []
-  if (g.staged > 0) parts.push(<Text color="success">+{g.staged}</Text>)
-  if (g.modified > 0) parts.push(<Text color="warning">~{g.modified}</Text>)
-  if (g.untracked > 0) parts.push(<Text color="subtle">?{g.untracked}</Text>)
-  return parts
-}
-
-// `↑2` commits to push, `↓1` to pull, or `not pushed` for a branch with no
-// upstream (origin's default branch excepted, which has nothing to push to).
+// `↑2 ↓0`: commits to push and to pull, both always there and dim at 0, or
+// `not pushed` for a branch with no upstream (origin's default branch
+// excepted, which has nothing to push to).
 function syncParts(Text: any, g: Git, base: string) {
   if (g.upstream === null) return g.branch === base || g.branch === 'HEAD' ? [] : [<Text color="subtle">not pushed</Text>]
-  const parts = []
-  if (g.ahead > 0) parts.push(<Text>↑{g.ahead}</Text>)
-  if (g.behind > 0) parts.push(<Text color="warning">↓{g.behind}</Text>)
-  return parts
+  return [
+    g.ahead > 0 ? <Text>↑{g.ahead}</Text> : <Text color="subtle">↑0</Text>,
+    <Text color={g.behind > 0 ? 'warning' : 'subtle'}>↓{g.behind}</Text>,
+  ]
 }
 
-// `last 12m ago`: a link to the commit once it is on the remote, plain text
+// `committed 12m ago`: a link to the commit once it is on the remote, plain text
 // while it is only local.
 function commitParts(Text: any, Link: any, d: Data, c: Commit, now: number) {
   const isPushed = d.repoUrl !== null && d.git?.upstream != null && d.git.ahead === 0
-  const label = `last ${ago(now - c.at)}`
+  const label = `committed ${ago(now - c.at)}`
   return isPushed ? [<Link href={`${d.repoUrl}/commit/${c.hash}`}><Text color="subtle" underline>{label}</Text></Link>] : [<Text color="subtle">{label}</Text>]
 }
 
