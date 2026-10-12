@@ -138,7 +138,7 @@ test('macOS Claude Code app: desktop pane draws, selects, opens with open', { ti
   expect(NERD.test(shown)).toBe(false)
   await ui.post({ press: `${root}/README.md` }, { in: 'rows' })
   await clock.settle()
-  expect(await texts(ui)).toContain('"selected: ","README.md"')
+  expect(await texts(ui)).toContain(sentWith('README.md'))
   const sent = await $.prompt.submit({ text: 'what is this?', wait: false } as any)
   expect(JSON.stringify(sent)).toContain(`${root}/README.md`)
   await ui.post({ press: `${root}/README.md` }, { in: 'rows' })
@@ -258,6 +258,52 @@ test('macOS app: every header button and the search box work on the desktop surf
   await ui.unmount()
 })
 
+test('the pane says what is on: the pin badge, breadcrumb, setting chips and the key', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: Ran = []
+  const root = '/Users/k/proj'
+  const w: World = {
+    os: 'darwin', env: { HOME: '/Users/k' }, cwd: root, top: '',
+    dirs: { [root]: [['README.md', 'file']], '/Users/k': [['proj', 'dir'], ['other', 'dir']], '/Users/k/other': [['b.txt', 'file']] },
+    status: '', numstat: '',
+  }
+  const clock = world(on, w, ran)
+  await $.session.start({ cwd: root, surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
+  await clock.settle()
+  let shown = await texts(ui)
+  for (const word of ['"following cwd"', '"~"', '"proj"', 'hidden on', 'sizes off', '? key off', 'scrolls to Claude', 'shows reads + writes', 'opens: preview']) expect(shown).toContain(word)
+  expect(shown).not.toContain('Claude just did this')
+  await ui.press({ key: 'pin' })
+  await clock.settle()
+  expect(await texts(ui)).toContain('"pinned"')
+  w.cwd = '/Users/k/other'
+  await $.prompt.submit({ text: 'next', wait: false } as any)
+  await clock.settle()
+  expect(await texts(ui)).toContain('README.md')
+  await ui.press({ key: 'pin' })
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain('"following cwd"')
+  expect(shown).toContain('b.txt')
+  await ui.press({ key: 'crumb:/Users/k' })
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain('"pinned"')
+  expect(shown).toContain('"id":"/Users/k/proj"')
+  await ui.press({ key: 'key' })
+  await ui.press({ key: 'chip-open' })
+  await ui.press({ key: 'chip-activity' })
+  await ui.press({ key: 'chip-follow' })
+  await clock.settle()
+  shown = await texts(ui)
+  for (const word of ['Claude just did this', '? key on', 'opens: default app', 'shows writes only', 'stays where you scroll']) expect(shown).toContain(word)
+  await $.tool.call({ tool: 'Read', file_path: '/Users/k/other/b.txt' } as any)
+  await clock.settle()
+  expect(await texts(ui)).not.toContain(shimmer('b.txt', 'read'))
+  await ui.unmount()
+})
+
 test('outside a repo only git rev-parse runs, never status, diff or ls-files', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/scratch'
@@ -334,7 +380,7 @@ test('files Claude reads or changes outside the root list above the tree, and a 
   await clock.settle()
   shown = await texts(ui)
   expect(shown).toContain('"proj"')
-  expect(shown).toContain('"selected: ","AGENTS.md"')
+  expect(shown).toContain(sentWith('AGENTS.md'))
   expect(shown).toContain('"t":"/srv/log.txt"')
   expect(shown).not.toContain('"t":"~/notes.md"')
   await $.prompt.submit({ text: 'next', wait: false } as any)
@@ -571,28 +617,28 @@ test('a lit file says what Claude is doing to it, in its tool-borders color, and
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  const label = (verb: string, color: string) => `"t":" ${verb}","c":"${color}"`
+  const label = (verb: string, color: string) => `"t":" ${verb} ","c":"${color}","bg"`
   await $.tool.call({ tool: 'Read', file_path: `${root}/src/b.ts` } as any)
   await clock.settle()
   let shown = await texts(ui)
   expect(shown).toContain(shimmer('b.ts', 'read') + ',"dim":false')
-  expect(shown).toContain(label('reading', '#3f5670'))
-  expect(JSON.stringify(await ui.drawn()).match(/"t":" reading"/g)?.length).toBe(1)
+  expect(shown).toContain(label('reading', '#5b8fcc'))
+  expect(JSON.stringify(await ui.drawn()).match(/"t":" reading "/g)?.length).toBe(1)
   await clock.advance(5_000)
   await clock.settle()
-  expect(await texts(ui)).not.toContain('" reading"')
+  expect(await texts(ui)).not.toContain('" reading "')
   await $.tool.call({ tool: 'Edit', file_path: `${root}/a.txt`, old_string: 'a', new_string: 'b' } as any)
   await clock.settle()
-  expect(await texts(ui)).toContain(label('editing', '#6b6233'))
+  expect(await texts(ui)).toContain(label('editing', '#b8a531'))
   await $.tool.call({ tool: 'Write', file_path: `${root}/a.txt`, content: 'x' } as any)
   await clock.settle()
   shown = await texts(ui)
-  expect(shown).toContain(label('writing', '#6b6233'))
-  expect(shown).not.toContain('" editing"')
+  expect(shown).toContain(label('writing', '#b8a531'))
+  expect(shown).not.toContain('" editing "')
   await $.tool.call({ tool: 'Write', file_path: `${root}/new.txt`, content: 'x' } as any)
   w.dirs[root] = [...(w.dirs[root] ?? []), ['new.txt', 'file']]
   await clock.settle()
-  expect(await texts(ui)).toContain(label('creating', '#6b6233'))
+  expect(await texts(ui)).toContain(label('creating', '#b8a531'))
   await ui.unmount()
 })
 
@@ -696,6 +742,7 @@ test('in the desktop app /filetree opens the pane without the terminal layout ch
   expect(opens.at(-1)).toMatchObject({ id: 'filetree', focus: true })
 })
 
+const sentWith = (name: string) => `"sent with your prompts "]},{"type":"Box","props":{"flexShrink":1},"children":[{"type":"Text","props":{"bold":true,"wrap":"truncate-start"},"children":[${JSON.stringify(name)}]`
 const shimmer = (name: string, tone: string) => `"t":${JSON.stringify(name)},"sh":"${tone}"`
 const fullscreen = (args: string) => ({ command: 'filetree', args, origin: { kind: 'person' }, presentation: { isFullscreen: true, columns: 200 } }) as any
 
