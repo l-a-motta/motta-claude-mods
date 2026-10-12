@@ -1319,8 +1319,10 @@ export const register: Register = (on, options) => {
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
       void (async () => {
         await loadTheme($)
-        const root = follow || !lastRoot ? await cwdOf($) : lastRoot
         const t = await get($)
+        // lastRoot is empty after a reload; the pinned root is still in the state.
+        const pinnedRoot = lastRoot || t.root
+        const root = follow || !pinnedRoot ? await cwdOf($) : pinnedRoot
         if (t.root !== root || t.nodes.length === 0) await reset($, root)
       })()
     }
