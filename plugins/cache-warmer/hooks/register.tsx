@@ -27,7 +27,6 @@
 // a fork that found the cache already lapsed (it read nothing and wrote the
 // prefix afresh) reads it as 5 minutes, and before either a subscription
 // (rate limits reported) is read as 1 hour and anything else as 5 minutes.
-// motta-statusline reads the same figure the same way.
 //
 // The band's chips stack in one column at its right, ✦ enhance on top and
 // this one under it, whatever order the hooks on the band run in (withChip).
