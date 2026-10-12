@@ -2,22 +2,40 @@
 
 A Claude Code mod: live progress bars in the transcript and a live panel of subagents. Made for the [savvy-flow](https://github.com/JohnnyVizz/claude-kit/tree/272a877f39b6971690e087b16a7cc3951b811e39/savvy-flow) skill, and useful with any subagents.
 
-- **Progress bars**, drawn under the transcript row of the call that started the work, each redrawn as it runs, with a button showing the crew size that opens the panel:
-  - an Agent call: "Subagents", its agent done or not;
-  - a Workflow call: the workflow's name, its run's agents done out of started;
-  - savvy-flow's latest `progress` call: the flow's title, phase and accepted tasks out of planned. The bar moves down to each new call; a flow that ends keeps its last state on its row.
+- **A row under each call** in the transcript, redrawn as its agents work, with a button showing the crew size that opens the panel:
+  - an Agent call: its agent's name, `N tools · ✗ failed · time`, and an activity strip, one tick per tool call in that call's color (see Colors), red where it failed, pulsing while it runs;
+  - a Workflow call: the workflow's name, its agents done out of started, and a strip per agent (eight at most, then `+n`);
+  - savvy-flow's latest `progress` call: the flow's title, phase and accepted tasks out of planned, as a bar. The bar moves down to each new call; a flow that ends keeps its last state on its row.
+- **A roll call in the band** above the prompt, under the status line (keyed `band-under:`, so the status line and the chips keep their places), while agents work together: a crab per agent, dim once done, a red ✗ on one that failed, then `2 running · 14 tools · ✗ 1 · 0:31 · ≈$0.24`. With an agent's transcript open it names that agent alone, with its reported steps. A live savvy flow shows its bar instead. It leaves once its agents are done; its ✕ hides it until the next batch.
+- **Agents panel** (`/agents-info` toggles it). Each agent's card has its model, effort, reported steps or context, tokens, estimated cost and time, and:
+  - its tool calls by family (`■ read 5 ■ change 2 ■ run 1`) and a red `✗ n` badge for the failed ones;
+  - while it runs, its last three actions, newest first: tool calls with ✓ or ✗ once they end, and the phrase it is writing, or thinking (`✻`) while it has written nothing yet. Written once a second;
+  - a bubble over its crab acting out what it does now: the running call's sign in that call's color (a page to read, a globe for the web, a pencil to change, `>_` to run, a crab to delegate), a speech bubble while it writes, a thought bubble while it thinks;
+  - after 45 s with no streamed output and no call starting or ending, an amber `◷ waiting on Bash · 1:20` when a call is still running, else `◷ quiet 0:52`; after 5 minutes it is **overdue**: an amber clock for its mark and `overdue` in its line (amber on its call's row too), until it does something. That also covers an agent whose stop savvy cannot see: the engine's list never names a workflow's agents;
+  - the files it touched, as pills, newest first, each bordered in the color of the riskiest thing done to it (tool-borders' order: bookkeeping < read < change < delegate < run, whenever it happened), bright as far as it is. A shell command's files count, judged piece by piece: in `node build.js && cat notes.md`, `build.js` ran and `notes.md` was read;
+  - once finished, the first line of its answer.
 
-  While work runs, one bar also sits in the band above the prompt, under the status line (keyed `band-under:`, so the status line and the chips keep their places): a live savvy flow's, or else one for the agents working together now ("Subagents 1/2", titled by the agent when there is one), counting every run that overlapped the ones still going. With an agent's transcript open, the band shows that agent's own bar instead: the steps it reported, done or not. The bar leaves once its agents are done; its ✕ hides it until the next one.
-- **Agents panel** (`/agents-info` toggles it): running, finished and planned subagents with model, effort, task progress, context, estimated cost and time. Working crabs walk, and each savvy tier animates its prop: the astronaut floats, the detective sweeps the magnifier, the engineer turns the wrench, the chef tosses the omelette, the racer runs with a fluttering flag. `prefers-reduced-motion` stops them.
+  Failed agents are pinned on top. A stopped one (Esc, the tasks list or TaskStop: not a failure) shows a gray `■` and is listed with the finished; savvy asks the engine's agent list each second while any run, so a stop that ends no turn it sees still lands. The rest are grouped by the call that started them, running groups first; a group of two or more has a header (`Workflow · 3 · 1:12`). Working crabs walk, and each savvy tier animates its prop: the astronaut floats, the detective sweeps the magnifier, the engineer turns the wrench, the chef tosses the omelette, the racer runs with a fluttering flag. `prefers-reduced-motion` stops them.
 
 ## Who wears what
 
-Every subagent gets a costume and a color, read from facts the engine already has. Nothing is asked of the agent:
+Every subagent's crab gets a costume that tells its role, read from facts the engine already has. Nothing is asked of the agent:
 
 1. A savvy tier by its name (`savvy-careful` is the engineer).
 2. Otherwise a role its name spells out, word by word: scout or explore is the pirate, audit, review or critic the detective, architect, plan or design the astronaut, develop, implement or build the engineer, compare or judge the chef, QA, test or verify the racer. So `hd-auditor` is a detective. The table is `ROLE_WORDS` in `hooks/register.tsx`.
 3. Otherwise the tier its model and effort run at: Opus at xhigh is heavy, at high careful, at medium medium, at low light; Sonnet is medium, Haiku light, Fable fable. Effort arrives with the agent's first request, so its costume can change once then.
-4. Otherwise the plain crab, in a color its type always gets.
+4. Otherwise the plain crab.
+
+## Colors
+
+- **An agent** is its model's color, whatever its role: Opus indigo, Sonnet teal, Haiku lime, Fable pink, anything else gray (`MODEL_COLOR` in `hooks/register.tsx`). Its model's name, running dot and costume accent take it; its role (`Explore`, `general-purpose`) is bold, and its crab's costume tells it. A planned savvy task takes the color of the model its tier runs on.
+- **The card's bar** is gray, filled by the steps the agent reported (darker) or, without them, by its context; a finished agent keeps the fill it had.
+- **A tool call** is colored as [tool-borders](../tool-borders) colors its row in the transcript: the hue says what it does (gray bookkeeping, blue read, yellow change, clay delegate, magenta run), the brightness how far it reaches (muted in the project folder, medium elsewhere on this machine, bright on the internet), read from the call's name and input. The ticks, the bubble's sign and the trail use the call's own color; the tool mix and the changed-file chips the family's medium tone.
+- **Outcomes**: one green for done and a call that worked (`#3B9C5F`), one red for failed (`#E24B4A`), gray for work in progress (a flow's bar, a row of several agents) and for stopped (`■`), amber for the idle note.
+
+### Connected to tool-borders
+
+`hooks/tool-kinds.ts` is a copy of tool-borders' classifier (everything in its `hooks/register.tsx` above `register`), since a mod can import only its own files. **The two are connected: change them together.** Both mods carry the same `tests/tool-kinds.cases.ts`, the calls and colors they must agree on, so a change to one copy fails that mod's tests until the other copy and both case files follow.
 
 ## Tools it adds
 

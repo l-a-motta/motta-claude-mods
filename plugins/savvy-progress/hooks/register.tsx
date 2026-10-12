@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, ToolSpec } from 'claude-code'
 
-import type { AgentRun, Flow, Panel, Phase, PlannedTask } from '../types'
+import type { AgentRun, Flow, Panel, Phase, PlannedTask, ToolFamily, ToolReach, TouchedFile, TrailEntry } from '../types'
+import { classify, COLORS as TOOL_COLORS, judgeCommand, reachOfPath } from './tool-kinds.ts'
 
 const flow = atom({ plugin: 'savvy-progress', key: 'flow' } as const, null)
 const rows = atom({ plugin: 'savvy-progress', key: 'rows' } as const, {})
@@ -17,8 +18,14 @@ const TOOL = 'mcp__savvy-progress__progress'
 const STEP_TOOL = 'mcp__savvy-progress__step'
 const PANE = 'savvy-agents'
 const PHASES: readonly Phase[] = ['plan', 'design', 'delegate', 'review', 'close']
-const ACCENT = '#8f8cf4'
-const DONE = '#5fbf8f'
+// Work in progress is a neutral gray: purple read as Opus. A stopped agent is
+// gray too, with its own square mark.
+const RUNNING = '#8a8a86'
+const STOPPED = '#8a8a86'
+// One green for done and a call that worked, one red for failed: everywhere.
+const OK = '#3B9C5F'
+const FAIL = '#E24B4A'
+const DONE = OK
 
 type ProgressInput = {
   title?: string
@@ -66,6 +73,14 @@ const STRINGS = {
     autoTitle: 'Subagents',
     workflow: 'Workflow',
     steps: 'Steps',
+    toolCalls: (n: number) => `${n} ${n === 1 ? 'tool' : 'tools'}`,
+    quiet: 'quiet',
+    waiting: 'waiting on',
+    agentCall: 'Agents together',
+    failedGroup: 'Failed',
+    overdue: 'overdue',
+    stopped: 'stopped',
+    kinds: { read: 'read', change: 'change', run: 'run', delegate: 'delegate', bookkeeping: 'bookkeeping' },
   },
   ru: {
     pane: 'Агенты',
@@ -97,6 +112,18 @@ const STRINGS = {
     autoTitle: 'Субагенты',
     workflow: 'Воркфлоу',
     steps: 'Шаги',
+    toolCalls: (n: number) => {
+      const d = n % 10
+      const dd = n % 100
+      return `${n} ${d === 1 && dd !== 11 ? 'вызов' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'вызова' : 'вызовов'}`
+    },
+    quiet: 'тишина',
+    waiting: 'ждёт',
+    agentCall: 'Агенты вместе',
+    failedGroup: 'С ошибкой',
+    overdue: 'просрочен',
+    stopped: 'остановлен',
+    kinds: { read: 'чтение', change: 'правки', run: 'запуск', delegate: 'делегирование', bookkeeping: 'служебное' },
   },
 } as const
 
@@ -215,9 +242,20 @@ const xml = (s: string): string =>
 
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, Math.max(1, max - 1)) + '…' : s)
 
-// Rough advance of system UI text, in em; good enough to size the title's slot.
-const charEm = (ch: string): number =>
-  /[\s.,:;'|!il1()[\]]/.test(ch) ? 0.3 : /[A-ZА-ЯЁmwшщжюМШЩЖЮ@%]/.test(ch) ? 0.72 : 0.56
+// Advance of system UI text (Segoe UI, SF), in em, letter by letter: a pill
+// sized by an average letter came out too wide for names of narrow ones
+// (`register.tsx`), and titles cut early.
+export const charEm = (ch: string): number => {
+  if (/[ijl.,:;'|!()[\]]/.test(ch)) return 0.27
+  if (ch === ' ') return 0.27
+  if (/[frtI1\-]/.test(ch)) return 0.36
+  if (/[szcJ"]/.test(ch)) return 0.47
+  if (/[mw]/.test(ch)) return 0.83
+  if (/[MW@%]/.test(ch)) return 0.9
+  if (/[A-Z]/.test(ch)) return 0.64
+  if (/[А-ЯЁмшщжюМШЩЖЮ]/.test(ch)) return 0.72
+  return 0.54
+}
 
 const textWidth = (s: string, size: number): number => [...s].reduce((w, ch) => w + charEm(ch) * size, 0)
 
@@ -237,7 +275,7 @@ const rowSvg = (f: Flow, W: number, isWorking: boolean): string => {
   const title = fitText(f.title, 13, Math.max(60, W * 0.4))
   const BAR_X = Math.round(16 + textWidth(title, 13) + 12)
   const BAR_W = Math.max(60, W - BAR_X - 46 - CRAB_W)
-  const color = f.isFinished ? DONE : ACCENT
+  const color = f.isFinished ? DONE : RUNNING
   const y0 = (H - BAR_H) / 2
   const fillW = Math.round(BAR_W * ratio(f))
   const runW = f.total ? Math.round((BAR_W * Math.min(f.total, f.done + f.running)) / f.total) : 0
@@ -327,10 +365,10 @@ function barRow(ui: any, surface: string, columns: number, f: Flow, isWorking: b
   return (
     <Box key={key} flexDirection="row" gap={2} paddingLeft={2}>
       <Box width={titleW} flexShrink={0}>
-        <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
+        <Text color={f.isFinished ? DONE : RUNNING}>● </Text>
         <Text wrap="truncate-end">{f.title}</Text>
       </Box>
-      <Text color={f.isFinished ? DONE : ACCENT}>{barText(f, width)}</Text>
+      <Text color={f.isFinished ? DONE : RUNNING}>{barText(f, width)}</Text>
       <Text bold>{label(f)}</Text>
       <Text dimColor>{percent}</Text>
       <Text color={CLAY}>▣</Text>
@@ -375,11 +413,12 @@ export const agentBar = (a: AgentRun): Flow => {
 
 // The band's one bar and the key its dismiss holds: the agent whose
 // transcript is open, else a live savvy flow, else the batch of agents
-// working now, titled by its agent when it has one. Null leaves the band.
-export const bandBar = (f: Flow | null, list: AgentRun[], viewed: string | undefined, since: number | undefined): { key: string; bar: Flow } | null => {
+// working now, titled by its agent when it has one. The agent and the batch
+// carry their crew, which the band draws as a roll call. Null leaves the band.
+export const bandBar = (f: Flow | null, list: AgentRun[], viewed: string | undefined, since: number | undefined): { key: string; bar: Flow; crew?: AgentRun[] } | null => {
   if (viewed !== undefined) {
     const a = list.find(x => x.agentId === viewed)
-    return a ? { key: `agent:${viewed}`, bar: agentBar(a) } : null
+    return a ? { key: `agent:${viewed}`, bar: agentBar(a), crew: [a] } : null
   }
   if (f !== null && !f.isFinished) return { key: `flow:${since ?? 0}`, bar: f }
   const batch = batchOf(list)
@@ -395,7 +434,7 @@ export const bandBar = (f: Flow | null, list: AgentRun[], viewed: string | undef
     phase: 'delegate',
     kind: 'agents',
   }
-  return { key: `batch:${Math.min(...batch.map(a => a.startedAt))}`, bar }
+  return { key: `batch:${Math.min(...batch.map(a => a.startedAt))}`, bar, crew: batch }
 }
 
 // What `next(e)` hands back when no plugin beneath drew in the band: the
@@ -437,13 +476,34 @@ export function shareBand(Box: any, below: unknown, card: unknown) {
 // ---------------------------------------------------------------------------
 // Agents panel: every subagent of the session, plus the tasks the flow planned.
 
-const TIER_COLOR: Record<string, string> = {
-  fable: '#7F77DD',
-  heavy: '#D85A30',
-  careful: '#BA7517',
-  medium: '#378ADD',
-  light: '#1D9E75',
+// An agent's color is its model's; its crab's costume tells its role. Hues
+// kept off the tool families' (gray, blue, yellow, clay, magenta) and off the
+// ✓, ✗ and idle colors, so a tick and an agent never read alike.
+export const MODEL_COLOR = {
+  opus: '#7F77DD',
+  sonnet: '#1D9E75',
+  haiku: '#7FAF2E',
+  fable: '#D4537E',
   other: '#888780',
+}
+
+export const modelColor = (model: string): string => {
+  const m = model.toLowerCase()
+  if (/fable|mythos/.test(m)) return MODEL_COLOR.fable
+  if (/opus/.test(m)) return MODEL_COLOR.opus
+  if (/sonnet/.test(m)) return MODEL_COLOR.sonnet
+  if (/haiku/.test(m)) return MODEL_COLOR.haiku
+  return MODEL_COLOR.other
+}
+
+// A savvy tier's color is the model it runs on (TIER_MODEL): Fable, else Opus.
+const TIER_COLOR: Record<string, string> = {
+  fable: MODEL_COLOR.fable,
+  heavy: MODEL_COLOR.opus,
+  careful: MODEL_COLOR.opus,
+  medium: MODEL_COLOR.opus,
+  light: MODEL_COLOR.opus,
+  other: MODEL_COLOR.other,
 }
 
 // What each savvy tier runs on, for planned tasks that have no run yet.
@@ -522,26 +582,18 @@ const tierOfModel = (model: string, effort?: string): string | null => {
   return null
 }
 
-// Agents no rule places keep the plain crab, in a color their type always gets.
-const SPARE_COLORS = ['#C2577A', '#4E9A8E', '#8A6FC0', '#B08A3E', '#5A86B8', '#9C6B54']
-
-const spareColor = (type: string): string => {
-  let h = 0
-  for (const ch of type) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0
-  return SPARE_COLORS[h % SPARE_COLORS.length] ?? '#888780'
-}
-
 type Role = { costume: string; color: string; label: string }
 
-// Costume and color of any agent: a savvy tier by its name, else a role its
-// name spells out, else the tier its model and effort run at, else the plain crab.
+// Costume of any agent: a savvy tier by its name, else a role its name spells
+// out, else the tier its model and effort run at, else the plain crab. Its
+// color is its model's.
 export const roleOf = (a: Pick<AgentRun, 'type' | 'model' | 'effort'>): Role => {
   const savvy = tierOf(a.type)
-  if (savvy !== 'other') return { costume: savvy, color: colorOf(savvy), label: savvy }
+  if (savvy !== 'other') return { costume: savvy, color: modelColor(a.model), label: savvy }
   const words = a.type.replace(/^[^:]*:/, '').toLowerCase().split(/[^a-z0-9]+/)
   const named = ROLE_WORDS.find(([re]) => words.some(w => re.test(w)))?.[1]
   const costume = named ?? tierOfModel(a.model, a.effort) ?? 'other'
-  return { costume, color: TIER_COLOR[costume] && costume !== 'other' ? colorOf(costume) : spareColor(a.type), label: a.type }
+  return { costume, color: modelColor(a.model), label: a.type }
 }
 
 const modelName = (id: string): string => {
@@ -590,7 +642,8 @@ const PANE_CSS = `<style>
 .t{fill:#1f1f1f}.s{fill:#6b6b68}.m{fill:#9a9a96}.k{fill:#ecebe8}.ln{stroke:#e4e4e1}.tile{fill:#f4f3f0}
 @media (prefers-color-scheme: dark){.t{fill:#ececec}.s{fill:#a8a8a4}.m{fill:#7d7d79}.k{fill:#2c2c2b}.ln{stroke:#333331}.tile{fill:#262625}}
 .live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.3}}
-@media (prefers-reduced-motion: reduce){.live{animation:none}}
+.bub{animation:bb 1s ease-in-out infinite}@keyframes bb{50%{transform:translateY(-1px)}}
+@media (prefers-reduced-motion: reduce){.live,.bub{animation:none}}
 </style>`
 
 // Pixel Clawd from DockCrab (Clawdy): a 24×18 crab on a 30×28 grid, one costume per tier.
@@ -698,14 +751,14 @@ const CRAB_SCALE = 1.1
 
 // Body and props nest inside `bd` so a prop rides the bob and adds its own motion;
 // legs stay outside it and step on their own.
-const crab = (x: number, y: number, costume: string, dim = false, isWalking = false, scale = CRAB_SCALE): string => {
+const crab = (x: number, y: number, costume: string, dim = false, isWalking = false, scale = CRAB_SCALE, accent = colorOf(costume)): string => {
   const groups = new Map<string, string[]>([['bd', []]])
   const f: Fill = (cx, cy, w, h, c, cls = 'bd') => {
     if (!groups.has(cls)) groups.set(cls, [])
     groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c}"/>`)
   }
   const draw = COSTUMES[costume] ?? ((g: Fill) => crabBody(g))
-  draw(f, colorOf(costume))
+  draw(f, accent)
   const group = (cls: string) => `<g class="${cls}">${(groups.get(cls) ?? []).join('')}</g>`
   const props = [...groups.keys()].filter(k => k !== 'bd' && k !== 'la' && k !== 'lb')
   const body = `<g class="bd">${(groups.get('bd') ?? []).join('')}${props.map(group).join('')}</g>`
@@ -714,8 +767,10 @@ const crab = (x: number, y: number, costume: string, dim = false, isWalking = fa
 
 const statusMark = (x: number, y: number, status: string, color: string): string => {
   if (status === 'running') return `<circle class="live" cx="${x}" cy="${y}" r="3.5" fill="${color}"/>`
-  if (status === 'done') return `<path d="M${x - 5} ${y}l3.5 3.5 6.5-7" fill="none" stroke="#3B9C5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
-  if (status === 'failed') return `<path d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke="#D0453F" stroke-width="1.8" stroke-linecap="round"/>`
+  if (status === 'done') return `<path d="M${x - 5} ${y}l3.5 3.5 6.5-7" fill="none" stroke="${OK}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+  if (status === 'overdue') return `<circle cx="${x}" cy="${y}" r="5" fill="none" stroke="${WARN}" stroke-width="1.4"/><path d="M${x} ${y - 2.5}v2.8l1.8 1.2" fill="none" stroke="${WARN}" stroke-width="1.4" stroke-linecap="round"/>`
+  if (status === 'stopped') return `<rect x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1.5" fill="${STOPPED}"/>`
+  if (status === 'failed') return `<path d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke="${FAIL}" stroke-width="1.8" stroke-linecap="round"/>`
   return `<circle cx="${x}" cy="${y}" r="5" fill="none" stroke="#9a9a96" stroke-width="1.4"/><path d="M${x} ${y - 2.5}v2.8l1.8 1.2" fill="none" stroke="#9a9a96" stroke-width="1.4" stroke-linecap="round"/>`
 }
 
@@ -742,41 +797,430 @@ ${tile(0, s.cost, '≈' + fmtCost(t.cost))}${tile(1, s.tokens, fmtTokens(t.token
 
 const headerHeight = (title: string): number => (title ? 72 : 44)
 
-// The task's own progress when the worker reports steps; a finished run is full.
-const progressOf = (a: AgentRun): number | null => {
-  if (a.status === 'done') return 1
-  if (a.stepTotal) return Math.min(1, (a.stepDone ?? 0) / a.stepTotal)
-  return null
-}
+// The task's own progress when the worker reports steps, else null: the bar
+// then shows its context. A finished run keeps the fill it had.
+const progressOf = (a: AgentRun): number | null => (a.stepTotal ? Math.min(1, (a.stepDone ?? 0) / a.stepTotal) : null)
 
 const ctxOf = (a: AgentRun): number => (a.contextMax ? Math.min(100, Math.round((a.contextTokens / a.contextMax) * 100)) : 0)
+
+// --- one agent's card, the same parts on every surface: its tool calls by kind,
+// what it did last (running), the files it touched, and its answer (finished).
+// `cardParts` decides which show; both drawings and the height follow it.
+
+// A tool call's color is tool-borders': the hue its family, the brightness how
+// far it reaches (tool-kinds.ts, a copy of tool-borders' classifier).
+export const FAMILY_ORDER: ToolFamily[] = ['read', 'change', 'run', 'delegate', 'bookkeeping']
+
+// Read defensively: a record written before a reload may hold other names.
+export const toolColor = (family: string | undefined, reach: string | undefined): string => {
+  const hues = TOOL_COLORS[(family ?? '') as ToolFamily] ?? TOOL_COLORS.bookkeeping
+  return hues[(reach ?? '') as ToolReach] ?? hues.machine
+}
+const WARN = '#BA7517'
+
+// Quiet for this long, a running agent says so: waiting on its tool, or just quiet.
+const IDLE_MS = 45_000
+// Quiet for this long, it is overdue: a flag, not a state; its next sign of
+// life clears it. The safety net for agents the engine's list never names (a
+// workflow's), whose stop savvy cannot see.
+const OVERDUE_MS = 5 * 60_000
+
+export const isOverdue = (a: AgentRun, at: number): boolean => a.status === 'running' && a.activeAt !== undefined && at - a.activeAt >= OVERDUE_MS
+
+export const idleNote = (a: AgentRun, at: number): string => {
+  if (a.status !== 'running' || a.activeAt === undefined || at - a.activeAt < IDLE_MS) return ''
+  const s = tr()
+  const last = a.trail?.at(-1)
+  const quiet = fmtTime(at - a.activeAt)
+  return last?.kind === 'tool' && last.state === 'running' ? `${s.waiting} ${last.text.split(' ')[1] ?? ''} · ${quiet}` : `${s.quiet} ${quiet}`
+}
+
+const baseName = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+
+type CardParts = { mix: boolean; trail: TrailEntry[]; idle: string; files: boolean; result: string }
+
+// Newest action first; a finished agent shows its answer instead.
+export const cardParts = (a: AgentRun, at: number): CardParts => ({
+  mix: (a.toolCalls ?? 0) > 0,
+  trail: a.status === 'running' ? [...(a.trail ?? [])].reverse() : [],
+  idle: idleNote(a, at),
+  files: (a.files?.length ?? 0) > 0,
+  result: a.status === 'running' ? '' : (a.result ?? ''),
+})
+
+const CARD_BASE = 62
+const LINE = 15
+const CHIP_ROW = 20
+
+export const agentHeight = (a: AgentRun, at: number): number => {
+  const p = cardParts(a, at)
+  return CARD_BASE + (p.mix ? LINE : 0) + p.trail.length * LINE + (p.idle ? LINE : 0) + (p.files ? CHIP_ROW : 0) + (p.result ? LINE : 0) + 6
+}
+
+// A trail entry as words, and a tool call's outcome beside it.
+export const entryText = (t: TrailEntry): string => (t.kind === 'think' ? `✻ ${t.text}` : t.text)
+export const entryMark = (t: TrailEntry): { glyph: string; color: string } | null =>
+  t.kind !== 'tool' ? null : t.state === 'ok' ? { glyph: '✓', color: OK } : t.state === 'failed' ? { glyph: '✗', color: FAIL } : { glyph: '…', color: '#9a9a96' }
+
+// The crab acts out what it does now: a bubble over it with the running tool's
+// sign, a speech bubble while it writes, a thought bubble while it thinks.
+const ACT_GLYPH: Record<string, (c: string) => string> = {
+  read: c => `<rect x="2" y="1.5" width="7" height="8" rx="1" fill="none" stroke="${c}" stroke-width="1.2"/><path d="M3.8 4h3.4M3.8 6h3.4M3.8 8h2" stroke="${c}" stroke-width="1"/>`,
+  change: c => `<path d="M2.5 9.5l1-3 5-5 2 2-5 5z" fill="none" stroke="${c}" stroke-width="1.2" stroke-linejoin="round"/>`,
+  run: c => `<path d="M2 3l3 2.5L2 8" fill="none" stroke="${c}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9h4" stroke="${c}" stroke-width="1.3" stroke-linecap="round"/>`,
+  web: c => `<circle cx="5.5" cy="5.5" r="3.8" fill="none" stroke="${c}" stroke-width="1.1"/><ellipse cx="5.5" cy="5.5" rx="1.6" ry="3.8" fill="none" stroke="${c}" stroke-width="1"/><path d="M1.7 5.5h7.6" stroke="${c}" stroke-width="1"/>`,
+  delegate: c => `<rect x="2.5" y="3.5" width="6" height="4" fill="${c}"/><rect x="1" y="5" width="1.5" height="1.5" fill="${c}"/><rect x="8.5" y="5" width="1.5" height="1.5" fill="${c}"/><rect x="3" y="7.5" width="1" height="1.5" fill="${c}"/><rect x="7" y="7.5" width="1" height="1.5" fill="${c}"/>`,
+  bookkeeping: c => `<circle cx="3" cy="5.5" r="1" fill="${c}"/><circle cx="5.5" cy="5.5" r="1" fill="${c}"/><circle cx="8" cy="5.5" r="1" fill="${c}"/>`,
+  say: c => `<path d="M2 3.5h7M2 5.8h7M2 8.1h4.5" stroke="${c}" stroke-width="1.1" stroke-linecap="round"/>`,
+  think: c => `<circle cx="3" cy="5.5" r="1" fill="${c}"/><circle cx="5.5" cy="5.5" r="1" fill="${c}"/><circle cx="8" cy="5.5" r="1" fill="${c}"/>`,
+}
+
+export const actOf = (last: TrailEntry | undefined): string => {
+  if (!last) return ''
+  if (last.kind !== 'tool') return last.kind
+  if (last.state !== 'running') return ''
+  if (last.tool === 'read' && last.reach === 'internet') return 'web'
+  return last.tool && last.tool in TOOL_COLORS ? last.tool : 'bookkeeping'
+}
+
+const actBubble = (x: number, y: number, last: TrailEntry | undefined): string => {
+  const act = actOf(last)
+  if (!act) return ''
+  const color = last?.kind === 'tool' ? toolColor(last.tool, last.reach) : '#8a8a86'
+  const shape =
+    act === 'think'
+      ? `<rect class="tile" x="0" y="0" width="15" height="12" rx="6"/><circle class="tile" cx="2" cy="14.5" r="1.6"/><circle class="tile" cx="0" cy="17" r="1"/>`
+      : `<rect class="tile" x="0" y="0" width="15" height="12" rx="3"/><path class="tile" d="M2 11.5l-1 4 4-4z"/>`
+  return `<g class="bub" transform="translate(${x},${y})">${shape}<g transform="translate(2,0.5)">${ACT_GLYPH[act]?.(color) ?? ''}</g></g>`
+}
+
+// --- the pane's order: failed agents pinned on top, then the agents of each
+// call (an Agent call, or a workflow's run), running groups first, newest first.
+
+export type AgentGroup = { key: string; title: string; agents: AgentRun[]; span: number }
+
+export const groupsOf = (list: AgentRun[], at: number): { failed: AgentRun[]; running: AgentGroup[]; finished: AgentGroup[] } => {
+  const failed = list.filter(a => a.status === 'failed').reverse()
+  const byKey = new Map<string, AgentRun[]>()
+  for (const a of list) {
+    if (a.status === 'failed') continue
+    const key = a.anchor ?? a.id
+    byKey.set(key, [...(byKey.get(key) ?? []), a])
+  }
+  const groups = [...byKey].map(([key, mine]): AgentGroup & { last: number; isRunning: boolean } => {
+    const start = Math.min(...mine.map(a => a.startedAt))
+    const end = Math.max(...mine.map(a => a.endedAt ?? at))
+    return {
+      key,
+      title: mine.some(a => a.isWorkflow) ? tr().workflow : tr().agentCall,
+      // Running ones first, each part newest first.
+      agents: [...mine.filter(a => a.status === 'running').reverse(), ...mine.filter(a => a.status !== 'running').reverse()],
+      span: Math.max(0, end - start),
+      last: Math.max(...mine.map(a => a.startedAt)),
+      isRunning: mine.some(a => a.status === 'running'),
+    }
+  })
+  groups.sort((x, y) => y.last - x.last)
+  const strip = ({ key, title, agents, span }: AgentGroup): AgentGroup => ({ key, title, agents, span })
+  return {
+    failed,
+    running: groups.filter(g => g.isRunning).map(strip),
+    finished: groups.filter(g => !g.isRunning).map(strip),
+  }
+}
 
 const agentSvg = (W: number, a: AgentRun, at: number): string => {
   const s = tr()
   const { costume, color, label: role } = roleOf(a)
+  const parts = cardParts(a, at)
+  const H = agentHeight(a, at)
   const ctx = ctxOf(a)
+  const overdue = isOverdue(a, at)
   const textW = W - 42 - 22
-  const meta = [a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)]
+  const meta: string[] = []
+  if (a.toolCalls) meta.push(s.toolCalls(a.toolCalls))
   if (a.round > 1) meta.push(`${s.round} ${a.round}`)
   if (a.status === 'failed') meta.push(s.failed)
+  if (a.status === 'stopped') meta.push(s.stopped)
   const barW = textW
   const progress = progressOf(a)
   const stats = `ctx ${ctx}% · ${fmtTokens(a.contextTokens)}  ≈${fmtCost(a.costUsd)}  ${fmtTime(elapsed(a, at))}`
   const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal}${a.stepNote ? ' · ' + a.stepNote : ''}` : ''
   const stepsW = Math.max(0, barW - textWidth(stats, 11) - 12)
-  // Without reported steps the bar falls back to the context, drawn grey.
+  // Gray either way: its reported steps (darker) or, without them, its context.
   const fillW = Math.round(barW * (progress ?? ctx / 100))
+  // A red count of failed calls, left of the status mark.
+  const failed = a.failed ?? 0
+  const badgeW = failed ? Math.round(textWidth(`✗ ${failed}`, 10) + 10) : 0
+  const badge = failed
+    ? `<rect x="${W - 22 - badgeW}" y="7" width="${badgeW}" height="15" rx="7.5" fill="${FAIL}" opacity=".16"/><text x="${W - 22 - badgeW / 2}" y="18" text-anchor="middle" font-family="${FONT}" font-size="10" font-weight="600" fill="${FAIL}">✗ ${failed}</text>`
+    : ''
+  const titleW = textW - (badgeW ? badgeW + 6 : 0)
+
+  const rows: string[] = []
+  let y = CARD_BASE
+  if (parts.mix) {
+    let x = 42
+    for (const k of FAMILY_ORDER.filter(k => a.kinds?.[k])) {
+      const text = `${s.kinds[k]} ${a.kinds?.[k]}`
+      if (x + 11 + textWidth(text, 11) > 42 + barW) break
+      rows.push(`<rect x="${x}" y="${y + 4}" width="7" height="7" rx="1.5" fill="${toolColor(k, 'machine')}"/><text class="s" x="${x + 11}" y="${y + 11}" font-family="${FONT}" font-size="11">${xml(text)}</text>`)
+      x += 11 + textWidth(text, 11) + 12
+    }
+    y += LINE
+  }
+  parts.trail.forEach((t, i) => {
+    const mark = entryMark(t)
+    const text = fitText(entryText(t), 11, barW - (mark ? 14 : 0))
+    rows.push(
+      `<g opacity="${i === 0 ? 1 : i === 1 ? 0.7 : 0.45}"><text class="${i === 0 ? 't' : 's'}" x="42" y="${y + 11}" font-family="${FONT}" font-size="11"${t.kind === 'tool' ? '' : ' font-style="italic"'}>${xml(text)}</text>` +
+        (mark ? `<text x="${42 + textWidth(text, 11) + 5}" y="${y + 11}" font-family="${FONT}" font-size="11" fill="${mark.color}">${mark.glyph}</text>` : '') +
+        `</g>`,
+    )
+    y += LINE
+  })
+  if (parts.idle) {
+    rows.push(`<text x="42" y="${y + 11}" font-family="${FONT}" font-size="11" fill="${WARN}">◷ ${xml(fitText(parts.idle, 11, barW - 14))}</text>`)
+    y += LINE
+  }
+  if (parts.files) {
+    let x = 42
+    const files = a.files ?? []
+    let shown = 0
+    for (const f of files) {
+      const name = fitText(baseName(f.path), 10.5, 160)
+      const w = Math.round(textWidth(name, 10.5) + 12)
+      if (x + w > 42 + barW - 30) break
+      const c = toolColor(fileFamily(f), f.reach ?? 'machine')
+      rows.push(
+        `<rect x="${x}" y="${y + 3}" width="${w}" height="15" rx="4" fill="${c}" fill-opacity=".14" stroke="${c}" stroke-width="1"/><text class="t" x="${x + 6}" y="${y + 14}" font-family="${FONT}" font-size="10.5">${xml(name)}</text>`,
+      )
+      x += w + 4
+      shown++
+    }
+    if (files.length > shown) rows.push(`<text class="m" x="${x + 2}" y="${y + 14}" font-family="${FONT}" font-size="10.5">+${files.length - shown}</text>`)
+    y += CHIP_ROW
+  }
+  if (parts.result) {
+    rows.push(`<text class="s" x="42" y="${y + 11}" font-family="${FONT}" font-size="11">${xml(fitText(`“${parts.result}”`, 11, barW))}</text>`)
+    y += LINE
+  }
+
   return svg(
     W,
-    66,
-    `${crab(0, 14, costume, false, a.status === 'running')}
-<text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(a.description || a.type, 13, textW))}</text>
-<text x="42" y="34" font-family="${FONT}" font-size="11"><tspan fill="${color}">${xml(role)}</tspan><tspan class="s">  ${xml(meta.join('  ·  '))}</tspan></text>
+    H,
+    `${a.status === 'running' ? actBubble(22, 1, a.trail?.at(-1)) : ''}${crab(0, 14, costume, false, a.status === 'running', CRAB_SCALE, color)}
+<text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(a.description || a.type, 13, titleW))}</text>
+<text x="42" y="34" font-family="${FONT}" font-size="11"><tspan class="t" font-weight="600">${xml(role)}</tspan><tspan fill="${color}">  ${xml(modelName(a.model))}</tspan>${a.effort ? `<tspan class="s"> ${xml(a.effort)}</tspan>` : ''}${meta.length ? `<tspan class="s">  ·  ${xml(meta.join('  ·  '))}</tspan>` : ''}${overdue ? `<tspan fill="${WARN}">  ·  ${s.overdue}</tspan>` : ''}</text>
 ${steps && stepsW > 30 ? `<text class="t" x="42" y="49" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(fitText(steps, 11, stepsW))}</text>` : ''}
 <text class="s" x="${42 + barW}" y="49" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${stats}</text>
-<rect class="k" x="42" y="55" width="${barW}" height="4" rx="2"/><rect${progress === null ? ' class="m"' : ''} x="42" y="55" width="${fillW}" height="4" rx="2"${progress === null ? '' : ` fill="${color}"`}/>
-${statusMark(W - 8, 16, a.status, color)}
-<line class="ln" x1="0" y1="65.5" x2="${W}" y2="65.5"/>`,
+<rect class="k" x="42" y="55" width="${barW}" height="4" rx="2"/><rect class="${progress === null ? 'm' : 's'}" x="42" y="55" width="${fillW}" height="4" rx="2"/>
+${rows.join('\n')}
+${badge}${statusMark(W - 8, 16, overdue ? 'overdue' : a.status, color)}
+<line class="ln" x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}"/>`,
+  )
+}
+
+// --- an Agent or Workflow call's row: each of its agents' tool calls as a strip
+// of ticks, one per call, colored by kind, red where it failed.
+
+const STRIP_MAX_AGENTS = 8
+const TICK_W = 4
+const TICK_GAP = 1.5
+
+const tickRects = (a: AgentRun, x: number, y: number, w: number, h: number): string => {
+  const ticks = a.ticks ?? []
+  const fit = Math.max(1, Math.floor((w + TICK_GAP) / (TICK_W + TICK_GAP)))
+  const shown = ticks.slice(-fit)
+  return shown
+    .map((t, i) => {
+      const fill = t.state === 'failed' ? FAIL : toolColor(t.family, t.reach)
+      return `<rect${t.state === 'running' ? ' class="live"' : ''} x="${x + i * (TICK_W + TICK_GAP)}" y="${y}" width="${TICK_W}" height="${h}" rx="1" fill="${fill}"/>`
+    })
+    .join('')
+}
+
+// The strip's dot: running in the one agent's model color (gray for several),
+// then red if any failed, green if any finished, else gray: all stopped.
+export const stripColor = (mine: AgentRun[], at = 0): string => {
+  if (at && mine.some(a => isOverdue(a, at))) return WARN
+  if (mine.some(a => a.status === 'running')) return mine.length === 1 ? roleOf(mine[0]!).color : RUNNING
+  if (mine.some(a => a.status === 'failed')) return FAIL
+  return mine.some(a => a.status === 'done') ? DONE : STOPPED
+}
+
+// `N tools · ✗k · 0:30`: what the strip's line says on the right.
+export const stripStats = (mine: AgentRun[], at: number): string => {
+  const s = tr()
+  const calls = mine.reduce((n, a) => n + (a.toolCalls ?? 0), 0)
+  const failed = mine.reduce((n, a) => n + (a.failed ?? 0), 0)
+  const start = Math.min(...mine.map(a => a.startedAt))
+  const end = Math.max(...mine.map(a => a.endedAt ?? at))
+  const done = mine.filter(a => a.status !== 'running').length
+  return [mine.length > 1 ? `${done}/${mine.length}` : '', calls ? s.toolCalls(calls) : '', failed ? `✗ ${failed}` : '', fmtTime(Math.max(0, end - start))].filter(Boolean).join(' · ')
+}
+
+export const stripHeight = (mine: AgentRun[]): number =>
+  mine.length === 1 ? 38 : 22 + Math.min(mine.length, STRIP_MAX_AGENTS) * 16 + (mine.length > STRIP_MAX_AGENTS ? 14 : 0)
+
+const stripSvg = (W: number, title: string, mine: AgentRun[], at: number): string => {
+  const H = stripHeight(mine)
+  const isRunning = mine.some(a => a.status === 'running')
+  const color = stripColor(mine, at)
+  const stats = stripStats(mine, at)
+  const statsW = textWidth(stats, 11.5)
+  const head = `<circle${isRunning ? ' class="live"' : ''} cx="5" cy="11" r="4" fill="${color}"/>
+<text class="t" x="16" y="15.5" font-family="${FONT}" font-size="13" font-weight="500">${xml(fitText(title, 13, W - 16 - statsW - 16))}</text>
+<text class="s" x="${W}" y="15.5" text-anchor="end" font-family="${FONT}" font-size="11.5" font-variant-numeric="tabular-nums">${xml(stats)}</text>`
+  let body = ''
+  if (mine.length === 1) {
+    body = tickRects(mine[0]!, 16, 24, W - 16, 11)
+  } else {
+    const nameW = Math.min(180, Math.round(W * 0.3))
+    body = mine
+      .slice(0, STRIP_MAX_AGENTS)
+      .map((a, i) => {
+        const y = 22 + i * 16
+        const mark =
+          a.status === 'running' ? '' : a.status === 'failed' ? ` <tspan fill="${FAIL}">✗</tspan>` : a.status === 'stopped' ? ` <tspan fill="${STOPPED}">■</tspan>` : ` <tspan fill="${OK}">✓</tspan>`
+        const count = `${a.toolCalls ?? 0}`
+        return `<text class="s" x="16" y="${y + 11}" font-family="${FONT}" font-size="11">${xml(fitText(a.description || a.type, 11, nameW - 14))}${mark}</text>
+${tickRects(a, 16 + nameW, y + 2, W - 16 - nameW - 28, 10)}
+<text class="m" x="${W}" y="${y + 11}" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${count}</text>`
+      })
+      .join('\n')
+    if (mine.length > STRIP_MAX_AGENTS) body += `<text class="m" x="16" y="${H - 3}" font-family="${FONT}" font-size="11">+${mine.length - STRIP_MAX_AGENTS}</text>`
+  }
+  return svg(W, H, `${head}\n${body}`)
+}
+
+// The call's row: off the terminal one SVG with the crew count beside it, in the
+// terminal a line per agent with its ticks as colored blocks.
+function stripRow(ui: any, surface: string, columns: number, title: string, mine: AgentRun[], at: number, crewButton: unknown, key: string) {
+  const { Box, Text } = ui
+  const stats = stripStats(mine, at)
+  if (surface !== 'terminal' && 'Svg' in ui) {
+    const { Svg } = ui
+    const width = Math.max(180, Math.min(720, columns * 8 - 140))
+    const latest = mine.find(a => a.status === 'running')?.trail?.at(-1)
+    return (
+      <Box key={key} flexDirection="row" alignItems="flex-start" gap={1}>
+        <Svg source={stripSvg(width, title, mine, at)} alt={`${title}: ${stats}${latest ? `, ${entryText(latest)}` : ''}`} width={width} height={stripHeight(mine)} />
+        {crewButton}
+      </Box>
+    )
+  }
+  const cols = Math.max(30, columns - 4)
+  const ticksOf = (a: AgentRun, width: number) =>
+    (a.ticks ?? []).slice(-Math.max(1, width)).map(t => (
+      <Text key={t.id} color={t.state === 'failed' ? FAIL : toolColor(t.family, t.reach)}>
+        ▮
+      </Text>
+    ))
+  return (
+    <Box key={key} flexDirection="column" paddingLeft={2}>
+      <Box flexDirection="row" gap={1}>
+        <Text color={stripColor(mine, at)}>●</Text>
+        <Text wrap="truncate-end">{title}</Text>
+        <Text dimColor>{stats}</Text>
+        {crewButton}
+      </Box>
+      {mine.length === 1 ? (
+        <Text wrap="truncate-end">
+          {'  '}
+          {ticksOf(mine[0]!, cols - 4)}
+        </Text>
+      ) : (
+        mine.slice(0, STRIP_MAX_AGENTS).map(a => (
+          <Box key={a.id} flexDirection="row" gap={1}>
+            <Box width={Math.min(24, Math.floor(cols / 3))} flexShrink={0}>
+              <Text dimColor wrap="truncate-end">
+                {'  '}
+                {a.description || a.type}
+              </Text>
+            </Box>
+            <Text wrap="truncate-end">{ticksOf(a, cols - 30)}</Text>
+          </Box>
+        ))
+      )}
+    </Box>
+  )
+}
+
+// --- the band's roll call: a crab per agent at work together, dim once done,
+// and their totals. Smaller than a card: the band is shared and busy.
+
+const ROLL_MAX = 10
+
+export const rollStats = (mine: AgentRun[], at: number): string => {
+  const s = tr()
+  const running = mine.filter(a => a.status === 'running').length
+  const calls = mine.reduce((n, a) => n + (a.toolCalls ?? 0), 0)
+  const failed = mine.reduce((n, a) => n + (a.failed ?? 0), 0)
+  const cost = mine.reduce((n, a) => n + a.costUsd, 0)
+  const start = Math.min(...mine.map(a => a.startedAt))
+  const end = Math.max(...mine.map(a => a.endedAt ?? at))
+  // One agent (its transcript open, or a batch of one) is named, with its steps.
+  const only = mine.length === 1 ? mine[0] : undefined
+  return [
+    only ? only.description || only.type : '',
+    only?.stepTotal ? `${only.stepDone ?? 0}/${only.stepTotal}` : '',
+    running ? `${running} ${s.busy}` : s.done,
+    calls ? s.toolCalls(calls) : '',
+    failed ? `✗ ${failed}` : '',
+    fmtTime(Math.max(0, end - start)),
+    `≈${fmtCost(cost)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const rollSvg = (W: number, mine: AgentRun[], at: number): string => {
+  const shown = mine.slice(0, ROLL_MAX)
+  const crabs = shown
+    .map((a, i) => {
+      const x = i * 25
+      const fail = a.status === 'failed' ? `<path d="M${x + 17} 1l5 5M${x + 22} 1l-5 5" stroke="${FAIL}" stroke-width="1.6" stroke-linecap="round"/>` : ''
+      return crab(x, 1, roleOf(a).costume, a.status !== 'running', a.status === 'running', 0.72, roleOf(a).color) + fail
+    })
+    .join('')
+  const x = shown.length * 25 + 6
+  const more = mine.length > ROLL_MAX ? `<text class="m" x="${x}" y="15.5" font-family="${FONT}" font-size="12">+${mine.length - ROLL_MAX}</text>` : ''
+  const tx = x + (more ? 26 : 0)
+  return svg(
+    W,
+    H,
+    `${crabs}${more}<text class="s" x="${tx}" y="15.5" font-family="${FONT}" font-size="12" font-variant-numeric="tabular-nums">${xml(fitText(rollStats(mine, at), 12, W - tx))}</text>`,
+  )
+}
+
+function rollRow(ui: any, surface: string, columns: number, mine: AgentRun[], at: number, buttons: unknown, key: string) {
+  const { Box, Text } = ui
+  const stats = rollStats(mine, at)
+  if (surface !== 'terminal' && 'Svg' in ui) {
+    const { Svg } = ui
+    const width = Math.max(180, Math.min(720, columns * 8 - 140))
+    return (
+      <Box key={key} flexDirection="row" alignItems="center" gap={1}>
+        <Svg source={rollSvg(width, mine, at)} alt={stats} width={width} height={H} />
+        {buttons}
+      </Box>
+    )
+  }
+  return (
+    <Box key={key} flexDirection="row" gap={1} paddingLeft={2}>
+      <Text>
+        {mine.slice(0, ROLL_MAX).map(a => (
+          <Text key={a.id} color={a.status === 'failed' ? FAIL : roleOf(a).color} dimColor={a.status !== 'running'}>
+            ▣{' '}
+          </Text>
+        ))}
+      </Text>
+      <Text dimColor wrap="truncate-end">
+        {stats}
+      </Text>
+      {buttons}
+    </Box>
   )
 }
 
@@ -807,7 +1251,7 @@ const compactSvg = (W: number, list: AgentRun[], planned: Planned[], t: ReturnTy
   const shown = icons.slice(0, fit)
   const more = icons.length - shown.length
   const body = shown
-    .map((ic, i) => crab(i * 36, 0, ic.k, ic.dim, ic.s === 'running') + (ic.s === 'running' ? `<circle class="live" cx="${i * 36 + 32}" cy="4" r="3" fill="${ic.c}"/>` : ''))
+    .map((ic, i) => crab(i * 36, 0, ic.k, ic.dim, ic.s === 'running', CRAB_SCALE, ic.c) + (ic.s === 'running' ? `<circle class="live" cx="${i * 36 + 32}" cy="4" r="3" fill="${ic.c}"/>` : ''))
     .join('')
   const x = shown.length * 36 + (more ? 4 : 0)
   return svg(
@@ -825,7 +1269,196 @@ const ctxBar = (pct: number, width: number): string => {
   return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled))
 }
 
-const STATUS_GLYPH: Record<string, string> = { running: '●', done: '✓', failed: '✗', planned: '◷' }
+const STATUS_GLYPH: Record<string, string> = { running: '●', done: '✓', failed: '✗', stopped: '■', planned: '◷' }
+
+// --- what each agent is doing now: its streamed text and tool calls, gathered
+// here as they come and written to `agents` once a second by the clock.
+
+const LIVE_MAX = 200
+
+// The sentence being written, or the last one finished while the next is still a few words.
+export const lastPhrase = (text: string): string => {
+  const pieces = text
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map(p => p.replace(/^\s*(?:[-*+>#]+|\d+\.)\s*/, '').replace(/[`*_]/g, '').trim())
+    .filter(Boolean)
+  const last = pieces.at(-1) ?? ''
+  const phrase = last.length < 12 && pieces.length > 1 ? `${pieces.at(-2)} ${last}` : last
+  return phrase.length > LIVE_MAX ? '…' + phrase.slice(-(LIVE_MAX - 1)) : phrase
+}
+
+const ARG_KEYS = ['file_path', 'notebook_path', 'path', 'command', 'pattern', 'url', 'query', 'description', 'skill', 'prompt']
+
+// `→ Read register.tsx`: the tool, short, and the one argument that says what it touches.
+export const toolLine = (tool: string, input: Record<string, unknown>): string => {
+  const name = tool.startsWith('mcp__') ? tool.split('__').slice(2).join('__') || tool : tool
+  const key = ARG_KEYS.find(k => typeof input[k] === 'string' && (input[k] as string).trim())
+  let arg = key ? ((input[key] as string).trim().split('\n')[0] ?? '') : ''
+  if (key && /path$/.test(key)) arg = arg.split(/[\\/]/).filter(Boolean).at(-1) ?? arg
+  const line = arg ? `→ ${name} ${arg}` : `→ ${name}`
+  return line.length > LIVE_MAX ? line.slice(0, LIVE_MAX - 1) + '…' : line
+}
+
+// --- the agent's record of its tool calls: written as each call starts and ends
+// (a few a second at most), so what a hook rewrote reaches the panel at once.
+
+const TICKS_MAX = 80
+const TRAIL_MAX = 3
+const FILES_MAX = 20
+
+// The session's folder, which a call's reach is measured from; read once.
+let root = ''
+
+// The files a call touches and what it does to each: the path its input names
+// (a file, not a folder: it has an extension), and in a shell command each
+// piece's files, judged piece by piece (`node x.js && cat y.md`: x.js runs, y.md
+// is read), a redirect's target changed.
+const PIECES = /&&|\|\||[;|\n]/
+const looksLikeFile = (t: string): boolean => !/^-|^[a-z]+:\/\//i.test(t) && /\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(t.split(/[\\/]/).at(-1) ?? '')
+const unquote = (t: string): string => t.replace(/^["']|["']$/g, '')
+
+export const filesOf = (tool: string, input: Record<string, unknown>, family: ToolFamily, folder: string): TouchedFile[] => {
+  const named = [input.file_path, input.notebook_path, input.path].find((v): v is string => typeof v === 'string' && looksLikeFile(v.trim()))
+  if (named) return [{ path: named.trim(), family, reach: reachOfPath(named.trim(), folder) }]
+  const command = tool === 'Bash' || tool === 'PowerShell' ? input.command : undefined
+  if (typeof command !== 'string') return []
+  const out: TouchedFile[] = []
+  for (const piece of command.split(PIECES)) {
+    const tokens = piece.trim().split(/\s+/).filter(Boolean).map(unquote)
+    if (!tokens.length) continue
+    const of = judgeCommand(tokens, folder).family
+    for (const t of tokens) if (looksLikeFile(t)) out.push({ path: t, family: of, reach: reachOfPath(t, folder) })
+  }
+  for (const m of command.matchAll(/(?:^|[^0-9&>])>{1,2}\s*([^\s&|;]+)/g)) {
+    const t = unquote(m[1]!)
+    if (looksLikeFile(t)) out.push({ path: t, family: 'change', reach: reachOfPath(t, folder) })
+  }
+  return out
+}
+
+// tool-borders' order of risk: what happened to a file is the riskiest thing
+// done to it, whenever it happened.
+const FAMILY_RANK: Record<ToolFamily, number> = { bookkeeping: 0, read: 1, change: 2, delegate: 3, run: 4 }
+export const riskiest = (a: ToolFamily | undefined, b: ToolFamily): ToolFamily => (a && FAMILY_RANK[a] >= FAMILY_RANK[b] ? a : b)
+// A record written before files had a family: an edit was a change, else a read.
+export const fileFamily = (f: TouchedFile): ToolFamily => f.family ?? (f.isEdited ? 'change' : 'read')
+
+// Touched now: newest first, its family the riskiest so far.
+const touch = (files: TouchedFile[], now: TouchedFile[]): TouchedFile[] => {
+  let out = files
+  for (const f of now) {
+    const was = out.find(x => x.path === f.path)
+    out = [{ path: f.path, family: riskiest(was ? fileFamily(was) : undefined, f.family ?? 'read'), reach: f.reach }, ...out.filter(x => x.path !== f.path)]
+  }
+  return out.slice(0, FILES_MAX)
+}
+
+// A call starts: counted, a tick, a trail entry, and the files it touches.
+export const startCall = (a: AgentRun, id: string, tool: string, input: Record<string, unknown>, at: number, folder = root): AgentRun => {
+  const { family, reach } = classify(tool, input, folder)
+  const now = filesOf(tool, input, family, folder)
+  return {
+    ...a,
+    toolCalls: (a.toolCalls ?? 0) + 1,
+    kinds: { ...a.kinds, [family]: (a.kinds?.[family] ?? 0) + 1 },
+    ticks: [...(a.ticks ?? []), { id, family, reach, state: 'running' as const }].slice(-TICKS_MAX),
+    trail: [...(a.trail ?? []), { id, kind: 'tool' as const, text: toolLine(tool, input), tool: family, reach, state: 'running' as const }].slice(-TRAIL_MAX),
+    files: now.length ? touch(a.files ?? [], now) : a.files,
+    activeAt: at,
+  }
+}
+
+// A call ends: its tick and its trail entry take the outcome, wherever they are now.
+export const endCall = (a: AgentRun, id: string, isOk: boolean, at: number): AgentRun => {
+  const state = isOk ? ('ok' as const) : ('failed' as const)
+  return {
+    ...a,
+    failed: (a.failed ?? 0) + (isOk ? 0 : 1),
+    ticks: a.ticks?.map(t => (t.id === id ? { ...t, state } : t)),
+    trail: a.trail?.map(t => (t.id === id ? { ...t, state } : t)),
+    activeAt: at,
+  }
+}
+
+// A phrase of the request `slot`: its entry is replaced as the phrase grows,
+// thinking giving way to text, so one request keeps one entry.
+export const saySlot = (a: AgentRun, slot: string, kind: 'say' | 'think', text: string, at: number): AgentRun => {
+  const trail = a.trail ?? []
+  const entry = { id: slot, kind, text }
+  const has = trail.some(t => t.id === slot)
+  return {
+    ...a,
+    trail: has ? trail.map(t => (t.id === slot ? entry : t)) : [...trail, entry].slice(-TRAIL_MAX),
+    activeAt: at,
+  }
+}
+
+// How an agent's turn ended: an answer is done, an interruption stopped, a
+// refusal or an error failed.
+export const endStatus = (reason: string): AgentRun['status'] => (reason === 'answer' ? 'done' : reason === 'aborted' ? 'stopped' : 'failed')
+
+// What the engine says of an agent savvy still has running: killed is stopped,
+// failed failed, completed done; anything else (running, waiting, idle) leaves it.
+export const ENGINE_END: Record<string, AgentRun['status'] | undefined> = { killed: 'stopped', failed: 'failed', completed: 'done' }
+
+// Runs savvy still has running that the engine has ended, finished as the
+// engine says: a stop from the tasks list or TaskStop ends no turn savvy sees.
+// An agent the list does not name is left alone: a workflow's never are.
+export const reconcile = (list: AgentRun[], engine: { id: string; status: string }[], at: number): AgentRun[] => {
+  const ended = new Map(engine.map(x => [x.id, ENGINE_END[x.status]]))
+  return list.map(a => {
+    const status = a.status === 'running' && a.agentId ? ended.get(a.agentId) : undefined
+    if (!status) return a
+    return {
+      ...a,
+      status,
+      endedAt: at,
+      // Its calls still open ended with it.
+      ticks: a.ticks?.map(t => (t.state === 'running' ? { ...t, state: 'failed' as const } : t)),
+      trail: a.trail?.map(t => (t.state === 'running' ? { ...t, state: 'failed' as const } : t)),
+    }
+  })
+}
+
+// The first line of a final answer, its markdown dropped.
+export const firstLine = (answer: string): string => {
+  const line = answer.split('\n').map(l => l.replace(/^\s*(?:[-*+>#]+|\d+\.)\s*/, '').replace(/[`*_]/g, '').trim()).find(Boolean) ?? ''
+  return line.length > LIVE_MAX ? line.slice(0, LIVE_MAX - 1) + '…' : line
+}
+
+// Its text and thinking stream far faster than anyone reads: gathered here and
+// written once a second by the clock. `slot` names the request the phrase is of.
+type Pending = { text: string; thinking: string; slot: string; say?: { kind: 'say' | 'think'; text: string }; isActive: boolean; seen: number }
+// Module scope on purpose: a reload loses at most a second of it.
+const pending = new Map<string, Pending>()
+
+// Writes the phrases that came in since the last tick to the agents they belong
+// to, and that they were active: any chunk counts, a tool call's arguments too. An agent not in the list yet keeps its phrase for a later tick; one never
+// listed (a compaction fork) is dropped after a while.
+async function flushLive($: EngineInterface, at: number): Promise<void> {
+  if (!pending.size) return
+  const list = await read($, agents)
+  const known = new Set(list.map(a => a.agentId).filter(Boolean))
+  const running = new Set(list.filter(a => a.status === 'running').map(a => a.agentId))
+  const due = new Map<string, Pending>()
+  for (const [id, p] of pending) {
+    if (known.has(id) && (p.say || p.isActive)) due.set(id, p)
+    else if (known.has(id) ? !running.has(id) : at - p.seen > 30_000) pending.delete(id)
+  }
+  if (!due.size) return
+  const says = new Map([...due].map(([id, p]) => [id, p.say ? { slot: p.slot, ...p.say } : null]))
+  for (const p of due.values()) {
+    p.say = undefined
+    p.isActive = false
+  }
+  await update($, agents, l =>
+    l.map(a => {
+      if (!a.agentId || !says.has(a.agentId)) return a
+      const d = says.get(a.agentId)
+      return d ? saySlot(a, d.slot, d.kind, d.text, at) : { ...a, activeAt: at }
+    }),
+  )
+}
 
 // Opens the agents pane, or closes it when it is up; true when it ends up open.
 async function togglePane($: EngineInterface): Promise<boolean> {
@@ -942,12 +1575,20 @@ export const register: Register = (on, options) => {
       description: 'Show or hide the panel of subagents: running, finished and planned, with model, context, cost and time',
     })
 
-    // Ticks the running agents' clocks; quiet when nothing runs.
+    // Ticks the running agents' clocks and writes what they said and called; quiet when nothing runs.
     $.clock.every(1000, () => {
       void (async () => {
+        await flushLive($, await $.clock.now())
         const list = await read($, agents)
         if (!list.some(a => a.status === 'running')) return
         const at = await $.clock.now()
+        const engine = await $.agent.list().catch(() => [])
+        if (engine.some(x => ENGINE_END[x.status])) {
+          const before = list.filter(a => a.status === 'running').map(a => a.id).join()
+          const after = await update($, agents, l => reconcile(l, engine, at))
+          const moved = after.filter(a => a.status !== 'running' && before.split(',').includes(a.id))
+          for (const a of moved) await retally($, a.anchor, tr().autoTitle)
+        }
         await update($, now, () => at)
       })()
     })
@@ -994,6 +1635,39 @@ export const register: Register = (on, options) => {
     return { result: 'ok' }
   })
 
+  // Every subagent's tool calls: counted, ticked, put on its trail, and marked
+  // ✓ or ✗ when they end. Bookkeeping only: the start is written beside the
+  // call, never before it, and nothing here can stop or change a call.
+  on('tool.call', async ($, e, next) => {
+    const agentId = e.agentId
+    if (!agentId || e.tool === STEP_TOOL) return next(e)
+    const id = e.tool_use_id || `call:${Math.random().toString(36).slice(2)}`
+    const input = e as unknown as Record<string, unknown>
+    // What it said before the call goes on the trail ahead of it.
+    const p = pending.get(agentId)
+    const said = p?.say ? { slot: p.slot, ...p.say } : undefined
+    if (p) p.say = undefined
+    const started = (async () => {
+      root ||= await $.session.root().catch(() => '')
+      const at = await $.clock.now()
+      await update($, agents, l =>
+        l.map(a => (a.agentId === agentId ? startCall(said ? saySlot(a, said.slot, said.kind, said.text, at) : a, id, e.tool, input, at) : a)),
+      )
+    })().catch(() => undefined)
+    let isOk = false
+    try {
+      const result = await next(e)
+      isOk = result.deny === undefined && !(result as { isError?: boolean }).isError
+      return result
+    } finally {
+      try {
+        await started
+        const end = await $.clock.now()
+        await update($, agents, l => l.map(a => (a.agentId === agentId ? endCall(a, id, isOk, end) : a)))
+      } catch {}
+    }
+  })
+
   // Safety net: worker launches move the faint layer even if the orchestrator forgets to report.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const type = String(e.subagent_type ?? '')
@@ -1033,6 +1707,8 @@ export const register: Register = (on, options) => {
         costUsd: 0,
         steps: 0,
         round,
+        activeAt: at,
+        ...(e.workflow ? { isWorkflow: true } : {}),
       }
       return [...list.filter(a => a.id !== run.id), run].slice(-300)
     })
@@ -1050,10 +1726,31 @@ export const register: Register = (on, options) => {
 
   // Each model request of a subagent: live context, tokens and cost.
   on('turn.step', async function* ($, e, next) {
-    const result = yield* next(e)
     const agentId = e.agentId
+    if (!agentId) return yield* next(e)
+    // Its text as it streams: each request starts a new phrase, the chunks pass on untouched.
+    // Its text, or its thinking while it has written none, as one phrase per request.
+    const at = await $.clock.now().catch(() => 0)
+    let live = pending.get(agentId)
+    if (!live) pending.set(agentId, (live = { text: '', thinking: '', slot: '', isActive: true, seen: at }))
+    Object.assign(live, { text: '', thinking: '', slot: `say:${at}:${Math.random().toString(36).slice(2)}`, isActive: true, seen: at })
+    const stream = next(e)
+    for await (const chunk of stream) {
+      live.isActive = true
+      if (chunk.kind === 'text' && chunk.text) {
+        live.text = (live.text + chunk.text).slice(-2000)
+        const phrase = lastPhrase(live.text)
+        if (phrase) live.say = { kind: 'say', text: phrase }
+      } else if (chunk.kind === 'thinking' && chunk.text && !live.text) {
+        live.thinking = (live.thinking + chunk.text).slice(-2000)
+        const phrase = lastPhrase(live.thinking)
+        if (phrase) live.say = { kind: 'think', text: phrase }
+      }
+      yield chunk
+    }
+    const result = await stream.result
     const usage = result.usage
-    if (!agentId || !usage) return result
+    if (!usage) return result
 
     const model = usage.model || e.model
     // A finished agent resumed (SendMessage) runs again: its row's bar goes back to work.
@@ -1100,8 +1797,9 @@ export const register: Register = (on, options) => {
           const fallback = a.steps === 0 && e.usage
           return {
             ...a,
-            status: e.reason === 'answer' ? 'done' : 'failed',
+            status: endStatus(e.reason),
             endedAt: at,
+            ...(e.reason === 'answer' && typeof e.answer === 'string' && firstLine(e.answer) ? { result: firstLine(e.answer) } : {}),
             ...(fallback && e.usage
               ? {
                   model: e.usage.model || a.model,
@@ -1132,8 +1830,10 @@ export const register: Register = (on, options) => {
     const f = await read($, flow)
     const at = Math.max(await read($, now), ...list.map(a => a.startedAt), 0)
 
-    const running = list.filter(a => a.status === 'running').reverse()
-    const finished = list.filter(a => a.status !== 'running').reverse()
+    const { failed, running, finished } = groupsOf(list, at)
+    const runningCount = running.reduce((n, g) => n + g.agents.length, 0)
+    const finishedCount = finished.reduce((n, g) => n + g.agents.length, 0)
+    const all = [...list].reverse()
     const planned = plannedOf(f, list)
     const t = totals(list, at)
     // The pane's title says "Agents"; inside, only the flow's own name.
@@ -1150,27 +1850,39 @@ export const register: Register = (on, options) => {
     const toggleDone = (
       <Button
         key="done"
-        label={`${p.isDoneCollapsed ? '▸' : '▾'} ${s.finished} · ${finished.length}`}
+        label={`${p.isDoneCollapsed ? '▸' : '▾'} ${s.finished} · ${finishedCount}`}
         plain
         onPress={() => update($, panel, prev => ({ ...prev, isDoneCollapsed: !prev.isDoneCollapsed }))}
       />
     )
     const isEmpty = list.length === 0 && planned.length === 0
     const summary = `≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
+    // A group of two or more gets a header line; a lone agent is its own card.
+    const groupHead = (g: AgentGroup) => (g.agents.length > 1 ? <Text key={`g-${g.key}`} dimColor>{`${g.title} · ${g.agents.length} · ${fmtTime(g.span)}`}</Text> : null)
 
     if (e.surface === 'desktop' && 'Svg' in ui) {
       const { Svg } = ui
       const W = Math.max(240, Math.min(900, (e.props.bodyColumns || 40) * 8 - 8))
-      const section = (key: string, text: string) => (
-        <Text key={key} dimColor>
+      const section = (key: string, text: string, color?: string) => (
+        <Text key={key} dimColor={!color} color={color}>
           {text}
         </Text>
       )
+      const card = (a: AgentRun) => (
+        <Svg
+          key={a.id}
+          source={agentSvg(W, a, at)}
+          alt={`${a.description}: ${modelName(a.model)}, ${a.status === 'running' ? s.isRunning : s.isFinished}${a.trail?.length ? `: ${entryText(a.trail[a.trail.length - 1]!)}` : ''}`}
+          width={W}
+          height={agentHeight(a, at)}
+        />
+      )
+      const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(card)]
 
       if (p.isCompact) {
         return (
           <Box flexDirection="column" gap={1}>
-            <Svg source={compactSvg(W, list, planned, t)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={32} />
+            <Svg source={compactSvg(W, all, planned, t)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={32} />
             {toggleCompact}
           </Box>
         )
@@ -1180,15 +1892,12 @@ export const register: Register = (on, options) => {
           <Svg source={headerSvg(W, title, t)} alt={title ? `${title}: ${summary}` : summary} width={W} height={headerHeight(title)} />
           {toggleCompact}
           {isEmpty && <Text dimColor>{s.empty}</Text>}
-          {running.length > 0 && section('h-run', `${s.running} · ${running.length}`)}
-          {running.map(a => (
-            <Svg key={a.id} source={agentSvg(W, a, at)} alt={`${a.description}: ${modelName(a.model)}, ${s.isRunning}`} width={W} height={66} />
-          ))}
-          {finished.length > 0 && toggleDone}
-          {!p.isDoneCollapsed &&
-            finished.map(a => (
-              <Svg key={a.id} source={agentSvg(W, a, at)} alt={`${a.description}: ${modelName(a.model)}, ${s.isFinished}`} width={W} height={66} />
-            ))}
+          {failed.length > 0 && section('h-fail', `${s.failedGroup} · ${failed.length}`, FAIL)}
+          {failed.map(card)}
+          {runningCount > 0 && section('h-run', `${s.running} · ${runningCount}`)}
+          {running.flatMap(group)}
+          {finishedCount > 0 && toggleDone}
+          {!p.isDoneCollapsed && finished.flatMap(group)}
           {planned.length > 0 && section('h-plan', `${s.planned} · ${planned.length}`)}
           {planned.map(pl => (
             <Svg key={`plan-${pl.n}`} source={plannedSvg(W, pl)} alt={`${pl.n}. ${pl.title}: ${s.isPlanned}`} width={W} height={46} />
@@ -1204,7 +1913,7 @@ export const register: Register = (on, options) => {
       const { color, label: role } = roleOf(a)
       const ctx = ctxOf(a)
       const progress = progressOf(a)
-      const model = a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)
+      const parts = cardParts(a, at)
       const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal}${a.stepNote ? ' ' + a.stepNote : ''} · ` : ''
       return (
         <Box key={a.id} flexDirection="column" marginBottom={1}>
@@ -1213,24 +1922,80 @@ export const register: Register = (on, options) => {
             <Text bold wrap="truncate-end">
               {a.description || a.type}
             </Text>
-            <Text color={a.status === 'failed' ? 'red' : a.status === 'done' ? 'green' : color}>{STATUS_GLYPH[a.status]}</Text>
+            <Text color={a.status === 'failed' ? FAIL : a.status === 'done' ? OK : a.status === 'stopped' ? STOPPED : isOverdue(a, at) ? WARN : color}>{isOverdue(a, at) ? '◷' : STATUS_GLYPH[a.status]}</Text>
+            {(a.failed ?? 0) > 0 && <Text color={FAIL}>✗{a.failed}</Text>}
           </Box>
-          <Text dimColor wrap="truncate-end">
+          <Text wrap="truncate-end">
             {'  '}
-            {role} · {model}
-            {a.round > 1 ? ` · ${s.round} ${a.round}` : ''}
+            <Text bold>{role}</Text>
+            {' '}
+            <Text color={color}>{modelName(a.model)}</Text>
+            <Text dimColor>
+              {a.effort ? ` ${a.effort}` : ''}
+              {a.toolCalls ? ` · ${s.toolCalls(a.toolCalls)}` : ''}
+              {a.round > 1 ? ` · ${s.round} ${a.round}` : ''}
+              {a.status === 'failed' ? ` · ${s.failed}` : a.status === 'stopped' ? ` · ${s.stopped}` : ''}
+            </Text>
+            {isOverdue(a, at) && <Text color={WARN}>{` · ${s.overdue}`}</Text>}
           </Text>
           <Text wrap="truncate-end">
             {'  '}
-            {progress === null ? <Text dimColor>{ctxBar(ctx, barW)}</Text> : <Text color={color}>{ctxBar(progress * 100, barW)}</Text>}
+            <Text dimColor>{ctxBar(progress === null ? ctx : progress * 100, barW)}</Text>
             <Text dimColor>
               {' '}
               {steps}ctx {ctx}% · {fmtTokens(a.contextTokens)} ≈{fmtCost(a.costUsd)} {fmtTime(elapsed(a, at))}
             </Text>
           </Text>
+          {parts.mix && (
+            <Text wrap="truncate-end">
+              {'  '}
+              {FAMILY_ORDER.filter(k => a.kinds?.[k]).map(k => (
+                <Text key={k}>
+                  <Text color={toolColor(k, 'machine')}>■</Text>
+                  <Text dimColor>{` ${s.kinds[k]} ${a.kinds?.[k]}  `}</Text>
+                </Text>
+              ))}
+            </Text>
+          )}
+          {parts.trail.map((en, i) => {
+            const mark = entryMark(en)
+            return (
+              <Text key={en.id} wrap="truncate-end" dimColor={i > 0} italic={en.kind !== 'tool'}>
+                {'  '}
+                {entryText(en)}
+                {mark && <Text color={mark.color}>{` ${mark.glyph}`}</Text>}
+              </Text>
+            )
+          })}
+          {parts.idle && (
+            <Text color={WARN} wrap="truncate-end">
+              {'  ◷ '}
+              {parts.idle}
+            </Text>
+          )}
+          {parts.files && (
+            <Text wrap="truncate-end">
+              {'  '}
+              {(a.files ?? []).slice(0, 6).map((fl, i) => (
+                <Text key={fl.path} color={toolColor(fileFamily(fl), fl.reach ?? 'machine')}>
+                  {i ? ', ' : ''}
+                  {baseName(fl.path)}
+                </Text>
+              ))}
+              {(a.files?.length ?? 0) > 6 && <Text dimColor>{` +${(a.files?.length ?? 0) - 6}`}</Text>}
+            </Text>
+          )}
+          {parts.result && (
+            <Text dimColor wrap="truncate-end">
+              {'  “'}
+              {parts.result}
+              {'”'}
+            </Text>
+          )}
         </Box>
       )
     }
+    const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(row)]
 
     return (
       <Box flexDirection="column">
@@ -1245,7 +2010,7 @@ export const register: Register = (on, options) => {
         </Text>
         {p.isCompact ? (
           <Text wrap="truncate-end">
-            {[...running, ...finished].map(a => (
+            {all.map(a => (
               <Text key={a.id} color={roleOf(a).color}>
                 {STATUS_GLYPH[a.status]}{' '}
               </Text>
@@ -1259,11 +2024,13 @@ export const register: Register = (on, options) => {
         ) : (
           <Box flexDirection="column" marginTop={1}>
             {isEmpty && <Text dimColor>{s.empty}</Text>}
-            {running.length > 0 && <Text dimColor>{s.running} · {running.length}</Text>}
-            {running.map(row)}
-            {finished.length > 0 && toggleDone}
-            {!p.isDoneCollapsed && finished.map(row)}
-            {planned.length > 0 && <Text dimColor>{s.planned} · {planned.length}</Text>}
+            {failed.length > 0 && <Text color={FAIL}>{`${s.failedGroup} · ${failed.length}`}</Text>}
+            {failed.map(row)}
+            {runningCount > 0 && <Text dimColor>{`${s.running} · ${runningCount}`}</Text>}
+            {running.flatMap(group)}
+            {finishedCount > 0 && toggleDone}
+            {!p.isDoneCollapsed && finished.flatMap(group)}
+            {planned.length > 0 && <Text dimColor>{`${s.planned} · ${planned.length}`}</Text>}
             {planned.map(pl => {
               const tier = pl.tier in TIER_COLOR ? pl.tier : 'other'
               return (
@@ -1304,10 +2071,17 @@ export const register: Register = (on, options) => {
     const title = tool === 'Workflow' && typeof output?.workflowName === 'string' && output.workflowName ? output.workflowName : f.title
     const { crew, isWorking } = await crewOf($, f)
     const crewButton = <Button key="savvy-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />
+    const columns = e.viewport?.columns || 100
+    // An Agent or Workflow call's own agents draw their activity strip; a flow keeps its bar.
+    const mine = f.kind === 'agents' ? (await read($, agents)).filter(a => a.anchor === e.requestId) : []
+    const at = Math.max(await read($, now), ...mine.map(a => a.startedAt), 0)
+    const title1 = mine.length === 1 && tool === 'Agent' ? mine[0]!.description || title : title
     return (
       <Box key="savvy-row" flexDirection="column">
         {engineRow}
-        {barRow(ui, e.surface, e.viewport?.columns || 100, { ...f, title }, isWorking, crewButton, 'savvy-bar')}
+        {mine.length > 0
+          ? stripRow(ui, e.surface, columns, title1, mine, at, crewButton, 'savvy-bar')
+          : barRow(ui, e.surface, columns, { ...f, title }, isWorking, crewButton, 'savvy-bar')}
       </Box>
     )
   })
@@ -1332,9 +2106,12 @@ export const register: Register = (on, options) => {
       <Button key="savvy-band-dismiss" label="✕" plain role="dismiss" onPress={() => update($, panel, q => ({ ...q, bandDismissed: key }))} />,
     ]
     const columns = e.props.bodyColumns || e.viewport?.columns || 100
+    const crewAt = shown.crew ? Math.max(await read($, now), ...shown.crew.map(a => a.startedAt), 0) : 0
     const card = (
       <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1}>
-        {barRow(ui, e.surface, columns, bar, isWorking, buttons, 'savvy-band-bar')}
+        {shown.crew
+          ? rollRow(ui, e.surface, columns, shown.crew, crewAt, buttons, 'savvy-band-bar')
+          : barRow(ui, e.surface, columns, bar, isWorking, buttons, 'savvy-band-bar')}
       </Box>
     )
     return shareBand(Box, below, card)

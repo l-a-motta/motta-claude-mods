@@ -70,13 +70,13 @@ describe('tally', () => {
   })
 })
 
-test("an Agent call's row draws its own agent's bar", async ($, on) => {
+test("an Agent call's row draws its own agent's activity strip", async ($, on) => {
   engine(on)
   await spawn($, 't1')
   await spawn($, 't2')
   const drawing = await row($, 'terminal', 'Agent', 't1')
-  expect(await drawing.find({ type: 'Text', text: 'Subagents' })).toBeDefined()
-  expect(await drawing.find({ type: 'Text', text: 'Agents 0/1' })).toBeDefined()
+  expect(await drawing.find({ type: 'Text', text: 'Look around' })).toBeDefined()
+  expect(await drawing.find({ type: 'Text', text: '0:00' })).toBeDefined()
   const root = (await (await row($, 'desktop', 'Agent', 't2')).drawn()) as Node
   expect(root.props?.key).toBe('savvy-row')
   expect(root.children?.[0]?.type).toBe('engine')
@@ -89,7 +89,7 @@ test("a Workflow call's row counts its whole run", async ($, on) => {
   await spawn($, 't9')
   const drawing = await row($, 'terminal', 'Workflow', 'w1')
   expect(await drawing.find({ type: 'Text', text: 'Workflow' })).toBeDefined()
-  expect(await drawing.find({ type: 'Text', text: 'Agents 0/2' })).toBeDefined()
+  expect(await drawing.find({ type: 'Text', text: '0/2 · 0:00' })).toBeDefined()
 })
 
 test('other tools, and calls with no agents, are left as the engine draws them', async ($, on) => {
@@ -145,7 +145,7 @@ describe('roleOf', () => {
   const role = (type: string, model = 'claude-opus-5-5', effort?: string) => roleOf({ type, model, effort })
 
   test('a savvy agent wears its tier, named by it', () => {
-    expect(role('savvy-flow:savvy-careful')).toEqual({ costume: 'careful', color: '#BA7517', label: 'careful' })
+    expect(role('savvy-flow:savvy-careful')).toEqual({ costume: 'careful', color: '#7F77DD', label: 'careful' })
   })
 
   test("a role the name spells out comes before the model's tier", () => {
@@ -164,7 +164,13 @@ describe('roleOf', () => {
     expect(role('general-purpose', 'claude-fable-5-1').costume).toBe('fable')
   })
 
-  test('the rest keep the plain crab, in a color their type always gets', () => {
+  test("every agent's color is its model's, whatever its role", () => {
+    expect(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'].map(m => role('hd-auditor', m).color)).toEqual([
+      '#7F77DD', '#1D9E75', '#7FAF2E', '#D4537E',
+    ])
+  })
+
+  test('the rest keep the plain crab, in their model\'s color', () => {
     const a = role('general-purpose')
     expect(a.costume).toBe('other')
     expect(role('general-purpose').color).toBe(a.color)

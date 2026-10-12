@@ -1,7 +1,7 @@
 {
   "name": "savvy-progress",
-  "version": "1.7.0",
-  "description": "Live progress bars under each Agent, Workflow and /savvy-flow call in the transcript and, while they run, in the band above the prompt under the status line, plus an agents panel (/agents-info): running, finished and planned subagents with model, task progress, context, cost and time.",
+  "version": "1.8.0",
+  "description": "A row under each Agent and Workflow call with an activity strip (a tick per tool call, colored as tool-borders colors it), a roll call of crabs in the band above the prompt while agents work, and an agents panel (/agents-info): each subagent's model, tool calls by kind, last actions as they stream, files touched, answer, cost and time; failed agents pinned, stopped and overdue ones marked.",
   "author": {
     "name": "johnnyvizz",
     "url": "https://github.com/johnnyvizz"

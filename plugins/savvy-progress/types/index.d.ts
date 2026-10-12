@@ -20,7 +20,8 @@ export type Flow = {
   kind?: 'agents' | 'steps'
 }
 
-export type AgentStatus = 'running' | 'done' | 'failed'
+/** `stopped`: interrupted, from the tasks list, TaskStop or Esc; not a failure. */
+export type AgentStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 export type AgentRun = {
   id: string
@@ -44,6 +45,58 @@ export type AgentRun = {
   stepDone?: number
   stepTotal?: number
   stepNote?: string
+  /** Tool calls the agent made, its own `step` reports left out. */
+  toolCalls?: number
+  /** Of those, the ones that failed: an error, a refusal or an abort. */
+  failed?: number
+  /** Tool calls by family, as tool-borders names them. */
+  kinds?: Record<string, number>
+  /** The latest tool calls in order, one tick each, for the activity strip. */
+  ticks?: Tick[]
+  /** Its latest actions, oldest first: tool calls, and what it said or thought. */
+  trail?: TrailEntry[]
+  /** Files it read or wrote, newest first. */
+  files?: TouchedFile[]
+  /** The first line of its final answer. */
+  result?: string
+  /** When it last streamed text or started or ended a tool call. */
+  activeAt?: number
+  /** Started by a workflow run, not an Agent call. */
+  isWorkflow?: boolean
+}
+
+/** What a call does and how far it reaches, as tool-borders classifies it (hooks/tool-kinds.ts). */
+export type ToolFamily = 'bookkeeping' | 'read' | 'change' | 'delegate' | 'run'
+export type ToolReach = 'project' | 'machine' | 'internet'
+
+export type CallState = 'running' | 'ok' | 'failed'
+
+export type Tick = {
+  /** The call's tool_use_id, which its end matches. */
+  id: string
+  family: ToolFamily
+  reach: ToolReach
+  state: CallState
+}
+
+export type TrailEntry = {
+  id: string
+  /** A tool call, a phrase of its text, or a phrase of its thinking. */
+  kind: 'tool' | 'say' | 'think'
+  text: string
+  /** A tool call's family, reach and outcome. */
+  tool?: ToolFamily
+  reach?: ToolReach
+  state?: CallState
+}
+
+export type TouchedFile = {
+  path: string
+  /** The riskiest thing done to it (tool-borders' order), and how far it is. */
+  family?: ToolFamily
+  reach?: ToolReach
+  /** Written before files had a family: an edit. */
+  isEdited?: boolean
 }
 
 export type Panel = {
