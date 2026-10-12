@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { ago, branchUrl, driftOf, httpsUrl, modelLabel, parseChanges, parseCommit, parsePr, parseStatus, prChange, statusLetter, whereOf, withNumstat } from '../hooks/register.tsx'
+import { ago, branchUrl, driftOf, httpsUrl, modelLabel, parseCommit, parsePr, parseStatus, prChange, whereOf } from '../hooks/register.tsx'
 import type { Pr } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS, PR_JSON } from './session.tsx'
 
@@ -16,19 +16,6 @@ describe('parseStatus', () => {
 
   test('reads a repository with no commits yet', () => {
     expect(parseStatus('## No commits yet on main\n').branch).toBe('main')
-  })
-})
-
-describe('parseChanges and withNumstat', () => {
-  test('lists each changed file, a rename by its new path, with its lines', () => {
-    const changes = parseChanges('## dev\nM  a.ts\nR  old.ts -> new.ts\n?? notes.md\n')
-    expect(changes.map(c => [c.status, c.path])).toEqual([['M ', 'a.ts'], ['R ', 'new.ts'], ['??', 'notes.md']])
-    const counted = withNumstat(changes, '4\t2\ta.ts\n-\t-\tnew.ts\n')
-    expect(counted.map(c => [c.added, c.deleted])).toEqual([[4, 2], [null, null], [null, null]])
-  })
-
-  test('names a status by one letter', () => {
-    expect(['M ', ' M', 'A ', 'D ', 'R ', 'UU', '??'].map(statusLetter)).toEqual(['M', 'M', 'A', 'D', 'R', 'U', '?'])
   })
 })
 

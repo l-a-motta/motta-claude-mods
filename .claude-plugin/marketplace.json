@@ -10,7 +10,22 @@
     {
       "name": "motta-statusline",
       "source": "./plugins/motta-statusline",
-      "description": "Two-line status line: where the session runs, repo and branch links, git state with push state and the last commit, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, a context bar with the auto-compact point, rate-limit bars with a pace tick and panes for changes, context and usage, a prompt-cache countdown, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
+      "description": "Two-line status line: where the session runs, repo and branch links, git state with push state and the last commit, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, a context bar with the auto-compact point, rate-limit bars with a pace tick (files, ctx, 5h and 7d open the panes of changes-drill, context-drill and usage-drill), a prompt-cache countdown, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
+    },
+    {
+      "name": "context-drill",
+      "source": "./plugins/context-drill",
+      "description": "A Context pane that drills into what fills the window: the /context categories, where auto-compact fires (with Compact now), and the memory files, MCP tools by server, agents and skills behind them. motta-statusline's ctx opens it; so does /context-drill."
+    },
+    {
+      "name": "changes-drill",
+      "source": "./plugins/changes-drill",
+      "description": "A Changes pane: each file changed against HEAD with its git status and lines added and deleted, fresh on open and after each turn. motta-statusline's files opens it; so does /changes-drill."
+    },
+    {
+      "name": "usage-drill",
+      "source": "./plugins/usage-drill",
+      "description": "A Usage pane: each rate limit (5h, 7d) with its percent, reset time, where the pace so far ends and its readings this window against an even pace. motta-statusline's 5h and 7d open it; so does /usage-drill."
     },
     {
       "name": "assumption-check",

@@ -1,0 +1,11 @@
+{
+  "name": "changes-drill",
+  "version": "0.1.0",
+  "description": "A Changes pane: each file changed against HEAD with git's status letter and its lines added and deleted, read fresh on open and after each turn while it is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

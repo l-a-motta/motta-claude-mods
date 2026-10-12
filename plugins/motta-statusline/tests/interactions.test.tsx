@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { folderOpeners, projection, sparkText, turnsToCompact } from '../hooks/register.tsx'
+import { folderOpeners, projection, turnsToCompact } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS, runs } from './session.tsx'
 
 const HOUR = 3_600_000
@@ -30,14 +30,6 @@ describe('folderOpeners', () => {
       ['explorer.exe', 'C:\\code\\app'],
     ])
     expect(folderOpeners('/home/me/app')).toEqual([['open', '/home/me/app'], ['xdg-open', '/home/me/app']])
-  })
-})
-
-describe('sparkText', () => {
-  test('draws a block per slice of the window gone, each as tall as its last reading', () => {
-    // A 10-hour window opened at 0: readings of 0% then 50% five hours in, drawn at hour 6.
-    const line = sparkText([[0, 0], [5 * HOUR, 50]], 10 * HOUR, 10 * HOUR, 6 * HOUR, 10)
-    expect(line).toBe('▁▁▁▁▅▅····')
   })
 })
 
@@ -92,51 +84,6 @@ test('cycles the last slot through rate, cost, session and runway', async ($, on
   expect(await label()).toBe('compact')
   await ui.press({ key: 'slot' })
   expect(await label()).toBe('out')
-  await ui.unmount()
-})
-
-test('opens the Changes pane from the file counts, each file with its lines', async ($, on) => {
-  answerSession(on, null, 'nothing', WORKTREE)
-  const opened: string[] = []
-  on('ui.open', ($, e) => {
-    opened.push(e.id)
-    return { value: { isPlaced: true } }
-  })
-  const band = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
-  await band.press({ key: 'changes' })
-  expect(opened).toEqual(['statusline-changes'])
-  const pane = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'Pane', requestId: 'statusline-changes', props: {} as never })
-  expect(await pane.find({ type: 'Text', text: 'manifest.json' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '+3' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: 'notes.md' })).toBeDefined()
-  await pane.unmount()
-  await band.unmount()
-})
-
-test('opens the Usage pane from a limit, with its projection', async ($, on) => {
-  const clock = answerSession(on)
-  const opened: string[] = []
-  on('ui.open', ($, e) => {
-    opened.push(e.id)
-    return { value: { isPlaced: true } }
-  })
-  on('session.measure', ($, e) => ({ changed: e.changed }))
-  const ui = await $.ui.mount({
-    plugin: 'motta-statusline',
-    surface: 'terminal',
-    component: 'PromptHint',
-    props: { isDraft: false, isWorking: false, hint: 'esc to interrupt' },
-  })
-  await $.session.measure({
-    context: { tokens: 360_000, window: 1_000_000, percent: 36 },
-    rateLimits: [{ kind: 'five_hour', percentUsed: 19, resetsAt: new Date(clock.now() + 1.8 * HOUR).toISOString() }],
-    changed: ['rateLimits'],
-  })
-  await ui.press({ key: 'usage-5h' })
-  expect(opened).toEqual(['statusline-usage'])
-  const pane = await $.ui.mount({ plugin: 'motta-statusline', surface: 'terminal', component: 'Pane', requestId: 'statusline-usage', props: {} as never })
-  expect(await pane.find({ type: 'Text', text: '64% of the window gone · at this pace about 30% by the reset' })).toBeDefined()
-  await pane.unmount()
   await ui.unmount()
 })
 
