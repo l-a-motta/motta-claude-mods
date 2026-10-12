@@ -31,8 +31,7 @@ export const PR_JSON = JSON.stringify({
 // its hint line, and the opaque reference it hands back for an empty band;
 // with `beneath`, what a plugin beneath draws in the band instead:
 // prompt-enhancer's chip or card, savvy-progress's card with the chips
-// beside it (their hooks ran beneath it), or a tree that takes the band, as
-// replay-theater's does. With `worktree`, the session runs in a worktree of
+// beside it (their hooks ran beneath it), or a tree that takes the band. With `worktree`, the session runs in a worktree of
 // the repository, on its own branch, while the repository's root is the main
 // checkout. Every process run is recorded in `runs`.
 type GhAnswer = string | null | { stderr: string }

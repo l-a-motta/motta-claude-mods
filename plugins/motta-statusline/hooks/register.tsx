@@ -36,8 +36,7 @@
 //   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
-//   tree takes the band, as replay-theater's does while it has something to
-//   show.
+//   tree takes the band.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.

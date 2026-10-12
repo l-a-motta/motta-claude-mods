@@ -1,2 +1,4 @@
 # Type files the engine writes beside a mod it loads from a folder.
 .claude-plugin/types/
+# and the tsconfig.json that extends them.
+tsconfig.json
