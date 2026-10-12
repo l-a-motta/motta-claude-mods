@@ -1491,13 +1491,13 @@ export const register: Register = (on, options) => {
               ? stamp(n.mtime)
               : ''
       const locText = loc ? `${loc[0] ? ` +${loc[0]}` : ''}${loc[1] ? ` -${loc[1]}` : ''}` : ''
-      const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
-      const badge: Seg[] = dirCounts.length
-        ? dirCounts
-        : status
-          ? tag(status, gitColor ?? theme.muted)
-          : isIgnored
-            ? [{ t: unicode ? ' ⊘' : ' \u{f05e}', c: VSCODE.ignored }]
+      // Git tags are for files; a folder says something changed inside by its name's color.
+      const badge: Seg[] = isIgnored
+        ? [{ t: unicode ? ' ⊘' : ' \u{f05e}', c: VSCODE.ignored }]
+        : n.kind === 'dir'
+          ? []
+          : status
+            ? tag(status, gitColor ?? theme.muted)
             : [{ t: '    ' }]
       const badgeText = badge.map(c => c.t).join('')
       const cols = Math.max(4, width - r.depth * 2 - 6 - (meta ? meta.length + 1 : 0) - locText.length - badgeText.length - (verb ? verb.length + 3 : 0))
@@ -1562,7 +1562,7 @@ export const register: Register = (on, options) => {
           { sample: tagText('?', GIT_COLOR['?'] ?? theme.muted), text: 'new, not in git' },
           { sample: tagText('D', GIT_COLOR.D ?? theme.muted), text: 'deleted' },
           { sample: tagText('U', GIT_COLOR.U ?? theme.muted), text: 'merge conflict' },
-          { sample: tagText('M:2', GIT_COLOR.M ?? theme.muted), text: 'changed files inside' },
+          { sample: <Text color={GIT_COLOR.M}>src</Text>, text: 'folder: changes inside' },
           { sample: <Text color={VSCODE.ignored}>{glyphOf('⊘', '\u{f05e}')}</Text>, text: 'ignored by git' },
           {
             sample: (
