@@ -2,7 +2,8 @@ import { type BuiltinToolResults, type EngineInterface, type Register, type Time
 import { LINUX_LAUNCH, openCommand, openWithCommand } from './open'
 
 import type { Activity, FileNode, FileTree, Outside, Theme } from '../types'
-import { BRANCH_ICON, chainOf, type GitAction, gitActions, readOnly, readTargets, resolve, TONES } from './git'
+import { BRANCH_ICON, chainOf, type GitAction, gitActions, readOnly, readTargets, resolve } from './git'
+import { FAR_TONES, TONES, VSCODE } from './colors'
 import type { RowSpec, RowsProps, Seg } from './rows'
 import { CHEVRON_CLOSED, CHEVRON_OPEN, fileIcon, GIT_COLOR } from './icons'
 import {
@@ -37,7 +38,9 @@ const THEME = { plugin: 'filetree', key: 'theme' } as const
 const ACTIVITY = { plugin: 'filetree', key: 'activity' } as const
 const OUTSIDE = { plugin: 'filetree', key: 'outside' } as const
 const PANE = 'filetree'
-const SHIMMER = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, { bright: v.bright, dim: v.dim }]))
+const shimmerOf = (tones: typeof TONES) => Object.fromEntries(Object.entries(tones).map(([k, v]) => [k, { bright: v.bright, dim: v.dim }]))
+const SHIMMER = shimmerOf(TONES)
+const FAR_SHIMMER = shimmerOf(FAR_TONES)
 const BRANCH_ROW = '#branch'
 const FLASH_MS = 2700
 const RUNNING_MAX_MS = 600_000
@@ -52,9 +55,7 @@ const ACTIVITY_TTL_MS = 45_000
 // is under its root. A prompt or the × clears them; the terminal shows the newest few.
 const OUTSIDE_KEEP = 50
 const OUTSIDE_ROWS = 5
-const OUTSIDE_VERB: Record<string, string> = { purple: 'read', orange: 'changed' }
-const ADD_COLOR = '#98c379'
-const DEL_COLOR = '#e06c75'
+const OUTSIDE_VERB: Record<string, string> = { read: 'read', change: 'changed' }
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
 const THEME_POLL_MS = 2000
 const FONT_SCRIPT =
@@ -175,7 +176,7 @@ async function noteOutside($: EngineInterface, tones: Record<string, string>): P
   const paths = Object.keys(tones)
   if (paths.length === 0) return
   const mine = ++outsideGen
-  await update($, OUTSIDE, cur => [...paths.map(path => ({ path, tone: tones[path] ?? 'orange', lit: true })), ...(cur ?? []).filter(o => !(o.path in tones))].slice(0, OUTSIDE_KEEP))
+  await update($, OUTSIDE, cur => [...paths.map(path => ({ path, tone: tones[path] ?? 'change', lit: true })), ...(cur ?? []).filter(o => !(o.path in tones))].slice(0, OUTSIDE_KEEP))
   outsideBlink?.cancel()
   outsideBlink = $.clock.after(FLASH_MS, () => {
     if (outsideGen !== mine) return
@@ -506,7 +507,7 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
       for (const id of cur.flashDim) dim.add(id)
     }
     for (const id of unique) {
-      const tone = tones[id] ?? 'orange'
+      const tone = tones[id] ?? 'change'
       all[id] = tone
       if (id === BRANCH_ROW) continue
       const chain = ancestorsOf(id, cur.root)
@@ -742,7 +743,7 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       return { expanded: cur.expanded.filter(id => ids.has(id)) }
     })
     const present = new Set((await get($)).nodes.map(n => n.id))
-    const touchTone = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))?.tone ?? 'orange'
+    const touchTone = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))?.tone ?? 'change'
     if (showWrites) for (const id of hits) if (present.has(id)) tones[id] = touchTone
   }
   if (showReads) {
@@ -754,11 +755,11 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
         if (away.length < OUTSIDE_KEEP && (await exists($, r))) away.push(r)
       } else if (found.length < READ_REVEAL_LIMIT && r !== t.root && !underAny(r, ignored, t.root) && (await exists($, r))) found.push(r)
     }
-    if (away.length) await noteOutside($, Object.fromEntries(away.map(p => [p, 'purple'])))
+    if (away.length) await noteOutside($, Object.fromEntries(away.map(p => [p, 'read'])))
     if (found.length) {
       await revealPaths($, found)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const r of found) if (shown.has(r) && !tones[r]) tones[r] = 'purple'
+      for (const r of found) if (shown.has(r) && !tones[r]) tones[r] = 'read'
     }
   }
   if (showWrites && actions.length) {
@@ -768,11 +769,11 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       const paths = (await gitPaths($, final.root, final.prefix, committed)).filter(x => !underAny(x, ignored, final.root)).slice(0, READ_REVEAL_LIMIT)
       await revealPaths($, paths)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const x of paths) if (shown.has(x)) tones[x] = 'green'
+      for (const x of paths) if (shown.has(x)) tones[x] = 'commit'
     }
     const pushLike = actions.find(a => ['push', 'pull', 'fetch', 'checkout', 'switch', 'branch', 'merge', 'rebase', 'tag'].includes(a.verb) || a.kind.startsWith('gh '))
     if (pushLike) tones[BRANCH_ROW] = pushLike.tone
-    else if (committed) tones[BRANCH_ROW] = 'green'
+    else if (committed) tones[BRANCH_ROW] = 'commit'
   }
   await flash($, tones)
 }
@@ -797,7 +798,7 @@ function scheduleScan($: EngineInterface, job: Job): void {
 }
 
 async function touched($: EngineInterface, paths: string[], tone: string, show: boolean): Promise<void> {
-  if (tone !== 'purple' && previewed && paths.map(posix).includes(previewed.path)) previewed = null
+  if (tone !== 'read' && previewed && paths.map(posix).includes(previewed.path)) previewed = null
   if (await followCwd($)) return
   const t = await get($)
   if (!t.root) return
@@ -806,7 +807,7 @@ async function touched($: EngineInterface, paths: string[], tone: string, show: 
   const away = all.filter(p => !inside(t.root, p))
   if (show && away.length) await noteOutside($, Object.fromEntries(away.map(p => [p, tone])))
   if (within.length === 0) return
-  if (tone !== 'purple') {
+  if (tone !== 'read') {
     searchIndex = null
     await staleSizes($, within)
     await revealPaths($, within.map(dirname))
@@ -1186,7 +1187,7 @@ export const register: Register = (on, options) => {
           : 'notebook_path' in e && typeof e.notebook_path === 'string'
             ? e.notebook_path
             : ''
-      if (file) void touched($, [file], 'orange', showWrites)
+      if (file) void touched($, [file], 'change', showWrites)
     }
     return result
   })
@@ -1194,7 +1195,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const result = await next(e)
     if (result.deny || result.isError || e.tool !== 'Read' || !showReads) return result
-    void touched($, [posix(e.file_path)], 'purple', true)
+    void touched($, [posix(e.file_path)], 'read', true)
     return result
   })
 
@@ -1398,9 +1399,9 @@ export const register: Register = (on, options) => {
     const countSegs = (c: [number, number, number] | undefined): Seg[] => {
       if (!c) return []
       const out: Seg[] = []
-      if (c[0] > 0) out.push({ t: ` ?:${c[0]}`, c: GIT_COLOR['?'] ?? ADD_COLOR })
-      if (c[1] > 0) out.push({ t: ` M:${c[1]}`, c: GIT_COLOR.M ?? '#e5c07b' })
-      if (c[2] > 0) out.push({ t: ` D:${c[2]}`, c: theme.urgent })
+      if (c[0] > 0) out.push({ t: ` ?:${c[0]}`, c: GIT_COLOR['?'] })
+      if (c[1] > 0) out.push({ t: ` M:${c[1]}`, c: GIT_COLOR.M })
+      if (c[2] > 0) out.push({ t: ` D:${c[2]}`, c: GIT_COLOR.D })
       return out
     }
     const rootCounts = t.top ? countSegs(t.counts[t.root]) : []
@@ -1411,12 +1412,12 @@ export const register: Register = (on, options) => {
       const own = t.git[n.id]
       const status = own ?? (underAny(dirname(n.id), untracked, t.root) ? '?' : undefined)
       const isIgnored = !status && underAny(n.id, ignored, t.root)
-      const gitColor = status === 'D' || status === 'U' ? theme.urgent : status ? (GIT_COLOR[status] ?? theme.muted) : undefined
+      const gitColor = status ? (GIT_COLOR[status] ?? theme.muted) : undefined
       const isBright = bright.has(n.id)
       const isDim = !isBright && dimmed.has(n.id)
-      const tone = t.flashTones[n.id] ?? 'orange'
-      const iconColor = isIgnored ? theme.muted : (gitColor ?? (n.hidden ? theme.muted : n.kind === 'dir' ? theme.accent : theme.muted))
-      const nameColor = isIgnored ? theme.muted : (gitColor ?? (n.hidden ? theme.muted : theme.fg || undefined))
+      const tone = t.flashTones[n.id] ?? 'change'
+      const iconColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : n.kind === 'dir' ? theme.accent : theme.muted))
+      const nameColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : theme.fg || undefined))
       const loc = t.diff[n.id]
       const meta = t.showSize
         ? n.kind === 'dir'
@@ -1449,10 +1450,10 @@ export const register: Register = (on, options) => {
       ]
       const right: Seg[] = []
       if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
-      if (loc && loc[0] > 0) right.push({ t: ` +${loc[0]}`, c: ADD_COLOR })
-      if (loc && loc[1] > 0) right.push({ t: ` -${loc[1]}`, c: DEL_COLOR })
+      if (loc && loc[0] > 0) right.push({ t: ` +${loc[0]}`, c: VSCODE.linesAdded })
+      if (loc && loc[1] > 0) right.push({ t: ` -${loc[1]}`, c: VSCODE.linesRemoved })
       right.push(...dirCounts)
-      if (badge) right.push({ t: badge, c: status ? gitColor : theme.muted, b: true })
+      if (badge) right.push({ t: badge, c: status ? gitColor : isIgnored ? VSCODE.ignored : theme.muted, b: true })
       return { id: n.id, left: clean(left), right: clean(right) }
     }
 
@@ -1466,7 +1467,7 @@ export const register: Register = (on, options) => {
       return {
         id: o.path,
         left: clean([{ t: '  ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }]),
-        right: [{ t: ` ${verb} `, c: TONES[o.tone]?.solid ?? theme.muted }],
+        right: [{ t: ` ${verb} `, c: FAR_TONES[o.tone]?.solid ?? theme.muted }],
       }
     }
     const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0) + stripRows
@@ -1537,7 +1538,7 @@ export const register: Register = (on, options) => {
       if (!t.top || !t.branch) return null
       const b = t.branch
       const isFlash = bright.has(BRANCH_ROW)
-      const tone = t.flashTones[BRANCH_ROW] ?? 'teal'
+      const tone = t.flashTones[BRANCH_ROW] ?? 'push'
       const label = b.head
       return (
         <Box flexDirection="row" height={1} overflow="hidden">
@@ -1546,8 +1547,8 @@ export const register: Register = (on, options) => {
             <Text bold color={isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined}>
               {label}
             </Text>
-            {b.ahead > 0 && <Text color={TONES.teal?.solid}>{` ↑${b.ahead}`}</Text>}
-            {b.behind > 0 && <Text color={TONES.blue?.solid}>{` ↓${b.behind}`}</Text>}
+            {b.ahead > 0 && <Text color={TONES.push?.solid}>{` ↑${b.ahead}`}</Text>}
+            {b.behind > 0 && <Text color={TONES.pull?.solid}>{` ↓${b.behind}`}</Text>}
           </Box>
           {b.upstream && (
             <Box flexShrink={1} overflow="hidden">
@@ -1558,8 +1559,8 @@ export const register: Register = (on, options) => {
           )}
           <Box flexGrow={1} />
           <Box flexDirection="row" flexShrink={0}>
-            {totals[0] > 0 && <Text color={ADD_COLOR}>{` +${totals[0]}`}</Text>}
-            {totals[1] > 0 && <Text color={DEL_COLOR}>{` -${totals[1]}`}</Text>}
+            {totals[0] > 0 && <Text color={VSCODE.linesAdded}>{` +${totals[0]}`}</Text>}
+            {totals[1] > 0 && <Text color={VSCODE.linesRemoved}>{` -${totals[1]}`}</Text>}
             {rootCounts.map(c => (
               <Text color={c.c}>{c.t}</Text>
             ))}
@@ -1570,7 +1571,7 @@ export const register: Register = (on, options) => {
     }
 
     const chip = (a: Activity) => {
-      const tone = a.state === 'failed' ? 'red' : a.tone
+      const tone = a.state === 'failed' ? 'failed' : a.tone
       const color = TONES[tone]?.solid ?? theme.accent
       const icon = unicode ? a.plain : a.nerd
       const hash = a.state === 'done' && a.kind === 'git commit' ? a.detail.split(' ')[0] ?? '' : ''
@@ -1688,7 +1689,7 @@ export const register: Register = (on, options) => {
               active: '',
               activeBg: theme.selection,
               hoverBg: faint(theme.selection),
-              tones: SHIMMER,
+              tones: FAR_SHIMMER,
               pointer,
             } satisfies RowsProps}
           />

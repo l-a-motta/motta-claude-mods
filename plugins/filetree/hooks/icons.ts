@@ -1,4 +1,5 @@
 import type { FileNode } from '../types'
+import { VSCODE } from './colors'
 
 const cp = (n: number) => String.fromCodePoint(n)
 
@@ -114,13 +115,17 @@ export function fileIcon(n: FileNode, open: boolean, isRepo: boolean): string {
   return cp(EXTS[ext] ?? 0xf0214)
 }
 
+// VS Code's colors for the same letters; it has none for copied or a type change,
+// so those take renamed's and modified's.
 export const GIT_COLOR: Record<string, string> = {
-  A: '#98c379',
-  '?': '#98c379',
-  R: '#61afef',
-  C: '#61afef',
-  M: '#e5c07b',
-  T: '#e5c07b',
+  A: VSCODE.added,
+  '?': VSCODE.untracked,
+  R: VSCODE.renamed,
+  C: VSCODE.renamed,
+  M: VSCODE.modified,
+  T: VSCODE.modified,
+  D: VSCODE.deleted,
+  U: VSCODE.conflicting,
 }
 
 const PRIORITY = ['U', 'D', 'M', 'T', 'R', 'C', 'A', '?']

@@ -34,9 +34,9 @@ claude plugin install filetree@motta-claude-mods
 
 - Interactive file tree for the working directory where you're using Claude Code; it follows the cwd, or `/filetree <path>` pins another folder
 - Search the file tree, including folders you have not opened yet
-- Git status per file and folder in color, with exact lines changed (`+N` `-N`) on modified files and `?:N M:N D:N` file counts on folders
+- Git status per file and folder in color, with exact lines changed (`+N` `-N`) on modified files and `?:N M:N D:N` file counts on folders, in VS Code's colors (its dark theme's git decorations and line counts)
 - Branch, upstream and ahead/behind in the header
-- Visual indicator of Claude reads and searches (purple), writes (orange) and commits (green); collapsed folders open to show the file
+- Visual indicator of Claude reads and searches (blue) and writes (yellow), in the colors `tool-borders` gives those tool calls: muted inside the tree's folder, brighter outside it. Git operations shimmer in their own hues: commits green, pushes teal, pulls, fetches and checkouts sky blue, merges and PRs purple, resets and removals red like a failed operation; stash and mv shimmer as writes. Collapsed folders open to show the file
 - Files outside the tree's folder that Claude reads or changes, like a file in a parent folder, are listed under the search box ("outside this folder"), newest first, shimmering in the same colors and labelled `read` or `changed`. The list holds everything since your last prompt and clears when you send the next one, or when you press its `×`; the terminal shows the newest five and a `⋮ N more` count, and the desktop shows them all. Click one to move the tree to its folder with the file selected (pinned, like `↑`; `⌂` goes back), right-click to copy its path. It covers the Read, Edit, Write and NotebookEdit tools and the files Bash readers (`cat`, `grep`, `rg`, …) name; a file a Bash command changes outside the folder (`sed -i ../x`, a script) is not listed, since writes are found by scanning the tree's own folder
 
   <img src="https://raw.githubusercontent.com/data-goblin/claude-code-filetree/bf8de321fcd03a9edb893b9ef3e3cc0e4af5bee5/media/filetree-read.gif" alt="Files shimmer purple while Claude reads and searches them" width="800">
