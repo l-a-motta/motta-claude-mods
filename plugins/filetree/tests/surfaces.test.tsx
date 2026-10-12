@@ -121,7 +121,7 @@ async function texts(ui: any): Promise<string> {
 const STAMP = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/
 const NERD = /[\u{e000}-\u{f8ff}\u{f0000}-\u{fffff}]/u
 
-test('macOS Claude Code app: desktop pane draws, selects, opens with open', { timeoutMs: 20_000 }, async ($, on) => {
+test('macOS Claude Code app: desktop pane draws, selects, opens with open', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, {
@@ -169,7 +169,7 @@ test('macOS outside a repo: write scan uses find -newer marker, not GNU -newermt
   expect(find).not.toContain('-newermt')
 })
 
-test('Windows: backslash paths shimmer, open hands the path to PowerShell as data, no find, sh or cmd', { timeoutMs: 20_000 }, async ($, on) => {
+test('Windows: backslash paths shimmer, open hands the path to PowerShell as data, no find, sh or cmd', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -201,7 +201,7 @@ test('Windows: backslash paths shimmer, open hands the path to PowerShell as dat
   await ui.unmount()
 })
 
-test('Linux unchanged: GNU find -newermt outside a repo, xdg-open detached', { timeoutMs: 20_000 }, async ($, on) => {
+test('Linux unchanged: GNU find -newermt outside a repo, xdg-open detached', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/scratch'
   const clock = world(on, { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: '', dirs: { [root]: [['a\\b.txt', 'file'], ['c.txt', 'file']] }, status: '', numstat: '' }, ran)
@@ -722,7 +722,7 @@ test('after /clear the tree rebuilds itself, keeps a pinned folder, and an empty
   await ui.unmount()
 })
 
-test('opener failures show a toast instead of failing silently', { timeoutMs: 20_000 }, async ($, on) => {
+test('opener failures show a toast instead of failing silently', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k' }, cwd: root, top: '', dirs: { [root]: [['a.xyz', 'file']] }, status: '', numstat: '', exits: { open: [1, 'No application knows how to open a.xyz\n'] } }, ran)
@@ -757,7 +757,7 @@ test('open with: a double-click and Enter run the configured command instead of 
   await ui.unmount()
 })
 
-test('open with preview: a double-click shows the file in the pane, left goes back to the tree, arrows scroll, ↗ opens the default app, a binary file shows a note', { timeoutMs: 20_000, options: { open: 'preview' } }, async ($, on) => {
+test('open with preview, the default: a double-click shows the file in the pane, left goes back to the tree, arrows scroll, ↗ opens the default app, a binary file shows a note', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, {
@@ -1253,7 +1253,7 @@ test('on Windows a folder size does not walk into linked folders, like du', { ti
 })
 
 for (const os of ['linux', 'win32'] as const) {
-  test(`${os}: a failed file opener is visible`, { timeoutMs: 20_000 }, async ($, on) => {
+  test(`${os}: a failed file opener is visible`, { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
     const ran: Ran = []
     const root = os === 'linux' ? '/home/k/proj' : 'C:/Users/k/proj'
     const clock = world(on, {

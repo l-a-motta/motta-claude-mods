@@ -87,7 +87,7 @@ let generation = 0
 let lastPress = { key: '', at: 0 }
 let noNerd = false
 let glyphSetting = 'auto'
-let openWithSetting = ''
+let openWithSetting = 'preview'
 let previewed: { path: string; text: string; note: string } | null = null
 let previewRows = 20
 let follow = true
@@ -1051,7 +1051,7 @@ async function openFile($: EngineInterface, path: string, external = false): Pro
   if (!external && openWithSetting.trim() === 'preview') return showPreview($, path)
   const os = await osName($)
   const native = (p: string) => (os === 'win32' ? p.replace(/\//g, '\\') : p)
-  const custom = external ? null : openWithCommand(openWithSetting, native(path), native(dirname(path)))
+  const custom = external || openWithSetting.trim() === 'app' ? null : openWithCommand(openWithSetting, native(path), native(dirname(path)))
   const { argv, init } = custom ? { argv: os === 'linux' ? ['sh', '-c', LINUX_LAUNCH, 'sh', ...custom] : custom, init: { timeoutMs: 10_000 } } : openCommand(os, path)
   try {
     const run = await $.process.run(argv, init)
@@ -1122,7 +1122,7 @@ export const register: Register = (on, options) => {
   showWrites = activity.includes('writes')
   followClaude = options?.follow !== 'off'
   sizeDefault = options?.column === 'size'
-  openWithSetting = typeof options?.open === 'string' ? options.open : ''
+  openWithSetting = typeof options?.open === 'string' ? options.open : 'preview'
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'filetree', description: 'Show the file tree; args: [path] (no path = cwd)' })
     const windows = (await $.env.get('OS')) === 'Windows_NT'
