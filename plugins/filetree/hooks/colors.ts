@@ -46,7 +46,7 @@ const RED = ramp(FAIL)
 
 // A tag's fill: its text color sunk most of the way into the pane's background,
 // so the word stays readable on it.
-export const tagFill = (color: string, bg = '#1e1e1e') => mix(color, bg || '#1e1e1e', 0.78)
+export const tagFill = (color: string, bg = '#1e1e1e', sink = 0.78) => mix(color, bg || '#1e1e1e', sink)
 
 // What a lit row means, by name. Reads and changes come at project reach here;
 // FAR_TONES has them at machine reach for the files outside the folder. Undoing

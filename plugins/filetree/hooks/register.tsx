@@ -55,6 +55,10 @@ const ACTIVITY_TTL_MS = 45_000
 // is under its root. A prompt or the × clears them; the terminal shows the newest few.
 const OUTSIDE_KEEP = 50
 const OUTSIDE_ROWS = 5
+const OUTSIDE_TOGGLE = 'filetree:outside-toggle'
+// Nerd Font's rounded half circles, the ends of a pill.
+const PILL_L = '\u{e0b6}'
+const PILL_R = '\u{e0b4}'
 const OUTSIDE_VERB: Record<string, string> = { read: 'read', change: 'changed' }
 const ACTIVITY_CYCLE = ['reads and writes', 'writes', 'reads', 'none']
 const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'shows reads + writes', writes: 'shows writes only', reads: 'shows reads only', none: 'shows no activity' }
@@ -334,7 +338,7 @@ async function reset($: EngineInterface, root: string, focus = false): Promise<v
   searchIndex = null
   sizeEpoch += 1
   sizeQueue = []
-  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, overrides: prev.overrides }))
+  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, outsideOpen: prev.outsideOpen, overrides: prev.overrides }))
   const title = `Files: ${root.split('/').pop() || root}`
   if (focus) await $.ui.open({ id: PANE, title, focus: true })
   else if (!noDock) await $.ui.open({ id: PANE, title })
@@ -1253,6 +1257,7 @@ export const register: Register = (on, options) => {
     if (e.requestId === PANE && e.element === 'outside' && e.data && typeof e.data === 'object') {
       const data = e.data as { press?: unknown; copy?: unknown }
       if (typeof data.copy === 'string') await copyPath($, data.copy, true, e.surface)
+      else if (data.press === OUTSIDE_TOGGLE) await patch($, t => ({ outsideOpen: !t.outsideOpen }))
       else if (typeof data.press === 'string') await pressOutside($, data.press)
       return {}
     }
@@ -1446,16 +1451,22 @@ export const register: Register = (on, options) => {
     const rows = visibleRows(t)
     const away = (await outside($)).filter(o => !inside(t.root, o.path))
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
-    const stripRows = strip.length ? strip.length + 1 + (away.length > strip.length ? 1 : 0) : 0
+    const stripRows = strip.length ? 1 + (t.outsideOpen ? strip.length + (away.length > strip.length ? 1 : 0) : 0) : 0
     const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
     // Git marks are tags: the letter (and a folder's count) on a fill of its own color.
-    const tag = (text: string, color: string): Seg[] => [{ t: ' ' }, { t: ` ${text} `, c: color, bg: tagFill(color, theme.bg) }]
+    // What Claude did is a pill beside the name: rounded ends where a Nerd Font draws
+    // them, else a faint fill hugging the word. Git marks are a dot and the letter.
+    const pill = (text: string, color: string): Seg[] =>
+      unicode
+        ? [{ t: ' ' }, { t: text, c: color, bg: tagFill(color, theme.bg, 0.86) }]
+        : [{ t: ' ' }, { t: PILL_L, c: tagFill(color, theme.bg) }, { t: text, c: color, bg: tagFill(color, theme.bg) }, { t: PILL_R, c: tagFill(color, theme.bg) }]
+    const dot = (text: string, color: string): Seg[] => [{ t: ` ● ${text}`, c: color }]
     const countSegs = (c: [number, number, number] | undefined): Seg[] => {
       if (!c) return []
       const out: Seg[] = []
-      if (c[0] > 0) out.push(...tag(`?:${c[0]}`, GIT_COLOR['?'] ?? theme.muted))
-      if (c[1] > 0) out.push(...tag(`M:${c[1]}`, GIT_COLOR.M ?? theme.muted))
-      if (c[2] > 0) out.push(...tag(`D:${c[2]}`, GIT_COLOR.D ?? theme.muted))
+      if (c[0] > 0) out.push(...dot(`?:${c[0]}`, GIT_COLOR['?'] ?? theme.muted))
+      if (c[1] > 0) out.push(...dot(`M:${c[1]}`, GIT_COLOR.M ?? theme.muted))
+      if (c[2] > 0) out.push(...dot(`D:${c[2]}`, GIT_COLOR.D ?? theme.muted))
       return out
     }
     const rootCounts = t.top ? countSegs(t.counts[t.root]) : []
@@ -1497,7 +1508,7 @@ export const register: Register = (on, options) => {
         : n.kind === 'dir'
           ? []
           : status
-            ? tag(status, gitColor ?? theme.muted)
+            ? dot(status, gitColor ?? theme.muted)
             : [{ t: '    ' }]
       const badgeText = badge.map(c => c.t).join('')
       const cols = Math.max(4, width - r.depth * 2 - 6 - (meta ? meta.length + 1 : 0) - locText.length - badgeText.length - (verb ? verb.length + 3 : 0))
@@ -1513,7 +1524,7 @@ export const register: Register = (on, options) => {
         lit ? { t: name, sh: tone, dim: isDim, b: isBright } : { t: name, c: nameColor, b: n.id === t.selected, s: status === 'D' && n.kind !== 'dir' },
       ]
       // The action is a tag in its tool-borders color, the bright shade on a fill of it.
-      if (verb) left.push(...tag(verb, FAR_TONES[tone]?.solid ?? theme.accent))
+      if (verb) left.push(...pill(verb, FAR_TONES[tone]?.solid ?? theme.accent))
       const right: Seg[] = []
       if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
       if (loc && loc[0] > 0) right.push({ t: ` +${loc[0]}`, c: VSCODE.linesAdded })
@@ -1526,42 +1537,71 @@ export const register: Register = (on, options) => {
     const more = (id: string, n: number): RowSpec => ({ id, left: [{ t: `  ⋮ ${n.toLocaleString('en')} more`, c: theme.muted }], right: [] })
     const outsideSpec = (o: Outside): RowSpec => {
       const verb = OUTSIDE_VERB[o.tone] ?? 'changed'
-      const label = shortPath(o.path)
-      const cols = Math.max(8, width - verb.length - 4)
-      const name = label.length > cols ? '…' + label.slice(label.length - cols + 1) : label
+      const base = o.path.slice(o.path.lastIndexOf('/') + 1)
+      const folder = shortPath(dirname(o.path))
+      const cols = Math.max(8, width - verb.length - 8)
+      const name = base.length > cols ? base.slice(0, cols - 1) + '…' : base
+      const room = cols - name.length - 2
+      const where = room < 4 ? '' : folder.length > room ? '…' + folder.slice(folder.length - room + 1) : folder
       return {
         id: o.path,
-        left: clean([{ t: '  ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }]),
+        left: clean([{ t: '    ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }, ...(where ? [{ t: `  ${where}`, c: theme.muted }] : [])]),
         right: [{ t: ` ${verb} `, c: FAR_TONES[o.tone]?.solid ?? theme.muted }],
       }
     }
-    const tagText = (text: string, color: string) => (
-      <Text color={color} backgroundColor={tagFill(color, theme.bg)}>
-        {` ${text} `}
+    // The list's header: folded, a count and what the files were; it shimmers in the
+    // newest file's color while that one does.
+    const outsideHead = (): RowSpec => {
+      const changed = away.filter(o => o.tone !== 'read').length
+      const read = away.length - changed
+      const fresh = away.find(o => o.lit)
+      const caret = unicode ? (t.outsideOpen ? '▾' : '▸') : t.outsideOpen ? CHEVRON_OPEN : CHEVRON_CLOSED
+      const what = [changed ? `${changed} changed` : '', read ? `${read} read` : ''].filter(Boolean).join(' · ')
+      return {
+        id: OUTSIDE_TOGGLE,
+        left: clean([
+          { t: caret + ' ', c: theme.muted },
+          fresh ? { t: 'outside this folder', sh: fresh.tone } : { t: 'outside this folder', c: theme.fg || undefined },
+          { t: ` (${away.length})`, c: theme.muted },
+          ...(t.outsideOpen ? [] : [{ t: `  ${what}`, c: theme.muted }]),
+        ]),
+        right: [],
+      }
+    }
+    const pillText = (text: string, color: string) => (
+      <Text>
+        {pill(text, color)
+          .slice(1)
+          .map(s => (
+            <Text color={s.c} backgroundColor={s.bg}>
+              {s.t}
+            </Text>
+          ))}
       </Text>
     )
+    const dotText = (text: string, color: string) => <Text color={color}>{`● ${text}`}</Text>
     // The key: one entry per mark, a sample of it drawn as the tree draws it and what
     // it means, under a heading per kind; two columns when the pane is wide enough.
     const keyCols = width >= 48 ? 2 : 1
     const glyphOf = (plain: string, nerd: string) => (unicode ? plain : nerd)
-    const keySections: { title: string; sampleWidth: number; items: { sample: ReturnType<typeof tagText>; text: string }[] }[] = [
+    const keySections: { title: string; sampleWidth: number; items: { sample: ReturnType<typeof pillText>; text: string }[] }[] = [
       {
         title: 'What Claude just did',
         sampleWidth: 12,
         items: [
-          { sample: tagText('reading', FAR_TONES.read?.solid ?? theme.accent), text: 'read the file' },
-          { sample: tagText('editing', FAR_TONES.change?.solid ?? theme.accent), text: 'changed it' },
-          { sample: tagText('committing', TONES.commit?.solid ?? theme.accent), text: 'committed it' },
+          { sample: pillText('reading', FAR_TONES.read?.solid ?? theme.accent), text: 'read the file' },
+          { sample: pillText('editing', FAR_TONES.change?.solid ?? theme.accent), text: 'changed it' },
+          { sample: pillText('committing', TONES.commit?.solid ?? theme.accent), text: 'committed it' },
         ],
       },
       {
         title: 'Git, since the last commit',
         sampleWidth: 7,
         items: [
-          { sample: tagText('M', GIT_COLOR.M ?? theme.muted), text: 'modified' },
-          { sample: tagText('?', GIT_COLOR['?'] ?? theme.muted), text: 'new, not in git' },
-          { sample: tagText('D', GIT_COLOR.D ?? theme.muted), text: 'deleted' },
-          { sample: tagText('U', GIT_COLOR.U ?? theme.muted), text: 'merge conflict' },
+          { sample: dotText('M', GIT_COLOR.M ?? theme.muted), text: 'modified' },
+          { sample: dotText('?', GIT_COLOR['?'] ?? theme.muted), text: 'new, not in git' },
+          { sample: dotText('D', GIT_COLOR.D ?? theme.muted), text: 'deleted' },
+          { sample: dotText('U', GIT_COLOR.U ?? theme.muted), text: 'merge conflict' },
           { sample: <Text color={GIT_COLOR.M}>src</Text>, text: 'folder: changes inside' },
           { sample: <Text color={VSCODE.ignored}>{glyphOf('⊘', '\u{f05e}')}</Text>, text: 'ignored by git' },
           {
@@ -1887,33 +1927,31 @@ export const register: Register = (on, options) => {
             ))}
           </Box>
         )}
-        {strip.length > 0 && (
-          <Box flexDirection="row">
-            <Text color={theme.muted}>outside this folder</Text>
-            <Box flexGrow={1} />
-            <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
-          </Box>
-        )}
-        {strip.length > 0 && (
-          <Client
-            key="outside"
-            module="./rows.tsx"
-            props={{
-              rows: [...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`  ⋮ ${away.length - strip.length} more`)] : [])],
-              active: '',
-              activeBg: theme.selection,
-              hoverBg: faint(theme.selection),
-              tones: FAR_SHIMMER,
-              pointer,
-            } satisfies RowsProps}
-          />
-        )}
         <Client
           key="rows"
           module="./rows.tsx"
           props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
         />
         <Box flexGrow={1} />
+        {strip.length > 0 && (
+          <Box flexDirection="row">
+            <Box flexGrow={1} flexShrink={1}>
+              <Client
+                key="outside"
+                module="./rows.tsx"
+                props={{
+                  rows: [outsideHead(), ...(t.outsideOpen ? [...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`    ⋮ ${away.length - strip.length} more`)] : [])] : [])],
+                  active: '',
+                  activeBg: theme.selection,
+                  hoverBg: faint(theme.selection),
+                  tones: FAR_SHIMMER,
+                  pointer,
+                } satisfies RowsProps}
+              />
+            </Box>
+            <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
+          </Box>
+        )}
         {/* Always drawn, so what each line is for shows before it holds anything. */}
         <Box flexDirection="row">
           <Text color={theme.muted}>sent with your prompts </Text>
