@@ -102,6 +102,8 @@ export type TouchedFile = {
 export type Panel = {
   isCompact: boolean
   isDoneCollapsed: boolean
+  /** Optional: panels saved before Failed could fold have none. */
+  isFailedCollapsed?: boolean
   autoOpenedFor: string
   /** The panel lists the agents started from here on, and any still running. */
   since?: number

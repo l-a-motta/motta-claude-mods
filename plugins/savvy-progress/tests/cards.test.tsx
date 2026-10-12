@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { actOf, cardParts, charEm, endCall, endStatus, firstLine, groupsOf, idleNote, isOverdue, reconcile, saySlot, startCall, stripColor, toolColor } from '../hooks/register.tsx'
+import { actOf, cardParts, charEm, endCall, endStatus, firstLine, groupsOf, idleNote, isOverdue, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
 import type { AgentRun } from '../types'
 
 type $ = Parameters<TestBody>[0]
@@ -243,4 +243,41 @@ test('an agent the engine killed goes to Finished, stopped, within a tick', { op
     expect(text).toMatch(/stopped/)
     expect(text).not.toMatch(/Failed ·/)
   }
+})
+
+test('Failed folds under its header as Finished does, on each surface', { options: { language: 'en' } }, async ($, on) => {
+  const clock = engine(on)
+  on('session.start', async ($, e) => ({ cwd: e.cwd }))
+  on('tool.register', async () => ({ value: {} }) as never)
+  on('command.register', async () => ({ value: {} }) as never)
+  let failed = false
+  const hook = on as unknown as (event: string, h: () => Promise<unknown>) => void
+  hook('agent.list', async () => ({ value: [{ id: 'a1', description: 'x', type: 'Explore', status: failed ? 'failed' : 'running' }] }))
+  await $.session.start({ cwd: '.', surface: null, isInteractive: true })
+  await spawn($, 't1', 'Broken read')
+  failed = true
+  await clock.advance(1_000)
+  const panes = await Promise.all(
+    (['terminal', 'desktop'] as const).map(surface =>
+      $.ui.mount({ plugin: 'savvy-progress', surface, component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never),
+    ),
+  )
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/Failed · 1/)
+    expect(text).toMatch(/Broken read/)
+  }
+  await panes[1]!.press({ key: 'failed' })
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/Failed · 1/)
+    expect(text).not.toMatch(/Broken read/)
+  }
+})
+
+test("a crab's name tag is its title's first word, past a shared prefix, cut to fit", () => {
+  expect(shortName('Count savvy tests')).toBe('Count')
+  expect(shortName('Demo: stopped midway')).toBe('stopped')
+  expect(shortName('Tour, then stop')).toBe('Tour')
+  expect(shortName('Internationalization pass').endsWith('…')).toBe(true)
 })
