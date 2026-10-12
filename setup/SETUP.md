@@ -50,6 +50,8 @@ claude plugin install motta-statusline@motta-claude-mods --scope user
 claude plugin install assumption-check@motta-claude-mods --scope user
 claude plugin install prompt-enhancer@motta-claude-mods --scope user
 claude plugin install cache-warmer@motta-claude-mods --scope user
+claude plugin install emotive-spinner@motta-claude-mods --scope user
+claude plugin install tool-borders@motta-claude-mods --scope user
 claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
 claude plugin enable cc-plugin-you-should-know@builtin
