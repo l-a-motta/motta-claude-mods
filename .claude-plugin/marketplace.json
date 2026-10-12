@@ -33,6 +33,11 @@
       "description": "The spinner line says what Claude is doing instead of a whimsical word: a symbol and plain words for the file it reads or writes (with its size, lines so far while it streams), the command it runs in its own description, the search, the page, the agents and what the latest is doing, thinking, writing the answer, or waiting for you. Read from the engine's events; no model calls. Terminal and desktop app."
     },
     {
+      "name": "tool-borders",
+      "source": "./plugins/tool-borders",
+      "description": "Marks each tool call with a color: the hue says what it does (read, change, delete, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). A border in the CLI, a thin bar on the desktop app."
+    },
+    {
       "name": "replay-theater",
       "source": "./plugins/replay-theater",
       "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); opened with /replay only, no band hint."
