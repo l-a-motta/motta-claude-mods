@@ -10,7 +10,7 @@
     {
       "name": "motta-statusline",
       "source": "./plugins/motta-statusline",
-      "description": "Two-line status line: folder, repo link, git state, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, a context bar with the auto-compact point, rate limits, a prompt-cache countdown, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
+      "description": "Two-line status line: where the session runs, repo and branch links, git state with push state and the last commit, the branch's PR with CI, conflicts and review (toasts when they change), model and effort, a context bar with the auto-compact point, rate-limit bars with a pace tick and panes for changes, context and usage, a prompt-cache countdown, tokens and the generation rate. Under the prompt in the CLI, or as a band above it."
     },
     {
       "name": "assumption-check",

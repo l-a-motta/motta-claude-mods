@@ -1,15 +1,38 @@
 // motta-statusline: a two-line status line.
 //
-//   📁 folder  🔗 repo  🌿 branch  +staged ~modified | clean  #pr ✓ CI 7/7 · approved
-//   [model | effort] · CTX -------|-- used/window · 5h n% ~reset · 7d n% ~reset · In n Out n @n/s
+//   📁 folder  worktree of repo  🔗 repo  🌿 branch  +staged ~modified ?untracked | clean  ↑ahead ↓behind  last 12m ago  #pr ✓ CI 7/7
+//   [model | effort]  ctx ⣿⣿⣿⣄⣀⣀⣀⣀|⣀⣀ n% used/window   5h ⣿⣀⣀⣀|⣀⣀⣀⣀⣀⣀ n% reset   7d ⣿⣿⣿⣿⣦⣀⣀|⣀⣀⣀ n% reset   out n @n/s
 //
 // The desktop app leaves out [model | effort], which its model picker shows,
 // and the PR, which its PR bar shows. A narrow band wraps between segments.
+// Labels are subtle and figures at full strength.
 //
-// CTX is a bar of the context window, its used part green under 30%, yellow
-// to 50%, orange to 70% and red past it, with a tick where auto-compact
-// fires (from the local /context breakdown, no request sent), then the
-// tokens used over the window.
+// Line 1 says where the session runs (its root: the checkout, the folder
+// below it, and the repository a worktree belongs to; then `↳ folder` when
+// a shell `cd` has taken the shell away from the root), the branch's files, how it stands
+// against its upstream (`not pushed` when it has none) and its last commit.
+// What can be pressed is a dim word, full strength under the pointer (a
+// desktop button draws plain), or an underlined link: the root's name and
+// the `↳` folder open in the file explorer, the repo and branch open GitHub (the branch as
+// a compare view against origin's default), `files` opens a Changes pane,
+// the last commit its page once pushed, `ctx` a Context pane (the /context
+// breakdown, with Compact now), `5h` and `7d` a Usage pane (its readings this window, kept in $.store, against an even
+// pace), and the last slot cycles: output and rate, cost, the session's
+// turns and time, the turns left before auto-compact (its word, `out`,
+// `cost`, `session` or `compact`, is what is pressed). A toast says when a
+// limit turns orange or red.
+//
+// Each bar is ten braille cells of ten points, a cell's dots rising from its
+// bottom row as its points come. ctx is the context window, its dots green
+// under 30%, yellow to 50%, orange to 70% and red past it, with a tick where
+// auto-compact fires (from the local /context breakdown, no request sent),
+// then the share used and the tokens used over the window.
+//
+// 5h and 7d are their rate-limit windows, with a tick where the window's
+// time stands: dots past the tick mean the limit is going
+// faster than the window. Red from 80%; short of that, orange once it is 10
+// points ahead, else yellow from 60%. Then the time to reset (`2h45m`,
+// `1d20h`).
 //
 // `@n/s` is the main session's generation rate: output tokens over the time
 // from a request's first streamed token to its end, exact once the request
@@ -41,7 +64,7 @@
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
-import type { EngineInterface, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
+import type { ContextCategory, EngineInterface, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
 // How often a streaming request's rate is redrawn, how long a request waits
@@ -56,7 +79,35 @@ const PR_SETTLED_MS = 120_000
 const PR_AFTER_PUSH_MS = 20_000
 const PR_FIELDS = 'number,url,state,isDraft,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup'
 
-type Git = { branch: string; staged: number; modified: number }
+// The branch, its file counts, and how it stands against its upstream: null
+// when it has none (never pushed), else the commits to push and to pull.
+export type Git = {
+  branch: string
+  staged: number
+  modified: number
+  untracked: number
+  upstream: string | null
+  ahead: number
+  behind: number
+}
+
+// One changed file as the Changes pane lists it: git's two-letter status, the
+// path, and its lines added and deleted against HEAD (null for a binary file
+// or one git has no count for, such as an untracked one).
+export type Change = { status: string; path: string; added: number | null; deleted: number | null }
+
+// The last commit: its hash, when it was made, and its subject.
+export type Commit = { hash: string; at: number; subject: string }
+
+// The session's project root (where it started, or where /cd or a worktree
+// move took it): as shown (the checkout's name, and the subfolder when the
+// root sits below it), its path, and the repository's name when that checkout
+// is a worktree of it.
+export type Where = { label: string; path: string; worktreeOf: string | null }
+
+// What the last slot of line 2 shows; pressing it moves to the next.
+export type Slot = 'rate' | 'cost' | 'session' | 'runway'
+const SLOTS: Slot[] = ['rate', 'cost', 'session', 'runway']
 
 export type Pr = {
   number: number
@@ -72,10 +123,16 @@ export type Pr = {
 }
 
 type Data = {
-  dir: string
+  where: Where
+  // The shell's folder, which a `cd` moves while the root stays.
+  cwd: string
   repoName: string | null
   repoUrl: string | null
   git: Git | null
+  changes: Change[]
+  commit: Commit | null
+  // The branch a compare link measures against: origin's default.
+  base: string
   pr: Pr | null
   isPrStale: boolean
   model: string
@@ -84,9 +141,15 @@ type Data = {
   ctxTokens: number
   ctxWindow: number
   compactAt: number | null
-  limits: { label: string; percent: number; resetsAt: number | null }[]
+  limits: { label: string; windowMs: number | null; percent: number; resetsAt: number | null }[]
   outTokens: number
   rate: Rate | null
+  // The /context breakdown's rows, from the last full refresh.
+  categories: ContextCategory[]
+  costUsd: number | null
+  turns: number
+  startedAt: number
+  slot: Slot
 }
 
 // The main session's rate: the last finished request's (`exact`), the one
@@ -115,6 +178,9 @@ let prBranch: string | null = null
 let prAskedAt = 0
 let isAskingPr = false
 let placement: 'above' | 'below' = 'below'
+let slot: Slot = 'rate'
+// Each limit's last color, so a toast says when one turns orange or red.
+const limitColors = new Map<string, string>()
 
 export const register: Register = (on, options) => {
   placement = options.placement === 'above' ? 'above' : 'below'
@@ -187,7 +253,9 @@ export const register: Register = (on, options) => {
   on('session.measure', async ($, e, next) => {
     const measured = await next(e)
     if (data !== null) {
-      data = { ...data, ...contextFigures(e.context), limits: limitsOf(e.rateLimits) }
+      const limits = limitsOf(e.rateLimits)
+      data = { ...data, ...contextFigures(e.context), limits }
+      await noteLimits($, limits)
       await paint($)
     }
     return measured
@@ -224,10 +292,12 @@ export const register: Register = (on, options) => {
     const below = await next(e)
     const share = bandShare(below)
     if (share === 'taken' || data === null) return below
-    const { Box, Text, Link } = $.ui.resolve(e)
+    const table = $.ui.resolve(e)
+    const { Box, Text, Link, Button } = table
+    const Svg = e.surface === 'desktop' && 'Svg' in table ? table.Svg : null
     const ours = (
       <Box flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
-        {lines(Box, Text, Link, data, await $.clock.now(), e.surface === 'desktop')}
+        {lines($, { Box, Text, Link, Button }, data, await $.clock.now(), Svg)}
       </Box>
     )
     if (share === 'beside') {
@@ -259,16 +329,34 @@ export const register: Register = (on, options) => {
     return ours
   })
 
+  on('ui.render', { component: 'Pane', requestId: CHANGES_PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    return changesPane(Box, Text, data)
+  })
+
+  on('ui.render', { component: 'Pane', requestId: CONTEXT_PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    return contextPane($, Box, Text, Button, data)
+  })
+
+  on('ui.render', { component: 'Pane', requestId: USAGE_PANE }, async ($, e) => {
+    const table = $.ui.resolve(e)
+    const { Box, Text } = table
+    const readings: Record<string, Readings | null> = {}
+    for (const l of data?.limits ?? []) readings[l.label] = await readStored($, l.label)
+    return usagePane(Box, Text, 'Svg' in table ? table.Svg : null, data, readings, await $.clock.now())
+  })
+
   // The hint line under the prompt stays up while a turn runs. The engine's own
   // line (mode pills, `esc to interrupt`) is kept under ours.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
     const hint = await next(e)
     if (placement !== 'below' || data === null) return hint
-    const { Box, Text, Link } = $.ui.resolve(e)
+    const { Box, Text, Link, Button } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        {lines(Box, Text, Link, data, await $.clock.now())}
+        {lines($, { Box, Text, Link, Button }, data, await $.clock.now())}
         {hint}
       </Box>
     )
@@ -333,21 +421,33 @@ async function refreshAll($: EngineInterface, withGit = true) {
     const ctx = usage.context
     const breakdown = ctx.breakdown
     if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
+    if (data === null) slot = await readSlot($)
+    const limits = limitsOf(usage.rateLimits)
     data = {
-      dir: basename(cwd),
+      where: withGit || data === null ? await readWhere($, await $.session.root().catch(() => cwd), repo?.root ?? null) : data.where,
+      cwd,
       repoName: repoUrl ? basename(repoUrl) : null,
       repoUrl,
       git: data?.git ?? null,
+      changes: data?.changes ?? [],
+      commit: data?.commit ?? null,
+      base: withGit || data === null ? await readBase($) : data.base,
       pr: data?.pr ?? null,
       isPrStale: data?.isPrStale ?? false,
       model: modelLabel(await $.session.model()),
       effort: liveEffort ?? (await settingsEffort($)),
       ...contextFigures(ctx),
       compactAt,
-      limits: limitsOf(usage.rateLimits),
+      limits,
       outTokens,
       rate,
+      categories: breakdown?.categories ?? data?.categories ?? [],
+      costUsd: usage.cost?.usd ?? null,
+      turns: await $.session.turns().catch(() => data?.turns ?? 0),
+      startedAt: usage.startedAt,
+      slot,
     }
+    await noteLimits($, limits)
     if (withGit) await refreshGit($)
     else await paint($)
   } catch {
@@ -366,6 +466,7 @@ function contextFigures(ctx: SessionContextUsage) {
 function limitsOf(rateLimits: SessionRateLimit[]): Data['limits'] {
   return rateLimits.map(l => ({
     label: LIMIT_LABELS[l.kind] ?? l.kind,
+    windowMs: LIMIT_WINDOWS[l.kind] ?? null,
     percent: Math.round(l.percentUsed),
     resetsAt: l.resetsAt ? Date.parse(l.resetsAt) : null,
   }))
@@ -438,7 +539,18 @@ async function refreshGit($: EngineInterface) {
       cwd: gitDir,
       timeoutMs: 5_000,
     })
-    if (run.exitCode === 0) data = { ...data, git: parseStatus(run.stdout) }
+    if (run.exitCode === 0) {
+      const git = parseStatus(run.stdout)
+      let changes = parseChanges(run.stdout)
+      if (changes.length > 0) {
+        const stat = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd: gitDir, timeoutMs: 5_000 })
+        if (stat.exitCode === 0) changes = withNumstat(changes, stat.stdout)
+      }
+      const log = await $.process.run(['git', '--no-optional-locks', 'log', '-1', '--format=%H%x1f%ct%x1f%s'], { cwd: gitDir, timeoutMs: 5_000 })
+      const commit = log.exitCode === 0 ? parseCommit(log.stdout) : null
+      const cwd = await $.session.cwd().catch(() => data?.cwd ?? '')
+      if (data !== null) data = { ...data, git, changes, commit, cwd: cwd || data.cwd }
+    }
   } catch {
     // git missing or slow: keep the last reading.
   }
@@ -579,74 +691,699 @@ async function settingsEffort($: EngineInterface): Promise<string | null> {
   }
 }
 
-// `## dev...origin/dev [ahead 1]` then one `XY path` line per change. Like the
-// shell status line, untracked files count as neither staged nor modified.
+// `## dev...origin/dev [ahead 1, behind 2]` then one `XY path` line per
+// change. Untracked files are counted apart, as neither staged nor modified.
+// No `...` means the branch has no upstream.
 export function parseStatus(out: string): Git {
   const lines = out.split('\n').filter(Boolean)
   const head = lines[0]?.startsWith('## ') ? lines[0].slice(3) : ''
-  const branch = head.startsWith('No commits yet on ')
-    ? head.slice('No commits yet on '.length)
-    : (head.split('...')[0] ?? '').split(' ')[0] || 'HEAD'
+  const name = head.startsWith('No commits yet on ') ? head.slice('No commits yet on '.length) : head
+  const [local = '', rest = ''] = name.split('...')
+  const branch = local.split(' ')[0] || 'HEAD'
+  const upstream = rest ? rest.split(' ')[0] || null : null
+  const ahead = Number(/ahead (\d+)/.exec(rest)?.[1] ?? 0)
+  const behind = Number(/behind (\d+)/.exec(rest)?.[1] ?? 0)
   let staged = 0
   let modified = 0
+  let untracked = 0
   for (const line of lines.slice(1)) {
-    if (line.startsWith('??')) continue
+    if (line.startsWith('??')) {
+      untracked++
+      continue
+    }
     if (line[0] !== ' ') staged++
     if (line[1] !== ' ') modified++
   }
-  return { branch, staged, modified }
+  return { branch, staged, modified, untracked, upstream, ahead, behind }
+}
+
+// The changed files of `git status --porcelain=v1`, a rename by its new path.
+export function parseChanges(out: string): Change[] {
+  return out
+    .split('\n')
+    .filter(line => line.length > 3 && !line.startsWith('## '))
+    .map(line => {
+      const path = line.slice(3)
+      return { status: line.slice(0, 2), path: path.includes(' -> ') ? (path.split(' -> ')[1] ?? path) : path, added: null, deleted: null }
+    })
+}
+
+// The changes with their lines from `git diff --numstat HEAD`: `added
+// deleted path` per file, `-` for a binary one.
+export function withNumstat(changes: Change[], out: string): Change[] {
+  const counts = new Map<string, [number | null, number | null]>()
+  for (const line of out.split('\n')) {
+    const [added, deleted, path] = line.split('\t')
+    if (path === undefined) continue
+    counts.set(path, [added === '-' ? null : Number(added), deleted === '-' ? null : Number(deleted)])
+  }
+  return changes.map(c => {
+    const n = counts.get(c.path)
+    return n ? { ...c, added: n[0], deleted: n[1] } : c
+  })
+}
+
+// `git log -1 --format=%H%x1f%ct%x1f%s`, or null when it is not that.
+export function parseCommit(out: string): Commit | null {
+  const [hash, at, ...subject] = out.trim().split('\x1f')
+  if (!hash || !/^[0-9a-f]{7,}$/.test(hash) || !at) return null
+  return { hash, at: Number(at) * 1_000, subject: subject.join('\x1f') }
+}
+
+// The session's root as shown, from the checkout git finds for it and the
+// repository's root, which for a worktree is the main checkout.
+async function readWhere($: EngineInterface, root: string, repoRoot: string | null): Promise<Where> {
+  const plain = { label: basename(root), path: root, worktreeOf: null }
+  if (repoRoot === null) return plain
+  try {
+    const run = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: root, timeoutMs: 5_000 })
+    const top = run.stdout.trim()
+    if (run.exitCode !== 0 || !/^([a-zA-Z]:)?[\\/]/.test(top) || top.includes('\n')) return plain
+    return whereOf(root, top, repoRoot)
+  } catch {
+    return plain
+  }
+}
+
+// The checkout's name, then the root's folder below it; and the
+// repository's name when the checkout is not its root (a worktree).
+export function whereOf(root: string, top: string, repoRoot: string): Where {
+  const rel = relativeTo(top, root)
+  return {
+    label: rel ? `${basename(top)}/${rel}` : basename(top),
+    path: root,
+    worktreeOf: normPath(top) === normPath(repoRoot) ? null : basename(repoRoot),
+  }
+}
+
+// `worktree`, naming the repository only when the repo link beside it
+// does not: there is none (no remote), or the main checkout's folder has
+// another name than the remote's repository.
+export function worktreeLabel(worktreeOf: string, repoName: string | null) {
+  return repoName !== null && repoName.toLowerCase() === worktreeOf.toLowerCase() ? 'worktree' : `worktree of ${worktreeOf}`
+}
+
+// Where the shell has gone from the root: null while it is there, the path
+// below the root when inside it (`plugins/x`), else the whole path.
+export function driftOf(root: string, cwd: string): string | null {
+  if (normPath(root) === normPath(cwd)) return null
+  return relativeTo(root, cwd) || cwd.replace(/\\/g, '/')
+}
+
+function normPath(p: string) {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+// `path` below `base`, with forward slashes; '' when it is not below it.
+function relativeTo(base: string, path: string) {
+  const b = normPath(base)
+  const p = normPath(path)
+  return p.startsWith(`${b}/`) ? path.replace(/\\/g, '/').replace(/\/+$/, '').slice(b.length + 1) : ''
+}
+
+// origin's default branch, which a compare link measures against; `main`
+// when origin names none.
+async function readBase($: EngineInterface): Promise<string> {
+  if (gitDir === null) return 'main'
+  try {
+    const run = await $.process.run(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: gitDir, timeoutMs: 5_000 })
+    const m = /^origin\/(\S+)\s*$/.exec(run.stdout)
+    return run.exitCode === 0 && m?.[1] ? m[1] : 'main'
+  } catch {
+    return 'main'
+  }
 }
 
 const LIMIT_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
+const LIMIT_WINDOWS: Record<string, number> = { five_hour: 5 * 3_600_000, seven_day: 7 * 86_400_000 }
+
+// The elements a drawing takes from the surface's table.
+type Ui = { Box: any; Text: any; Link: any; Button: any }
 
 // Each line is a row of segments that wraps between them, never inside one:
 // a narrow band moves a whole segment to the next row instead of breaking
-// `motta-claude-mods` over two. `onDesktop` leaves out what the desktop app
-// draws itself: the model and effort (its picker) and the PR (its PR bar).
-function lines(Box: any, Text: any, Link: any, d: Data, now: number, onDesktop = false) {
-  const sep = <Text color="subtle">·  </Text>
-  const seg = (parts: unknown[]) => <Box flexDirection="row" flexShrink={0}>{parts}</Box>
+// `motta-claude-mods` over two. `Svg`, given on the desktop, leaves out what
+// the desktop app draws itself: the model and effort (its picker) and the PR
+// (its PR bar), and draws the bars as square grids (squaresSvg), not braille.
+// What can be pressed is underlined: the folder (opens
+// the file explorer there), the repo and the branch (GitHub, the branch as a compare
+// view against origin's default), the file counts (the Changes pane), the
+// last commit once pushed (its page), the percentages (the Context and Usage
+// panes) and the last slot (cycles what it shows).
+function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null) {
+  const { Box, Text, Link, Button } = ui
+  const onDesktop = Svg !== null
+  // Spacing comes from the layout alone, never from spaces in the text: a
+  // gap between a segment's items and a wider one between segments, which
+  // its label word (`ctx`, `5h`, `files`) opens, so no separator is drawn:
+  // the band cannot tell where a row wraps, and a `·` would end up at the
+  // start or end of one. A proportional font draws a space at no fixed
+  // width. A narrow band moves a whole segment to the next row; only a
+  // segment wider than a row of its own wraps its items. In character cells:
+  // the desktop takes fractions, the terminal whole cells.
+  const space = onDesktop ? DESKTOP_SPACE : TERMINAL_SPACE
+  const seg = (parts: unknown[]) => (
+    <Box flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={space.inner}>
+      {parts}
+    </Box>
+  )
+  // Pieces that read as one token, `@84/s` or a bar's runs: no gap inside.
+  const tight = (parts: unknown[]) => <Box flexDirection="row" alignItems="center">{parts}</Box>
+  // A 0-100 bar: squares on the desktop, its tick exactly at `share` (0-1),
+  // or braille cells elsewhere, its tick before cell `mark`, as near as text
+  // can put it. An image, not an interactive frame: the desktop rebuilds a
+  // frame on every redraw, and the band redraws twice a second while a
+  // response streams, so a frame flickers (its tooltip is not worth that).
+  const bar = (alt: string, points: number, color: string, share: number | null, mark: number | null) =>
+    Svg !== null
+      ? <Svg source={squaresSvg(points, color, share)} alt={alt} width={SQ_W} height={SQ_H} />
+      : tight(meter(Text, cellDots(points), color, mark))
 
-  const line1 = [seg([<Text color="suggestion">📁 {d.dir}</Text>])]
+  // An icon before a name: drawn as an outline image on the desktop (iconSvg),
+  // an emoji elsewhere.
+  const icon = (name: Icon, color: string) =>
+    Svg !== null
+      ? <Svg source={iconSvg(name, color)} alt={name} width={ICON_SIZE} height={ICON_SIZE} />
+      : <Text color={color}>{ICON_EMOJI[name]}</Text>
+  // A pressable label: a desktop draws a Button as a native button of its
+  // plain label, dropping any color or underline, so what can be pressed is a
+  // word drawn dim, full strength under the pointer, and the colored figures
+  // stay plain Text beside it. The desktop's button pads its label on both
+  // sides; a negative margin of that padding takes it back, so the word sits
+  // where plain text would and the gaps around it match the rest.
+  const press = (key: string, label: string, onPress: () => void) => {
+    const button = <Button plain dimColor key={key} label={label} onPress={onPress} />
+    return onDesktop ? <Box marginX={-DESKTOP_BUTTON_PAD}>{button}</Box> : button
+  }
+
+  const w = d.where
+  const drift = driftOf(w.path, d.cwd)
+  // The root, then the shell's folder right after it when a `cd` has taken
+  // the shell away from it, then whether the root is a worktree.
+  const line1 = [
+    seg([
+      icon('folder', 'suggestion'),
+      press('folder', w.label, () => void openFolder($, w.path)),
+      ...(drift === null ? [] : [<Text color="suggestion">↳</Text>, press('cwd', drift, () => void openFolder($, d.cwd))]),
+      ...(w.worktreeOf ? [<Text color="subtle">{worktreeLabel(w.worktreeOf, d.repoName)}</Text>] : []),
+    ]),
+  ]
   if (d.repoUrl && d.repoName) {
-    const href = d.git ? `${d.repoUrl}/tree/${d.git.branch}` : d.repoUrl
-    line1.push(seg([<Link href={href} label={`🔗 ${d.repoName}`} />]))
+    line1.push(seg([icon('link', 'suggestion'), <Link href={d.repoUrl}><Text color="suggestion" underline>{d.repoName}</Text></Link>]))
   }
   if (d.git) {
-    const git = [<Text color="success">🌿 {d.git.branch}</Text>]
-    if (d.git.staged > 0) git.push(<Text color="success">  +{d.git.staged}</Text>)
-    if (d.git.modified > 0) git.push(<Text color="warning">  ~{d.git.modified}</Text>)
-    if (d.git.staged === 0 && d.git.modified === 0) git.push(<Text color="subtle">  clean</Text>)
-    line1.push(seg(git))
+    const g = d.git
+    const branch = <Text color="success" underline={d.repoUrl !== null}>{g.branch}</Text>
+    line1.push(seg([icon('branch', 'success'), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]))
+    const files = fileCounts(Text, g)
+    const state = files.length > 0 ? [press('changes', 'files', () => void openChanges($)), ...files] : [<Text color="subtle">clean</Text>]
+    line1.push(seg([...state, ...syncParts(Text, g, d.base)]))
+    if (d.commit) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
   }
-  if (d.pr && !onDesktop) line1.push(seg(prSegment(Text, Link, d.pr, d.isPrStale)))
+  if (d.pr && !onDesktop) line1.push(seg([tight(prSegment(Text, Link, d.pr, d.isPrStale))]))
 
+  // Labels subtle, figures at full strength: the figures are what is read.
   const model = d.effort ? `[${d.model} | ${d.effort}]` : `[${d.model}]`
+  const ctxColor = ctxLevel(d.ctxPercent)
   const line2 = [
     ...(onDesktop ? [] : [seg([<Text color="subtle">{model}</Text>])]),
     seg([
-      ...(onDesktop ? [] : [sep]),
-      <Text>CTX </Text>,
-      ...ctxBar(Text, d),
-      <Text color="subtle"> {short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
+      press('context', 'ctx', () => void openContext($)),
+      bar(`context ${d.ctxPercent}%`, d.ctxPercent, ctxColor, compactShare(d.compactAt, d.ctxWindow), compactMark(d.compactAt, d.ctxWindow)),
+      <Text color={ctxColor} bold>{d.ctxPercent}%</Text>,
+      <Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
     ]),
   ]
   for (const l of d.limits) {
-    const limit = [sep, <Text>{l.label} </Text>, <Text color={level(l.percent, 60, 80)}>{l.percent}%</Text>]
+    const pace = l.resetsAt === null ? null : elapsedShare(l.resetsAt, l.windowMs, now)
+    const color = limitLevel(l.percent, pace)
+    const limit = [
+      press(`usage-${l.label}`, l.label, () => void openUsage($)),
+      bar(`${l.label} limit ${l.percent}%`, l.percent, color, pace, paceMark(pace)),
+      <Text color={color} bold>{l.percent}%</Text>,
+    ]
     const left = l.resetsAt === null ? '' : resetIn(l.resetsAt - now)
-    if (left) limit.push(<Text color="subtle"> ~{left}</Text>)
+    if (left) limit.push(<Text color="subtle">{left}</Text>)
     line2.push(seg(limit))
   }
-  const io = [sep, <Text>In </Text>, <Text color="subtle">{short(d.ctxTokens)}</Text>]
-  io.push(<Text>  Out </Text>, <Text color="subtle">{short(d.outTokens)}</Text>)
-  if (d.rate) io.push(...rateSegment(Text, d.rate))
-  line2.push(seg(io))
+  line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
 
   return [
-    <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={2}>{line1}</Box>,
-    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={2}>{line2}</Box>,
+    <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line1}</Box>,
+    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line2}</Box>,
   ]
 }
+
+// The gaps, in character cells: between a segment's items (`inner`) and
+// between segments (`outer`). A desktop cell is wider than a space in its
+// proportional font, so its inner gap is half a cell.
+const DESKTOP_SPACE = { inner: 0.5, outer: 2 }
+const TERMINAL_SPACE = { inner: 1, outer: 3 }
+// The padding a desktop button puts on each side of its label, in cells:
+// measured from the band, about four fifths of a cell.
+const DESKTOP_BUTTON_PAD = 0.75
+
+// `+2 ~7 ?1`: staged, modified and untracked files, the ones there are.
+function fileCounts(Text: any, g: Git) {
+  const parts = []
+  if (g.staged > 0) parts.push(<Text color="success">+{g.staged}</Text>)
+  if (g.modified > 0) parts.push(<Text color="warning">~{g.modified}</Text>)
+  if (g.untracked > 0) parts.push(<Text color="subtle">?{g.untracked}</Text>)
+  return parts
+}
+
+// `↑2` commits to push, `↓1` to pull, or `not pushed` for a branch with no
+// upstream (origin's default branch excepted, which has nothing to push to).
+function syncParts(Text: any, g: Git, base: string) {
+  if (g.upstream === null) return g.branch === base || g.branch === 'HEAD' ? [] : [<Text color="subtle">not pushed</Text>]
+  const parts = []
+  if (g.ahead > 0) parts.push(<Text>↑{g.ahead}</Text>)
+  if (g.behind > 0) parts.push(<Text color="warning">↓{g.behind}</Text>)
+  return parts
+}
+
+// `last 12m ago`: a link to the commit once it is on the remote, plain text
+// while it is only local.
+function commitParts(Text: any, Link: any, d: Data, c: Commit, now: number) {
+  const isPushed = d.repoUrl !== null && d.git?.upstream != null && d.git.ahead === 0
+  const label = `last ${ago(now - c.at)}`
+  return isPushed ? [<Link href={`${d.repoUrl}/commit/${c.hash}`}><Text color="subtle" underline>{label}</Text></Link>] : [<Text color="subtle">{label}</Text>]
+}
+
+// The branch on GitHub: compared against origin's default, or the default
+// branch's own tree.
+export function branchUrl(repoUrl: string, branch: string, base: string) {
+  return branch === base || branch === 'HEAD' ? `${repoUrl}/tree/${branch}` : `${repoUrl}/compare/${base}...${branch}`
+}
+
+// What the last slot shows: the output and its rate, the session's cost, its
+// turns and time, or the turns left before auto-compact. Its label is
+// underlined: pressing it moves to the next.
+function slotParts(Text: any, tight: (parts: unknown[]) => unknown, d: Data, now: number) {
+  if (d.slot === 'cost') return [<Text>{d.costUsd === null ? '–' : `$${d.costUsd.toFixed(2)}`}</Text>]
+  if (d.slot === 'session') {
+    return [<Text>{d.turns}</Text>, <Text color="subtle">turns</Text>, <Text color="subtle">·</Text>, <Text>{resetIn(now - d.startedAt)}</Text>]
+  }
+  if (d.slot === 'runway') {
+    const left = turnsToCompact(d)
+    return [<Text>{d.compactAt === null ? 'off' : left === null ? '–' : `in ~${left} turns`}</Text>]
+  }
+  const parts: unknown[] = [<Text>{short(d.outTokens)}</Text>]
+  if (d.rate) parts.push(tight(rateSegment(Text, d.rate)))
+  return parts
+}
+
+// The word each slot is pressed by.
+const SLOT_LABELS: Record<Slot, string> = { rate: 'out', cost: 'cost', session: 'session', runway: 'compact' }
+
+type Icon = 'folder' | 'link' | 'branch'
+const ICON_SIZE = 14
+const ICON_EMOJI: Record<Icon, string> = { folder: '📁', link: '🔗', branch: '🌿' }
+const ICON_PATHS: Record<Icon, string> = {
+  folder: '<path d="M2 4.2a1 1 0 0 1 1-1h2.7l1.5 1.6H11a1 1 0 0 1 1 1v4.9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
+  link: '<path d="M5.9 8.1a2.3 2.3 0 0 0 3.3 0l2-2a2.3 2.3 0 0 0-3.3-3.3l-.6.6"/><path d="M8.1 5.9a2.3 2.3 0 0 0-3.3 0l-2 2a2.3 2.3 0 0 0 3.3 3.3l.6-.6"/>',
+  branch: '<circle cx="4.5" cy="3.3" r="1.3"/><circle cx="4.5" cy="10.7" r="1.3"/><circle cx="9.5" cy="4.6" r="1.3"/><path d="M4.5 4.6v4.8"/><path d="M9.5 5.9c0 2.4-5 1.6-5 3.5"/>',
+}
+
+// An outline icon, Tabler's look: strokes in the band's color, no fill.
+export function iconSvg(name: Icon, color: string) {
+  const stroke = SVG_COLORS[color] ?? color
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 14 14" fill="none" stroke="${stroke}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name]}</svg>`
+}
+
+// About how many turns are left before auto-compact, at the context's
+// average growth per turn so far; null when that cannot be told.
+export function turnsToCompact(d: Pick<Data, 'compactAt' | 'ctxTokens' | 'turns'>): number | null {
+  if (d.compactAt === null || d.turns <= 0 || d.ctxTokens <= 0) return null
+  return Math.max(0, Math.round((d.compactAt - d.ctxTokens) / (d.ctxTokens / d.turns)))
+}
+
+// The window's figures in words: used of the window, where auto-compact
+// fires, and about how many turns until it does.
+function contextSummary(d: Data) {
+  const used = `${short(d.ctxTokens)} of ${short(d.ctxWindow)}`
+  if (d.compactAt === null) return `${used} · auto-compact off`
+  const left = turnsToCompact(d)
+  const at = d.ctxWindow > 0 ? ` (${Math.round((d.compactAt / d.ctxWindow) * 100)}%)` : ''
+  return `${used} · auto-compact at ${short(d.compactAt)}${at}${left === null ? '' : ` · about ${left} turns before it fires`}`
+}
+
+// How the limit ends at the pace so far: its average rate since the window
+// opened, run to the reset.
+export function projection(percent: number, elapsed: number | null, windowMs: number | null) {
+  if (elapsed === null || windowMs === null) return ''
+  const gone = `${Math.round(elapsed * 100)}% of the window gone`
+  if (elapsed < 0.02) return `${gone}, too early to project`
+  if (percent <= 0) return `${gone} · nothing used yet`
+  const end = percent / elapsed
+  if (end <= 100) return `${gone} · at this pace about ${Math.round(end)}% by the reset`
+  return `${gone} · at this pace 100% in about ${resetIn((elapsed * windowMs * (100 - percent)) / percent)}, before the reset`
+}
+
+// `16:47`, or `Wed 09:12` for a window longer than a day, in local time.
+function clockAt(at: number, windowMs: number | null) {
+  const t = new Date(at)
+  const hm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+  return windowMs !== null && windowMs > 86_400_000 ? `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getDay()]} ${hm}` : hm
+}
+
+// `just now`, `12m ago`, `3h ago`, `2d ago`.
+export function ago(ms: number) {
+  if (ms < 60_000) return 'just now'
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
+  return `${Math.floor(ms / 86_400_000)}d ago`
+}
+
+const CHANGES_PANE = 'statusline-changes'
+const CONTEXT_PANE = 'statusline-context'
+const USAGE_PANE = 'statusline-usage'
+
+// Opens the folder in the system's file explorer, as the mod's own process,
+// so nothing reaches the transcript. Says so when every way failed, with why.
+async function openFolder($: EngineInterface, path: string) {
+  let why = ''
+  for (const argv of folderOpeners(path)) {
+    try {
+      const run = await $.process.run(argv, { timeoutMs: 15_000 })
+      // explorer.exe exits 1 even when it opened the window.
+      if (run.exitCode === 0 || argv[0] === 'explorer.exe') return
+      why = run.stderr.trim() || `${argv[0]} exited ${run.exitCode}`
+    } catch (err) {
+      why = err instanceof Error ? err.message : String(err)
+    }
+  }
+  $.ui.toast(`Could not open ${path}: ${why}`)
+}
+
+// The commands that open a folder, in the order to try them. On Windows (a
+// drive letter or backslash) `start` first: it opens the folder the way a
+// double-click does, in a window of its own, where explorer.exe started
+// straight from a hidden helper process can open hidden or not at all; then
+// explorer.exe. Elsewhere macOS's `open`, then Linux's `xdg-open`.
+export function folderOpeners(path: string): string[][] {
+  if (!/^[a-zA-Z]:|\\/.test(path)) return [['open', path], ['xdg-open', path]]
+  const windowsPath = path.replace(/\//g, '\\')
+  return [['cmd', '/c', 'start', '""', windowsPath], ['explorer.exe', windowsPath]]
+}
+
+async function openChanges($: EngineInterface) {
+  await refreshGit($)
+  await $.ui.open({ id: CHANGES_PANE, title: 'Changes' })
+}
+
+// Reads the breakdown fresh (estimated locally, no request sent) and opens
+// the Context pane on it.
+async function openContext($: EngineInterface) {
+  try {
+    const usage = await $.session.usage({ breakdown: 'summary' })
+    const breakdown = usage.context.breakdown
+    if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
+    if (data !== null) data = { ...data, ...contextFigures(usage.context), compactAt, categories: breakdown?.categories ?? data.categories }
+  } catch {
+    // The last breakdown stays.
+  }
+  await $.ui.open({ id: CONTEXT_PANE, title: 'Context' })
+}
+
+async function openUsage($: EngineInterface) {
+  await $.ui.open({ id: USAGE_PANE, title: 'Usage' })
+}
+
+async function compactNow($: EngineInterface) {
+  await $.ui.close({ id: CONTEXT_PANE })
+  try {
+    await $.command.run({ command: 'compact' })
+  } catch {
+    $.ui.toast('Run /compact to compact now')
+  }
+}
+
+async function nextSlot($: EngineInterface) {
+  slot = SLOTS[(SLOTS.indexOf(slot) + 1) % SLOTS.length] ?? 'rate'
+  try {
+    await $.store.set('slot', slot)
+  } catch {
+    // Kept for this session only.
+  }
+  if (data !== null) data = { ...data, slot }
+  await paint($)
+}
+
+async function readSlot($: EngineInterface): Promise<Slot> {
+  try {
+    const kept = await $.store.get('slot')
+    return SLOTS.includes(kept as Slot) ? (kept as Slot) : 'rate'
+  } catch {
+    return 'rate'
+  }
+}
+
+// Each changed file: its status letter, path, and lines added and deleted.
+function changesPane(Box: any, Text: any, d: Data | null) {
+  if (d?.git == null) return <Text dimColor>Not in a git repository.</Text>
+  if (d.changes.length === 0) return <Text dimColor>Nothing changed on {d.git.branch}.</Text>
+  const added = d.changes.reduce((n, c) => n + (c.added ?? 0), 0)
+  const deleted = d.changes.reduce((n, c) => n + (c.deleted ?? 0), 0)
+  return (
+    <Box flexDirection="column">
+      <Text color="subtle">
+        {d.changes.length} files · +{added} −{deleted} against HEAD
+      </Text>
+      {d.changes.map(c => (
+        <Box key={c.path} flexDirection="row" columnGap={1}>
+          <Text color={statusColor(c.status)}>{statusLetter(c.status)}</Text>
+          <Box flexShrink={1}>
+            <Text wrap="truncate-start">{c.path}</Text>
+          </Box>
+          {c.added !== null && <Text color="success">+{c.added}</Text>}
+          {c.deleted !== null && <Text color="error">−{c.deleted}</Text>}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+// `M`, `A`, `D`, `R`, `U` (a conflict) or `?` (untracked), from git's XY.
+export function statusLetter(xy: string) {
+  if (xy === '??') return '?'
+  if (xy.includes('U') || xy === 'AA' || xy === 'DD') return 'U'
+  return (xy[0] !== ' ' ? xy[0] : xy[1]) ?? '?'
+}
+
+function statusColor(xy: string) {
+  const letter = statusLetter(xy)
+  if (letter === '?') return 'subtle'
+  if (letter === 'A') return 'success'
+  if (letter === 'D' || letter === 'U') return 'error'
+  if (letter === 'R') return 'suggestion'
+  return 'warning'
+}
+
+// What fills the window, row by row as /context breaks it down, and where
+// auto-compact fires, with a button to compact now.
+function contextPane($: EngineInterface, Box: any, Text: any, Button: any, d: Data | null) {
+  if (d === null) return <Text dimColor>No reading yet.</Text>
+  const rows = d.categories.filter(c => c.kind !== 'deferred' && c.tokens > 0)
+  const share = (n: number) => (d.ctxWindow > 0 ? `${Math.round((n / d.ctxWindow) * 100)}%` : '')
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color={ctxLevel(d.ctxPercent)} bold>{d.ctxPercent}%</Text>
+        <Text color="subtle"> of the window · {short(d.ctxTokens)} of {short(d.ctxWindow)}</Text>
+      </Box>
+      {rows.length === 0 && <Text dimColor>The breakdown comes with the next turn.</Text>}
+      {rows.map(c => (
+        <Box key={c.name} flexDirection="row" columnGap={1}>
+          <Text color={c.color}>■</Text>
+          <Text>{c.name}</Text>
+          <Text color="subtle">{short(c.tokens)} · {share(c.tokens)}</Text>
+        </Box>
+      ))}
+      <Text color="subtle">{contextSummary(d)}</Text>
+      {d.compactAt !== null && <Button key="compact" label="Compact now" onPress={() => void compactNow($)} />}
+    </Box>
+  )
+}
+
+// Each limit: its figure, when it resets, where this pace ends, and the
+// readings the band has seen this window against an even pace.
+function usagePane(Box: any, Text: any, Svg: any, d: Data | null, readings: Record<string, Readings | null>, now: number) {
+  if (d === null || d.limits.length === 0) return <Text dimColor>No rate-limit reading yet: one comes with the next response.</Text>
+  return (
+    <Box flexDirection="column" rowGap={1}>
+      {d.limits.map(l => {
+        const pace = l.resetsAt === null ? null : elapsedShare(l.resetsAt, l.windowMs, now)
+        const color = limitLevel(l.percent, pace)
+        const points = pointsOf(readings[l.label] ?? null, l)
+        return (
+          <Box key={l.label} flexDirection="column">
+            <Box flexDirection="row" columnGap={1}>
+              <Text bold>{l.label}</Text>
+              <Text color={color} bold>{l.percent}%</Text>
+              {l.resetsAt !== null && (
+                <Text color="subtle">
+                  resets {clockAt(l.resetsAt, l.windowMs)}, in {resetIn(l.resetsAt - now)}
+                </Text>
+              )}
+            </Box>
+            <Text color="subtle">{projection(l.percent, pace, l.windowMs)}</Text>
+            {l.resetsAt !== null && l.windowMs !== null && (Svg !== null ? (
+              <Svg source={sparkSvg(points, l.resetsAt, l.windowMs, now, color)} alt={`${l.label} readings this window`} width={SPARK_W} height={SPARK_H} />
+            ) : (
+              <Text color={color}>{sparkText(points, l.resetsAt, l.windowMs, now)}</Text>
+            ))}
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
+// A limit's readings this window, as kept in $.store: when each came and the
+// percent it said. A window that reset leaves its readings behind.
+type Readings = { resetsAt: number; points: [number, number][] }
+type Limit = Data['limits'][number]
+
+const MAX_READINGS = 300
+
+function pointsOf(r: Readings | null, l: Limit): [number, number][] {
+  return r !== null && l.resetsAt !== null && Math.abs(r.resetsAt - l.resetsAt) < 5 * 60_000 ? r.points : []
+}
+
+async function readStored($: EngineInterface, label: string): Promise<Readings | null> {
+  try {
+    const kept = (await $.store.get(`usage:${label}`)) as Readings | undefined
+    return kept && Array.isArray(kept.points) && typeof kept.resetsAt === 'number' ? kept : null
+  } catch {
+    return null
+  }
+}
+
+// After each reading of the limits: keeps the reading for the Usage pane when
+// the percent moved, and toasts once when a limit turns orange (running ahead
+// of its window) or red. The first reading after a load only sets the colors.
+async function noteLimits($: EngineInterface, limits: Limit[]) {
+  const now = await $.clock.now()
+  for (const l of limits) {
+    if (l.resetsAt === null) continue
+    const pace = elapsedShare(l.resetsAt, l.windowMs, now)
+    const color = limitLevel(l.percent, pace)
+    const before = limitColors.get(l.label)
+    limitColors.set(l.label, color)
+    const rank = LEVEL_RANK[color] ?? 0
+    if (before !== undefined && rank > (LEVEL_RANK[before] ?? 0) && rank >= 2) {
+      $.ui.toast(limitToast(l, pace, color, now), { timeoutMs: 8_000 })
+    }
+    const kept = await readStored($, l.label)
+    const points = pointsOf(kept, l)
+    if (points[points.length - 1]?.[1] === l.percent) continue
+    try {
+      await $.store.set(`usage:${l.label}`, { resetsAt: l.resetsAt, points: [...points, [now, l.percent]].slice(-MAX_READINGS) })
+    } catch {
+      // Not kept; the pane draws what it has.
+    }
+  }
+}
+
+const LEVEL_RANK: Record<string, number> = { success: 0, warning: 1, '#ff8700': 2, error: 3 }
+
+export function limitToast(l: Limit, pace: number | null, color: string, now: number) {
+  if (color === 'error') return `${l.label} limit at ${l.percent}%${l.resetsAt === null ? '' : `, resets in ${resetIn(l.resetsAt - now)}`}`
+  const ahead = pace === null ? 0 : Math.round(l.percent - pace * 100)
+  return `${l.label} limit is ${ahead} points ahead of its window: ${projection(l.percent, pace, l.windowMs)}`
+}
+
+const SPARK_W = 240
+const SPARK_H = 48
+
+// The readings as a line across the window, against the dashed line of an
+// even pace to 100% and a mark where the window stands now.
+export function sparkSvg(points: [number, number][], resetsAt: number, windowMs: number, now: number, color: string) {
+  const start = resetsAt - windowMs
+  const x = (t: number) => Math.round(Math.min(1, Math.max(0, (t - start) / windowMs)) * SPARK_W * 10) / 10
+  const y = (p: number) => Math.round((SPARK_H - 2 - (Math.min(100, p) / 100) * (SPARK_H - 4)) * 10) / 10
+  const line = points.map(([t, p]) => `${x(t)},${y(p)}`).join(' ')
+  const fill = SVG_COLORS[color] ?? color
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}">
+<style>.k{fill:#e4e4e2}.p{stroke:#8a8a8a}.n{fill:#1f1f1f}@media (prefers-color-scheme: dark){.k{fill:#2c2c2c}.p{stroke:#6a6a6a}.n{fill:#ececec}}</style>
+<rect class="k" width="${SPARK_W}" height="${SPARK_H}" rx="3"/>
+<line class="p" x1="0" y1="${y(0)}" x2="${SPARK_W}" y2="${y(100)}" stroke-width="1" stroke-dasharray="3 3"/>
+${points.length > 1 ? `<polyline fill="none" stroke="${fill}" stroke-width="2" stroke-linejoin="round" points="${line}"/>` : ''}
+<rect class="n" x="${Math.max(0, x(now) - 0.75)}" y="0" width="1.5" height="${SPARK_H}"/>
+</svg>`
+}
+
+// The terminal's sparkline: one block per slice of the window up to now, as
+// tall as the last reading in it.
+export function sparkText(points: [number, number][], resetsAt: number, windowMs: number, now: number, width = 30) {
+  const start = resetsAt - windowMs
+  const upTo = Math.min(width, Math.ceil(((now - start) / windowMs) * width))
+  let last = 0
+  let out = ''
+  for (let i = 0; i < upTo; i++) {
+    const end = start + ((i + 1) / width) * windowMs
+    for (const [t, p] of points) if (t <= end) last = p
+    out += '▁▂▃▄▅▆▇█'[Math.min(7, Math.floor((last / 100) * 8))]
+  }
+  return out.padEnd(width, '·')
+}
+
+// The desktop's bar: ten blocks of ten small squares, SQ_COLS wide and
+// SQ_ROWS tall, each block a tenth of the bar on a track of its own, one
+// square a point, lit block by block from the left and each block from its
+// bottom row up, left then right, each square a step brighter than the one
+// lit before it (RAMP_FROM). A tick stands exactly where `share` (0-1)
+// falls, measured along the blocks' tracks, the gaps left out. An image has no theme keys: the
+// colors are the desktop's, the track and tick following its light or dark
+// scheme.
+export function squaresSvg(points: number, color: string, share: number | null): string {
+  const lit = Math.min(100, Math.max(0, Math.round(points)))
+  const fill = SVG_COLORS[color] ?? color
+  const blockX = (block: number) => 1 + block * SQ_STRIDE
+  const tracks: string[] = []
+  const squares: string[] = []
+  for (let block = 0; block < 10; block++) {
+    tracks.push(`<rect x="${blockX(block) - 1}" y="0" width="${SQ_TRACK}" height="${SQ_H}" rx="1.5"/>`)
+  }
+  for (let i = 0; i < lit; i++) {
+    const block = Math.floor(i / 10)
+    const col = i % SQ_COLS
+    const row = SQ_ROWS - 1 - Math.floor((i % 10) / SQ_COLS)
+    const opacity = (RAMP_FROM + ((1 - RAMP_FROM) * (i + 1)) / lit).toFixed(3)
+    squares.push(`<rect x="${blockX(block) + col * SQ_PITCH}" y="${1 + row * SQ_PITCH}" width="2" height="2" opacity="${opacity}"/>`)
+  }
+  let tick = ''
+  if (share !== null) {
+    // The share in points, placed along its block's track; 100 is the bar's end.
+    const at = Math.min(100, Math.max(0, share * 100))
+    const block = Math.min(9, Math.floor(at / 10))
+    const center = blockX(block) - 1 + ((at - block * 10) / 10) * SQ_TRACK
+    const x = Math.min(SQ_W - 1.5, Math.max(0, center - 0.75))
+    tick = `<rect class="tk" x="${Math.round(x * 100) / 100}" y="0" width="1.5" height="${SQ_H}" rx="0.75"/>`
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SQ_W}" height="${SQ_H}" viewBox="0 0 ${SQ_W} ${SQ_H}">
+<style>.k{fill:#e4e4e2}.tk{fill:#1f1f1f}@media (prefers-color-scheme: dark){.k{fill:#2c2c2c}.tk{fill:#ececec}}</style>
+<g class="k">${tracks.join('')}</g>
+<g fill="${fill}">${squares.join('')}</g>${tick}
+</svg>`
+}
+
+const SQ_COLS = 2
+const SQ_ROWS = 5
+const SQ_PITCH = 3
+// The space between two blocks' tracks, and from one block's start to the next.
+const SQ_GAP = 2
+// A block's track, from its left edge to its right.
+const SQ_TRACK = SQ_COLS * SQ_PITCH + 1
+const SQ_STRIDE = SQ_TRACK + SQ_GAP
+const SQ_W = 10 * SQ_STRIDE - SQ_GAP
+const SQ_H = SQ_ROWS * SQ_PITCH + 1
+const SVG_COLORS: Record<string, string> = { success: '#4eba65', warning: '#e5b84b', error: '#ef5350', suggestion: '#6a9ef5' }
+
+// The strength of the bar's first square; each square after it, in the
+// order they light, across the blocks, is a step brighter, the newest at full.
+const RAMP_FROM = 0.45
 
 // `#482 ✓ CI 7/7 · approved · ready to merge`, `#482 ✗ CI 1 failed (lint)
 // ⚠ conflicts with main · review pending`, `#482 merged`. Dim when stale.
@@ -676,49 +1413,83 @@ function prSegment(Text: any, Link: any, pr: Pr, isStale: boolean) {
 // ` @84/s` once a request ended, ` @~84/s` while one streams (the estimate
 // in the warning color), ` waiting 3s` before its first token.
 function rateSegment(Text: any, r: Rate) {
-  if (r.kind === 'waiting') return [<Text color="subtle"> waiting {Math.floor(r.ms / 1_000)}s</Text>]
+  if (r.kind === 'waiting') return [<Text color="subtle">waiting {Math.floor(r.ms / 1_000)}s</Text>]
   const n = Math.round(r.perSec)
-  if (r.kind === 'live') return [<Text color="subtle"> @</Text>, <Text color="warning">~{n}</Text>, <Text color="subtle">/s</Text>]
-  return [<Text color="subtle"> @{n}/s</Text>]
+  if (r.kind === 'live') return [<Text color="subtle">@</Text>, <Text color="warning">~{n}</Text>, <Text color="subtle">/s</Text>]
+  return [<Text color="subtle">@</Text>, <Text>{n}</Text>, <Text color="subtle">/s</Text>]
 }
 
-// `----------|-`: the window in BAR_CELLS dashes, the used ones bold in the
-// color of how full it is, the rest dim, and a tick (the theme's text color:
-// white on a dark theme) where auto-compact fires. Plain dashes: a desktop
-// draws box-drawing lines at full width, joined into one long rule. The tick sits
-// between two cells, never on one, so the room left past it stays drawn. No
-// tick when auto-compact is off.
-function ctxBar(Text: any, d: Data) {
-  const { filled, mark } = barCells(d.ctxTokens, d.ctxWindow, d.compactAt)
-  const look = { used: { color: ctxLevel(d.ctxPercent), glyph: '-' }, mark: { color: 'text', glyph: '|' }, free: { color: 'subtle', glyph: '-' } }
-  // One Text per run of like cells, the tick its own.
-  const runs: { kind: keyof typeof look; length: number }[] = []
-  const push = (kind: keyof typeof look) => {
+// A bar of braille cells, CELL_POINTS points to a cell: a cell's dots fill
+// from the bottom row up in `color` as its points come, an empty cell is a
+// subtle track of its bottom two dots, and a `|` tick (the theme's text
+// color: white on a dark theme) stands before cell `mark`, or after the last
+// when `mark` is the cell count. Braille, not blocks or box-drawing: a desktop
+// draws the band in a proportional font, where spaces on a background come
+// out as tall slabs and box-drawing lines join into one long rule. The tick
+// sits between two cells, never on one, so the cells past it stay drawn. No
+// tick when `mark` is null.
+function meter(Text: any, dots: number[], color: string, mark: number | null) {
+  // One Text per run of one color, the tick its own.
+  const runs: { color: string; text: string }[] = []
+  const add = (text: string, runColor: string) => {
     const last = runs[runs.length - 1]
-    if (last?.kind === kind && kind !== 'mark') last.length++
-    else runs.push({ kind, length: 1 })
+    if (last !== undefined && last.color === runColor) last.text += text
+    else runs.push({ color: runColor, text })
   }
-  for (let i = 0; i < BAR_CELLS; i++) {
-    if (i === mark) push('mark')
-    push(i < filled ? 'used' : 'free')
-  }
+  dots.forEach((n, i) => {
+    if (i === mark) runs.push({ color: 'text', text: '|' })
+    if (n === 0) add(TRACK, 'subtle')
+    else add(braille(n), color)
+  })
+  if (mark === dots.length) runs.push({ color: 'text', text: '|' })
   return runs.map(r => (
-    <Text color={look[r.kind].color} bold={r.kind !== 'free'}>
-      {look[r.kind].glyph.repeat(r.length)}
+    <Text color={r.color} bold={r.text === '|'}>
+      {r.text}
     </Text>
   ))
 }
 
-const BAR_CELLS = 10
+const CELL_POINTS = 10
+// A braille cell's dots in the order they fill: the bottom row left then
+// right, then each row above.
+const DOT_BITS = [0x40, 0x80, 0x04, 0x20, 0x02, 0x10, 0x01, 0x08]
 
-// How many of the bar's cells the used tokens fill, and before which cell the
-// auto-compact tick goes (null when there is none): never after the last, so
-// a threshold short of the window's end shows room past it.
-export function barCells(tokens: number, window: number, compactAt: number | null) {
-  if (window <= 0) return { filled: 0, mark: null }
-  const at = (n: number) => Math.min(BAR_CELLS - 1, Math.max(0, Math.round((n / window) * BAR_CELLS)))
-  const filled = Math.min(BAR_CELLS, Math.round((tokens / window) * BAR_CELLS))
-  return { filled, mark: compactAt === null ? null : at(compactAt) }
+// The braille character with a cell's first `n` dots raised.
+export function braille(n: number) {
+  return String.fromCharCode(0x2800 + DOT_BITS.slice(0, n).reduce((bits, bit) => bits | bit, 0))
+}
+
+const TRACK = braille(2)
+
+// The dots each cell of a 0-100 bar holds, `cellPoints` points to a cell:
+// its points spread over its 8 dots, and at least one for any point.
+export function cellDots(points: number, cellPoints = CELL_POINTS): number[] {
+  const p = Math.min(100, Math.max(0, Math.round(points)))
+  return Array.from({ length: Math.ceil(100 / cellPoints) }, (_, i) => {
+    const inCell = Math.min(cellPoints, Math.max(0, p - i * cellPoints))
+    return inCell === 0 ? 0 : Math.max(1, Math.round((inCell * DOT_BITS.length) / cellPoints))
+  })
+}
+
+const CELLS = 100 / CELL_POINTS
+
+// Where auto-compact fires, as a share of the window; null when it is off.
+export function compactShare(compactAt: number | null, window: number) {
+  return compactAt === null || window <= 0 ? null : Math.min(1, compactAt / window)
+}
+
+// Before which cell the auto-compact tick goes, null when auto-compact is
+// off: never after the last, so a threshold short of the window's end shows
+// room past it.
+export function compactMark(compactAt: number | null, window: number) {
+  if (compactAt === null || window <= 0) return null
+  return Math.min(CELLS - 1, Math.max(0, Math.round((compactAt / window) * CELLS)))
+}
+
+// Before which cell the tick where a limit's window stands goes, the end
+// included: dots past it mean the limit is going faster than the window.
+export function paceMark(elapsed: number | null) {
+  return elapsed === null ? null : Math.min(CELLS, Math.max(0, Math.round(elapsed * CELLS)))
 }
 
 // Under 30% green, then yellow to 50%, orange to 70%, red past it.
@@ -732,16 +1503,30 @@ export function ctxLevel(percent: number) {
 // The theme has no orange key; a raw color draws the same on every theme.
 const ORANGE = '#ff8700'
 
-function level(percent: number, warn: number, crit: number) {
-  if (percent >= crit) return 'error'
-  if (percent >= warn) return 'warning'
+// The share of a rate-limit window gone by: 0 as it opens, 1 as it resets.
+export function elapsedShare(resetsAt: number, windowMs: number | null, now: number): number | null {
+  if (windowMs === null) return null
+  return Math.min(1, Math.max(0, 1 - (resetsAt - now) / windowMs))
+}
+
+// Red from 80%. Short of that, orange when the limit runs PACE_MARGIN points
+// or more ahead of the window's time, yellow from 60%, green below.
+export function limitLevel(percent: number, elapsed: number | null) {
+  if (percent >= 80) return 'error'
+  if (elapsed !== null && percent - elapsed * 100 >= PACE_MARGIN) return ORANGE
+  if (percent >= 60) return 'warning'
   return 'success'
 }
 
-function resetIn(ms: number) {
+const PACE_MARGIN = 10
+
+// `2h45m`, `45m`, and from a day on `1d20h`.
+export function resetIn(ms: number) {
   if (ms <= 0) return 'now'
-  const h = Math.floor(ms / 3_600_000)
+  const d = Math.floor(ms / 86_400_000)
+  const h = Math.floor((ms % 86_400_000) / 3_600_000)
   const m = Math.floor((ms % 3_600_000) / 60_000)
+  if (d > 0) return `${d}d${h}h`
   return h > 0 ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`
 }
 

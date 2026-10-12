@@ -65,7 +65,7 @@ test('shows the wait, then the live estimate, then the exact rate on Out', async
   })()
 
   await clock.advance(1_200)
-  expect(await ui.find({ type: 'Text', text: ' waiting 1s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'waiting 1s' })).toBeDefined()
 
   // 400 characters, about 100 tokens, one second after the first token.
   await clock.advance(1_300)
@@ -73,7 +73,8 @@ test('shows the wait, then the live estimate, then the exact rate on Out', async
 
   await clock.advance(1_000)
   await read
-  expect(await ui.find({ type: 'Text', text: ' @150/s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '150' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '~100' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: '300' })).toBeDefined()
   await ui.unmount()
 })

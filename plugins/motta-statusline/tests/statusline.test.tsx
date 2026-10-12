@@ -1,21 +1,77 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { httpsUrl, modelLabel, parsePr, parseStatus, prChange } from '../hooks/register.tsx'
+import { ago, branchUrl, driftOf, httpsUrl, worktreeLabel, modelLabel, parseChanges, parseCommit, parsePr, parseStatus, prChange, statusLetter, whereOf, withNumstat } from '../hooks/register.tsx'
 import type { Pr } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS, PR_JSON } from './session.tsx'
 
 describe('parseStatus', () => {
-  test('reads the branch and counts staged and modified files', () => {
-    const out = '## dev...origin/dev [ahead 1]\nM  a.ts\n M b.ts\nMM c.ts\n?? new.ts\n'
-    expect(parseStatus(out)).toEqual({ branch: 'dev', staged: 2, modified: 2 })
+  test('reads the branch, its upstream, and counts staged, modified and untracked files', () => {
+    const out = '## dev...origin/dev [ahead 1, behind 2]\nM  a.ts\n M b.ts\nMM c.ts\n?? new.ts\n'
+    expect(parseStatus(out)).toEqual({ branch: 'dev', staged: 2, modified: 2, untracked: 1, upstream: 'origin/dev', ahead: 1, behind: 2 })
   })
 
   test('reads a clean branch with no upstream', () => {
-    expect(parseStatus('## feat/x\n')).toEqual({ branch: 'feat/x', staged: 0, modified: 0 })
+    expect(parseStatus('## feat/x\n')).toEqual({ branch: 'feat/x', staged: 0, modified: 0, untracked: 0, upstream: null, ahead: 0, behind: 0 })
   })
 
   test('reads a repository with no commits yet', () => {
-    expect(parseStatus('## No commits yet on main\n')).toEqual({ branch: 'main', staged: 0, modified: 0 })
+    expect(parseStatus('## No commits yet on main\n').branch).toBe('main')
+  })
+})
+
+describe('parseChanges and withNumstat', () => {
+  test('lists each changed file, a rename by its new path, with its lines', () => {
+    const changes = parseChanges('## dev\nM  a.ts\nR  old.ts -> new.ts\n?? notes.md\n')
+    expect(changes.map(c => [c.status, c.path])).toEqual([['M ', 'a.ts'], ['R ', 'new.ts'], ['??', 'notes.md']])
+    const counted = withNumstat(changes, '4\t2\ta.ts\n-\t-\tnew.ts\n')
+    expect(counted.map(c => [c.added, c.deleted])).toEqual([[4, 2], [null, null], [null, null]])
+  })
+
+  test('names a status by one letter', () => {
+    expect(['M ', ' M', 'A ', 'D ', 'R ', 'UU', '??'].map(statusLetter)).toEqual(['M', 'M', 'A', 'D', 'R', 'U', '?'])
+  })
+})
+
+describe('parseCommit and ago', () => {
+  test('reads the last commit, or nothing from anything else', () => {
+    expect(parseCommit('abc1234\x1f1700000000\x1fFix it\n')).toEqual({ hash: 'abc1234', at: 1_700_000_000_000, subject: 'Fix it' })
+    expect(parseCommit('## dev\n')).toBeNull()
+  })
+
+  test('says how long ago', () => {
+    expect([30_000, 12 * 60_000, 3 * 3_600_000, 2 * 86_400_000].map(ago)).toEqual(['just now', '12m ago', '3h ago', '2d ago'])
+  })
+})
+
+describe('whereOf', () => {
+  test('names the checkout, the folder below it, and the repository a worktree is of', () => {
+    expect(whereOf('C:/code/app', 'C:/code/app', 'C:/code/app')).toEqual({ label: 'app', path: 'C:/code/app', worktreeOf: null })
+    expect(whereOf('C:\\code\\app\\src', 'C:/code/app', 'C:/code/app').label).toBe('app/src')
+    const wt = 'C:/code/app/.claude/worktrees/wt-1'
+    expect(whereOf(wt, wt, 'C:/code/app')).toEqual({ label: 'wt-1', path: wt, worktreeOf: 'app' })
+  })
+})
+
+describe('worktreeLabel', () => {
+  test('names the repository only when the repo link does not', () => {
+    expect(worktreeLabel('motta-claude-mods', 'motta-claude-mods')).toBe('worktree')
+    expect(worktreeLabel('mods', 'motta-claude-mods')).toBe('worktree of mods')
+    expect(worktreeLabel('mods', null)).toBe('worktree of mods')
+  })
+})
+
+describe('driftOf', () => {
+  test("says where the shell went from the root: below it, elsewhere, or nowhere", () => {
+    expect(driftOf('C:/code/app', 'C:\\code\\app\\')).toBeNull()
+    expect(driftOf('C:/code/app', 'C:\\code\\app\\plugins\\x')).toBe('plugins/x')
+    expect(driftOf('C:/code/app', 'D:\\tmp')).toBe('D:/tmp')
+  })
+})
+
+describe('branchUrl', () => {
+  test('compares a branch against the default one, whose own tree it opens', () => {
+    expect(branchUrl('https://github.com/o/r', 'feat/x', 'main')).toBe('https://github.com/o/r/compare/main...feat/x')
+    expect(branchUrl('https://github.com/o/r', 'main', 'main')).toBe('https://github.com/o/r/tree/main')
   })
 })
 
@@ -85,7 +141,7 @@ test('draws both lines above the engine hint in the terminal hint line', async (
   })
   expect(await ui.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Opus 5\.5 \(1M context\) \| high/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: ' 360k/1M' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '360k/1M' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
   await ui.unmount()
 })
@@ -94,7 +150,7 @@ test('draws in the band on the desktop, which has no hint line, and leaves the t
   answerSession(on)
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
   expect(await desktop.find({ type: 'Text', text: /vtex-copilot-fse/ })).toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: ' 360k/1M' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: '360k/1M' })).toBeDefined()
   // The app's model picker already shows the model and effort.
   expect(await desktop.find({ type: 'Text', text: /Opus 5\.5/ })).toBeUndefined()
   await desktop.unmount()

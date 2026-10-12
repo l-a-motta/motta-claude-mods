@@ -38,13 +38,15 @@ type GhAnswer = string | null | { stderr: string }
 
 export type Beneath = 'nothing' | 'chip' | 'card' | 'card-with-chips' | 'taken'
 
-export type Worktree = { cwd: string; status: string }
+// `root`, the session's root when the shell has gone elsewhere (`cwd`).
+export type Worktree = { cwd: string; status: string; root?: string }
 
 export const runs: { argv: string[]; cwd?: string }[] = []
 
 export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing', worktree: Worktree | null = null) {
   const clock = mock.clock(on)
   on('session.cwd', () => ({ value: worktree?.cwd ?? 'C:/code/vtex-copilot-fse' }))
+  on('session.root', () => ({ value: worktree?.root ?? worktree?.cwd ?? 'C:/code/vtex-copilot-fse' }))
   on('session.repo', () => ({
     value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
   }))
@@ -68,7 +70,7 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
     const json = typeof prJson === 'function' ? prJson() : prJson
     const run =
       e.argv[0] !== 'gh'
-        ? { exitCode: 0, stdout: worktree && e.init?.cwd === worktree.cwd ? worktree.status : '## dev\n', stderr: '' }
+        ? { exitCode: 0, stdout: gitAnswer(e.argv, e.init?.cwd, worktree), stderr: '' }
         : json === null
           ? { exitCode: 1, stdout: '', stderr: 'no pull requests found for branch "dev"' }
           : typeof json === 'object'
@@ -117,6 +119,17 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
     )
   })
   return clock
+}
+
+// git as the mod asks it: the checkout's root (the session's folder), the
+// last commit, made 12 minutes before the mock clock's start, origin's
+// default branch, the lines changed, and the status.
+function gitAnswer(argv: readonly string[], cwd: string | undefined, worktree: Worktree | null) {
+  if (argv.includes('rev-parse')) return `${cwd ?? 'C:/code/vtex-copilot-fse'}\n`
+  if (argv.includes('log')) return `abc1234def\x1f${-12 * 60}\x1fFix the band\n`
+  if (argv.includes('symbolic-ref')) return 'origin/main\n'
+  if (argv.includes('--numstat')) return '3\t1\tmanifest.json\n'
+  return worktree && cwd === worktree.cwd ? worktree.status : '## dev\n'
 }
 
 export const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120, scroll: { offset: 0, bodyRows: 10 }, view: {} }
