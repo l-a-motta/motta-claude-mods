@@ -56,7 +56,6 @@ const ACTIVITY_TTL_MS = 45_000
 const OUTSIDE_KEEP = 50
 const OUTSIDE_ROWS = 5
 const OUTSIDE_VERB: Record<string, string> = { read: 'read', change: 'changed' }
-const KEY_ROWS = 5
 const ACTIVITY_CYCLE = ['reads and writes', 'writes', 'reads', 'none']
 const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'shows reads + writes', writes: 'shows writes only', reads: 'shows reads only', none: 'shows no activity' }
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
@@ -1536,9 +1535,70 @@ export const register: Register = (on, options) => {
         right: [{ t: ` ${verb} `, c: FAR_TONES[o.tone]?.solid ?? theme.muted }],
       }
     }
+    const tagText = (text: string, color: string) => (
+      <Text color={color} backgroundColor={tagFill(color, theme.bg)}>
+        {` ${text} `}
+      </Text>
+    )
+    // The key: one entry per mark, a sample of it drawn as the tree draws it and what
+    // it means, under a heading per kind; two columns when the pane is wide enough.
+    const keyCols = width >= 48 ? 2 : 1
+    const glyphOf = (plain: string, nerd: string) => (unicode ? plain : nerd)
+    const keySections: { title: string; sampleWidth: number; items: { sample: ReturnType<typeof tagText>; text: string }[] }[] = [
+      {
+        title: 'What Claude just did',
+        sampleWidth: 12,
+        items: [
+          { sample: tagText('reading', FAR_TONES.read?.solid ?? theme.accent), text: 'read the file' },
+          { sample: tagText('editing', FAR_TONES.change?.solid ?? theme.accent), text: 'changed it' },
+          { sample: tagText('committing', TONES.commit?.solid ?? theme.accent), text: 'committed it' },
+        ],
+      },
+      {
+        title: 'Git, since the last commit',
+        sampleWidth: 7,
+        items: [
+          { sample: tagText('M', GIT_COLOR.M ?? theme.muted), text: 'modified' },
+          { sample: tagText('?', GIT_COLOR['?'] ?? theme.muted), text: 'new, not in git' },
+          { sample: tagText('D', GIT_COLOR.D ?? theme.muted), text: 'deleted' },
+          { sample: tagText('U', GIT_COLOR.U ?? theme.muted), text: 'merge conflict' },
+          { sample: tagText('M:2', GIT_COLOR.M ?? theme.muted), text: 'changed files inside' },
+          { sample: <Text color={VSCODE.ignored}>{glyphOf('⊘', '\u{f05e}')}</Text>, text: 'ignored by git' },
+          {
+            sample: (
+              <Text>
+                <Text color={VSCODE.linesAdded}>+3</Text> <Text color={VSCODE.linesRemoved}>-1</Text>
+              </Text>
+            ),
+            text: 'lines added, removed',
+          },
+        ],
+      },
+      {
+        title: 'Rows',
+        sampleWidth: 10,
+        items: [
+          { sample: <Text color={theme.muted}>.env</Text>, text: 'hidden file' },
+          { sample: <Text bold>a.ts</Text>, text: 'sent with prompts' },
+          { sample: <Text backgroundColor={theme.selection}> a.ts </Text>, text: 'cursor' },
+          { sample: <Text color={theme.muted}>▸ ▾</Text>, text: 'folder shut, open' },
+        ],
+      },
+      {
+        title: 'Buttons',
+        sampleWidth: 3,
+        items: [
+          { sample: <Text>{glyphOf('↑', '\u{f005d}')}</Text>, text: 'up a folder (pins)' },
+          { sample: <Text>{glyphOf('⌂', '\u{f02dc}')}</Text>, text: 'back to the cwd' },
+          { sample: <Text>{glyphOf('↻', '\u{f0450}')}</Text>, text: 'refresh' },
+          { sample: <Text>{glyphOf('⊟', '\u{eac5}')}</Text>, text: 'collapse all' },
+        ],
+      },
+    ]
+    const keyRows = 2 + keySections.reduce((n, s) => n + 1 + Math.ceil(s.items.length / keyCols), 0)
     // Rows above and below the tree: breadcrumb, buttons, setting chips, search, the
     // branch, the key when open, and the two labeled footer lines.
-    const fixed = 4 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.showKey ? KEY_ROWS : 0) + (t.selected ? 1 : 0) + (latest ? 1 : 0) + stripRows
+    const fixed = 4 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.showKey ? keyRows : 0) + 2 + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1686,11 +1746,6 @@ export const register: Register = (on, options) => {
           await reset($, await cwdOf($))
         }
       })()
-    const tagText = (text: string, color: string) => (
-      <Text color={color} backgroundColor={tagFill(color, theme.bg)}>
-        {` ${text} `}
-      </Text>
-    )
     const opens = openWithSetting.trim()
     const openChoices = ['preview', 'app', ...(base.open.trim() && !['preview', 'app'].includes(base.open.trim()) ? [base.open] : [])]
     const openLabel = opens === 'preview' ? 'preview' : !opens || opens === 'app' ? 'default app' : opens.split(/\s+/)[0]
@@ -1728,7 +1783,6 @@ export const register: Register = (on, options) => {
           <Text> </Text>
         </Box>
         <Box flexDirection="row" flexWrap="wrap" gap={1}>
-          <Text color={theme.muted}>go</Text>
           <Button
             key="up"
             plain
@@ -1770,7 +1824,7 @@ export const register: Register = (on, options) => {
               })()
             }
           />
-          <Text color={theme.muted}>│ view</Text>
+          <Text color={theme.muted}>│</Text>
           <Button
             key="hidden"
             plain
@@ -1813,33 +1867,24 @@ export const register: Register = (on, options) => {
           {t.query ? <Button key="clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void search($, '')} /> : null}
         </Box>
         {t.showKey && (
-          <Box flexDirection="column">
-            <Box flexDirection="row" flexWrap="wrap" gap={1}>
-              {tagText('reading', FAR_TONES.read?.solid ?? theme.accent)}
-              {tagText('changing', FAR_TONES.change?.solid ?? theme.accent)}
-              {tagText('committed', TONES.commit?.solid ?? theme.accent)}
-              <Text color={theme.muted}>Claude just did this</Text>
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1}>
-              {tagText('M', GIT_COLOR.M ?? theme.muted)}
-              <Text color={theme.muted}>modified</Text>
-              {tagText('?', GIT_COLOR['?'] ?? theme.muted)}
-              <Text color={theme.muted}>new</Text>
-              {tagText('D', GIT_COLOR.D ?? theme.muted)}
-              <Text color={theme.muted}>deleted</Text>
-              {tagText('U', GIT_COLOR.U ?? theme.muted)}
-              <Text color={theme.muted}>conflict</Text>
-              <Text color={VSCODE.ignored}>{unicode ? '⊘' : '\u{f05e}'} ignored</Text>
-            </Box>
-            <Text color={theme.muted} wrap="wrap">
-              +N -N lines changed · M:N files changed in a folder
-            </Text>
-            <Text color={theme.muted} wrap="wrap">
-              dim name: hidden · bold: sent with your prompts · highlight: cursor
-            </Text>
-            <Text color={theme.muted} wrap="wrap">
-              {unicode ? '↑' : '\u{f005d}'} up a folder · {unicode ? '⌂' : '\u{f02dc}'} back to cwd · {unicode ? '↻' : '\u{f0450}'} refresh · {unicode ? '⊟' : '\u{eac5}'} collapse all
-            </Text>
+          <Box flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
+            {keySections.map(s => (
+              <Box flexDirection="column">
+                <Text bold color={theme.accent}>
+                  {s.title}
+                </Text>
+                <Box flexDirection="row" flexWrap="wrap">
+                  {s.items.map(item => (
+                    <Box flexDirection="row" width={keyCols === 2 ? '50%' : '100%'}>
+                      <Box width={s.sampleWidth} flexShrink={0}>
+                        {item.sample}
+                      </Box>
+                      <Text wrap="truncate-end">{item.text}</Text>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            ))}
           </Box>
         )}
         {strip.length > 0 && (
@@ -1869,24 +1914,33 @@ export const register: Register = (on, options) => {
           props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
         />
         <Box flexGrow={1} />
-        {t.selected && (
-          <Box flexDirection="row">
-            <Text color={theme.muted}>sent with your prompts </Text>
+        {/* Always drawn, so what each line is for shows before it holds anything. */}
+        <Box flexDirection="row">
+          <Text color={theme.muted}>sent with your prompts </Text>
+          {t.selected ? (
             <Box flexShrink={1}>
               <Text bold wrap="truncate-start">
                 {t.selected !== t.root && inside(t.root, t.selected) ? relative(t.root, t.selected) : shortPath(t.selected)}
               </Text>
             </Box>
-            <Box flexGrow={1} />
-            <Button key="unselect" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void patch($, () => ({ selected: '' }))} />
-          </Box>
-        )}
-        {latest && (
-          <Box flexDirection="row">
-            <Text color={theme.muted}>last git action</Text>
-            {chip(latest)}
-          </Box>
-        )}
+          ) : (
+            <Text color={theme.muted} italic>
+              nothing yet: click a file
+            </Text>
+          )}
+          <Box flexGrow={1} />
+          {t.selected ? <Button key="unselect" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void patch($, () => ({ selected: '' }))} /> : null}
+        </Box>
+        <Box flexDirection="row">
+          <Text color={theme.muted}>last git action</Text>
+          {latest ? (
+            chip(latest)
+          ) : (
+            <Text color={theme.muted} italic>
+              {' none yet'}
+            </Text>
+          )}
+        </Box>
       </Box>
     )
   })
