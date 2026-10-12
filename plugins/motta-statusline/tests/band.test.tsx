@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { bandShare } from '../hooks/register.tsx'
+import { bandShare, liftBeside } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS } from './session.tsx'
 
 describe('bandShare', () => {
@@ -43,6 +43,28 @@ test("draws prompt-enhancer's card under its lines", async ($, on) => {
   const root = (await band.drawn()) as Node
   expect(root.props?.flexDirection).toBe('column')
   expect(root.children?.at(-1)?.props?.key).toBe('band-under:prompt-enhancer')
+})
+
+test("lifts the chips a card holds back to the right of its lines, the card under them", async ($, on) => {
+  answerSession(on, null, 'card-with-chips')
+  const root = (await (await desktopBand($)).drawn()) as Node
+  const [top, card] = root.children ?? []
+  expect(top?.props?.flexDirection).toBe('row')
+  expect(top?.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+  expect(card?.props?.key).toBe('band-under:savvy-progress')
+  expect(card?.children?.map(c => c.props?.key)).toEqual(['savvy-card'])
+})
+
+describe('liftBeside', () => {
+  test('takes the first chip column out of a nested tree, and nothing from a tree without one', () => {
+    const chips = { type: 'Box', props: { key: 'band-beside:x' } }
+    const tree = { type: 'Box', props: { key: 'band-under:y' }, children: [{ type: 'Box', props: {}, children: [{ type: 'Text' }, chips] }] }
+    const { beside, rest } = liftBeside(tree as never)
+    expect(beside).toBe(chips)
+    expect(rest).toEqual({ type: 'Box', props: { key: 'band-under:y' }, children: [{ type: 'Box', props: {}, children: [{ type: 'Text' }] }] })
+    const plain = { type: 'Box', children: [{ type: 'Text' }] }
+    expect(liftBeside(plain as never)).toEqual({ rest: plain })
+  })
 })
 
 test('gives the band to a tree that takes it, as replay-theater does', async ($, on) => {

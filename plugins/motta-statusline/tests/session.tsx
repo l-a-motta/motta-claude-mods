@@ -30,13 +30,14 @@ export const PR_JSON = JSON.stringify({
 // `stderr` given. The ui.render stand-ins are the engine beneath the plugin:
 // its hint line, and the opaque reference it hands back for an empty band;
 // with `beneath`, what a plugin beneath draws in the band instead:
-// prompt-enhancer's chip or card, or a tree that takes the band, as
+// prompt-enhancer's chip or card, savvy-progress's card with the chips
+// beside it (their hooks ran beneath it), or a tree that takes the band, as
 // replay-theater's does. With `worktree`, the session runs in a worktree of
 // the repository, on its own branch, while the repository's root is the main
 // checkout. Every process run is recorded in `runs`.
 type GhAnswer = string | null | { stderr: string }
 
-export type Beneath = 'nothing' | 'chip' | 'card' | 'taken'
+export type Beneath = 'nothing' | 'chip' | 'card' | 'card-with-chips' | 'taken'
 
 export type Worktree = { cwd: string; status: string }
 
@@ -88,6 +89,18 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
       return (
         <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" paddingX={1}>
           <Button key="enhance" plain label="✦ enhance" onPress={() => undefined} />
+        </Box>
+      )
+    }
+    if (beneath === 'card-with-chips') {
+      return (
+        <Box key="band-under:savvy-progress" flexDirection="row" alignItems="flex-start">
+          <Box key="savvy-card" flexDirection="column" flexGrow={1}>
+            <Text>Agents 0/2</Text>
+          </Box>
+          <Box key="band-beside:prompt-enhancer" flexDirection="column" alignItems="flex-end">
+            <Button key="enhance" plain label="✦ enhance" onPress={() => undefined} />
+          </Box>
         </Box>
       )
     }

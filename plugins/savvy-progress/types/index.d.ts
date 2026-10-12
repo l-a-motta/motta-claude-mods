@@ -16,8 +16,8 @@ export type Flow = {
   tasks: PlannedTask[]
   /** The tool call whose transcript row draws this bar: the latest `progress` call of a flow. */
   anchor?: string
-  /** The bar of one Agent or Workflow call, counted from its agents: drawn `Agents done/total`. */
-  kind?: 'agents'
+  /** The bar of one Agent or Workflow call, counted from its agents: drawn `Agents done/total`; one agent's, from the steps it reported: `Steps done/total`. */
+  kind?: 'agents' | 'steps'
 }
 
 export type AgentStatus = 'running' | 'done' | 'failed'
@@ -52,6 +52,8 @@ export type Panel = {
   autoOpenedFor: string
   /** The panel lists the agents started from here on, and any still running. */
   since?: number
+  /** The band's bar the person hid with its ✕, by bandBar's key, until another takes its place. */
+  bandDismissed?: string
 }
 
 declare module 'claude-code' {

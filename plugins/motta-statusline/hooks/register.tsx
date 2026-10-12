@@ -34,13 +34,15 @@
 //   the spinner during a turn. The band is shared: this hook asks the plugins
 //   beneath it first. A tree whose root Box is keyed `band-beside:<mod>` (a
 //   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
-//   keyed `band-under:<mod>` (a card) under them, and any other tree takes
-//   the band, as replay-theater's does while it has something to show.
+//   keyed `band-under:<mod>` (a card) under them, a chip column inside the
+//   card lifted back to the right of the lines (liftBeside), and any other
+//   tree takes the band, as replay-theater's does while it has something to
+//   show.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
-import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
 // How often a streaming request's rate is redrawn, how long a request waits
@@ -238,10 +240,20 @@ export const register: Register = (on, options) => {
       )
     }
     if (share === 'under') {
+      // A card holds the chips when their hooks ran beneath it: they go back
+      // to the right of the lines, and the card under them.
+      const { beside, rest } = liftBeside(below)
       return (
         <Box flexDirection="column">
-          {ours}
-          {below}
+          {beside === undefined ? (
+            ours
+          ) : (
+            <Box flexDirection="row" alignItems="flex-start">
+              {ours}
+              {beside}
+            </Box>
+          )}
+          {rest}
         </Box>
       )
     }
@@ -281,6 +293,29 @@ export function bandShare(node: unknown): 'free' | 'beside' | 'under' | 'taken' 
   if (key.startsWith('band-beside:')) return 'beside'
   if (key.startsWith('band-under:')) return 'under'
   return 'taken'
+}
+
+type Node = { type?: unknown; props?: { key?: unknown }; children?: RenderChildren[] }
+
+// The first `band-beside:` Box inside a card's tree, taken out of it, and the
+// tree without it; `beside` undefined when it holds none.
+export function liftBeside(node: RenderChildren, depth = 0): { beside?: RenderChildren; rest: RenderChildren } {
+  if (node === null || typeof node !== 'object' || depth > 8) return { rest: node }
+  const el = node as Node
+  if (el.type !== 'Box') return { rest: node }
+  const children = el.children ?? []
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i] as Node | null
+    const key = child?.type === 'Box' ? child.props?.key : undefined
+    if (typeof key === 'string' && key.startsWith('band-beside:')) {
+      return { beside: child as RenderChildren, rest: { ...el, children: children.filter((_, j) => j !== i) } as RenderChildren }
+    }
+    const lifted = liftBeside(children[i] ?? null, depth + 1)
+    if (lifted.beside !== undefined) {
+      return { beside: lifted.beside, rest: { ...el, children: children.map((c, j) => (j === i ? lifted.rest : c)) } as RenderChildren }
+    }
+  }
+  return { rest: node }
 }
 
 async function refreshAll($: EngineInterface, withGit = true) {
