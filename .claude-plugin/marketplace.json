@@ -28,6 +28,11 @@
       "description": "One button under ✦ enhance: 🔥 with keep-warm on, ❄ with it off, beside how long the prompt cache stays warm and the pings sent. While on and you are away it re-reads the cache with a one-word fork a few minutes before it expires, so your next prompt is not billed the whole conversation again. Off until you press it; stops 4 idle hours after your last turn."
     },
     {
+      "name": "emotive-spinner",
+      "source": "./plugins/emotive-spinner",
+      "description": "The spinner line says what Claude is doing instead of a whimsical word: a symbol and plain words for the file it reads or writes (with its size, lines so far while it streams), the command it runs in its own description, the search, the page, the agents and what the latest is doing, thinking, writing the answer, or waiting for you. Read from the engine's events; no model calls. Terminal and desktop app."
+    },
+    {
       "name": "replay-theater",
       "source": "./plugins/replay-theater",
       "description": "Step through the file edits Claude made in the last turn, one diff at a time. Vendored from anthropics/claude-code-playground@569c528 (Apache-2.0); opened with /replay only, no band hint."

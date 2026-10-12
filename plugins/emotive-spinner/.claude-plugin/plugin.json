@@ -1,0 +1,11 @@
+{
+  "name": "emotive-spinner",
+  "version": "0.1.0",
+  "description": "The spinner line says what Claude is doing, in plain words behind a symbol: the file it reads or writes and how big, the command it runs, the search, the agents, thinking or writing the answer. All from what the engine reports; no model calls.",
+  "author": {
+    "name": "l-a-motta"
+  },
+  "repository": "https://github.com/l-a-motta/motta-claude-mods",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
