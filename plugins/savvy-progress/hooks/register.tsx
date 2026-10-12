@@ -65,6 +65,7 @@ const STRINGS = {
     busy: 'running',
     autoTitle: 'Subagents',
     workflow: 'Workflow',
+    more: 'more running',
   },
   ru: {
     pane: 'Агенты',
@@ -95,6 +96,7 @@ const STRINGS = {
     busy: 'в работе',
     autoTitle: 'Субагенты',
     workflow: 'Воркфлоу',
+    more: 'ещё в работе',
   },
 } as const
 
@@ -299,6 +301,97 @@ ${CRAB_CSS}${crab(W - CRAB_W + 1, 0, 'other', false, isWorking, 0.8)}
 const barText = (f: Flow, width: number): string => {
   const filled = Math.round(width * ratio(f))
   return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled))
+}
+
+// One bar, as a call's row and the band draw it: off the terminal one SVG with
+// the crew count beside it, in the terminal text, `columns` wide.
+function barRow(ui: any, surface: string, columns: number, f: Flow, isWorking: boolean, crewButton: unknown, key: string) {
+  const { Box, Text } = ui
+  const percent = `${Math.round(ratio(f) * 100)}%`
+  if (surface !== 'terminal' && 'Svg' in ui) {
+    const { Svg } = ui
+    // About 8 CSS px per column the surface measured, less the count beside it
+    // and the row's indent; capped so a wide window keeps a bar, not a banner.
+    const width = Math.max(180, Math.min(720, columns * 8 - 140))
+    return (
+      <Box key={key} flexDirection="row" alignItems="center" gap={1}>
+        <Svg source={rowSvg(f, width, isWorking)} alt={`${f.title}: ${label(f)}, ${percent}`} width={width} height={H} />
+        {crewButton}
+      </Box>
+    )
+  }
+  const cols = Math.max(30, columns - 4)
+  const titleW = Math.max(8, Math.min(30, f.title.length + 2, Math.floor(cols / 3)))
+  const width = Math.max(6, Math.min(40, cols - titleW - 32))
+  return (
+    <Box key={key} flexDirection="row" gap={2} paddingLeft={2}>
+      <Box width={titleW} flexShrink={0}>
+        <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
+        <Text wrap="truncate-end">{f.title}</Text>
+      </Box>
+      <Text color={f.isFinished ? DONE : ACCENT}>{barText(f, width)}</Text>
+      <Text bold>{label(f)}</Text>
+      <Text dimColor>{percent}</Text>
+      <Text color={CLAY}>▣</Text>
+      {crewButton}
+    </Box>
+  )
+}
+
+// How many bars the band shows; the rest are counted on a line under them.
+const BAND_MAX = 3
+
+// The bars still running, for the band: the live flow first, then each Agent
+// or Workflow call's, oldest first. A call with one agent is titled by its
+// description; a live flow's own workers count on the flow's bar.
+export const liveBars = (f: Flow | null, m: Record<string, Flow>, list: AgentRun[]): { key: string; bar: Flow }[] => {
+  const bars: { key: string; bar: Flow }[] = []
+  const isFlowLive = f !== null && !f.isFinished
+  if (f !== null && !f.isFinished) bars.push({ key: f.anchor ?? 'flow', bar: f })
+  for (const [anchor, bar] of Object.entries(m)) {
+    if (bar.kind !== 'agents' || bar.isFinished) continue
+    const mine = list.filter(a => a.anchor === anchor)
+    if (isFlowLive && mine.length > 0 && mine.every(a => a.type.startsWith('savvy-'))) continue
+    const only = mine.length === 1 ? mine[0] : undefined
+    bars.push({ key: anchor, bar: only?.description ? { ...bar, title: only.description } : bar })
+  }
+  return bars
+}
+
+// What `next(e)` hands back when no plugin beneath drew in the band: the
+// engine's own band as an opaque reference, or nothing.
+function isFree(node: unknown): boolean {
+  if (node === null || node === undefined || node === false || node === '') return true
+  return typeof node === 'object' && (node as { type?: unknown }).type === 'engine'
+}
+
+// The band is shared, so what the plugins beneath drew stays: a chip column
+// (`band-beside:`) at the right of the card, anything else over it. The whole
+// is keyed `band-under:`, so a status line above draws its lines over it and
+// a chip above finds its column inside.
+export function shareBand(Box: any, below: unknown, card: unknown) {
+  if (isFree(below)) {
+    return (
+      <Box key="band-under:savvy-progress" flexDirection="column">
+        {card}
+      </Box>
+    )
+  }
+  const belowKey = (below as { props?: { key?: unknown } }).props?.key
+  if (typeof belowKey === 'string' && belowKey.startsWith('band-beside:')) {
+    return (
+      <Box key="band-under:savvy-progress" flexDirection="row" alignItems="flex-start">
+        {card}
+        {below}
+      </Box>
+    )
+  }
+  return (
+    <Box key="band-under:savvy-progress" flexDirection="column">
+      {below}
+      {card}
+    </Box>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -712,6 +805,15 @@ async function autoOpen($: EngineInterface, key: string): Promise<void> {
   if (p.autoOpenedFor === key) return
   await update($, panel, prev => ({ ...prev, autoOpenedFor: key }))
   void $.ui.open({ id: PANE, title: tr().pane })
+}
+
+// The crew a bar's count shows, and whether any of it works: a call's own
+// agents, or for a flow the panel's crew, its agents and the tasks still planned.
+async function crewOf($: EngineInterface, f: Flow): Promise<{ crew: number; isWorking: boolean }> {
+  if (f.kind === 'agents') return { crew: f.total, isWorking: f.running > 0 }
+  const p = await read($, panel)
+  const list = (await read($, agents)).filter(a => a.status === 'running' || a.startedAt >= (p.since ?? 0))
+  return { crew: list.length + plannedOf(f, list).length, isWorking: list.some(a => a.status === 'running') }
 }
 
 // Counts one call's agents again into its row's bar.
@@ -1155,57 +1257,45 @@ export const register: Register = (on, options) => {
     if (!f) return engineRow
 
     const ui = $.ui.resolve(e)
-    const { Box, Text, Button } = ui
+    const { Box, Button } = ui
     // A workflow's row names the run, as its meta says, once the call has answered.
     const output = e.props.output as { workflowName?: unknown } | undefined
     const title = tool === 'Workflow' && typeof output?.workflowName === 'string' && output.workflowName ? output.workflowName : f.title
-    const shown = { ...f, title }
-    let crew = f.total
-    let isWorking = f.running > 0
-    if (f.kind !== 'agents') {
-      // The flow's bar counts the panel's crew: its agents and the tasks still planned.
-      const p = await read($, panel)
-      const list = (await read($, agents)).filter(a => a.status === 'running' || a.startedAt >= (p.since ?? 0))
-      crew = list.length + plannedOf(f, list).length
-      isWorking = list.some(a => a.status === 'running')
-    }
+    const { crew, isWorking } = await crewOf($, f)
     const crewButton = <Button key="savvy-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />
-    const percent = `${Math.round(ratio(f) * 100)}%`
-
-    if (e.surface !== 'terminal' && 'Svg' in ui) {
-      const { Svg } = ui
-      // About 8 CSS px per column the surface measured, less the count beside it
-      // and the row's indent; capped so a wide window keeps a bar, not a banner.
-      const width = Math.max(180, Math.min(720, (e.viewport?.columns || 100) * 8 - 140))
-      return (
-        <Box key="savvy-row" flexDirection="column">
-          {engineRow}
-          <Box flexDirection="row" alignItems="center" gap={1}>
-            <Svg source={rowSvg(shown, width, isWorking)} alt={`${title}: ${label(f)}, ${percent}`} width={width} height={H} />
-            {crewButton}
-          </Box>
-        </Box>
-      )
-    }
-
-    const cols = Math.max(30, (e.viewport?.columns || 100) - 4)
-    const titleW = Math.max(8, Math.min(30, title.length + 2, Math.floor(cols / 3)))
-    const width = Math.max(6, Math.min(40, cols - titleW - 32))
     return (
       <Box key="savvy-row" flexDirection="column">
         {engineRow}
-        <Box flexDirection="row" gap={2} paddingLeft={2}>
-          <Box width={titleW} flexShrink={0}>
-            <Text color={f.isFinished ? DONE : ACCENT}>● </Text>
-            <Text wrap="truncate-end">{title}</Text>
-          </Box>
-          <Text color={f.isFinished ? DONE : ACCENT}>{barText(f, width)}</Text>
-          <Text bold>{label(f)}</Text>
-          <Text dimColor>{percent}</Text>
-          <Text color={CLAY}>▣</Text>
-          {crewButton}
-        </Box>
+        {barRow(ui, e.surface, e.viewport?.columns || 100, { ...f, title }, isWorking, crewButton, 'savvy-bar')}
       </Box>
     )
+  })
+
+  // The band above the prompt carries the bars still running, under the status
+  // line (shareBand). The rows above keep every call's bar; the band shows
+  // what is working now, and is left alone once nothing is.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const bars = liveBars(await read($, flow), await read($, rows), await read($, agents))
+    if (bars.length === 0) return next(e)
+    const below = await next(e)
+
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
+    const columns = e.props.bodyColumns || e.viewport?.columns || 100
+    const drawn: ReturnType<typeof barRow>[] = []
+    for (const { key, bar } of bars.slice(0, BAND_MAX)) {
+      const { crew, isWorking } = await crewOf($, bar)
+      const crewButton = <Button key={`savvy-agents-${key}`} label={`×${crew}`} plain onPress={() => void togglePane($)} />
+      drawn.push(barRow(ui, e.surface, columns, bar, isWorking, crewButton, `savvy-bar-${key}`))
+    }
+    const more = bars.length - BAND_MAX
+    const card = (
+      <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1}>
+        {drawn}
+        {more > 0 && <Text dimColor>{`  +${more} ${tr().more}`}</Text>}
+      </Box>
+    )
+    return shareBand(Box, below, card)
   })
 }

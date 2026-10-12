@@ -7,7 +7,7 @@ A Claude Code mod: live progress bars in the transcript and a live panel of suba
   - a Workflow call: the workflow's name, its run's agents done out of started;
   - savvy-flow's latest `progress` call: the flow's title, phase and accepted tasks out of planned. The bar moves down to each new call; a flow that ends keeps its last state on its row.
 
-  Nothing is drawn above the prompt, so the band there stays free for the status line.
+  While they run, the same bars sit in the band above the prompt, under the status line (keyed `band-under:`, so the status line and the chips keep their places): a live savvy flow first, then each running call, titled by its agent's description when it has one, up to three and a count of the rest. A bar leaves the band once its agents are done; the band's `[-]` collapses it.
 - **Agents panel** (`/agents-info` toggles it): running, finished and planned subagents with model, effort, task progress, context, estimated cost and time. Working crabs walk, and each savvy tier animates its prop: the astronaut floats, the detective sweeps the magnifier, the engineer turns the wrench, the chef tosses the omelette, the racer runs with a fluttering flag. `prefers-reduced-motion` stops them.
 
 ## Who wears what
