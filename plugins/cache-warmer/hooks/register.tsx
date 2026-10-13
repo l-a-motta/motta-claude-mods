@@ -43,6 +43,8 @@ import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 import type { Hit } from '../types'
 
 const TICK_MS = 15_000
+// Below this many cells the band draws compact, as motta-statusline's lines do.
+const COMPACT_BELOW = 80
 const HOUR_MS = 3_600_000
 const MAX_IDLE_HOURS = 4
 const PING =
@@ -140,11 +142,14 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const warmth = warmthOf(await read($, hit), await $.clock.now(), settings.leadMs)
     const label = chipLabel(await read($, isOn), warmth, await read($, pings), await read($, isPinging))
-    const button = <Button key="keep-warm" plain dimColor label="cache" onPress={() => void toggle($)} />
+    // Compact (under COMPACT_BELOW cells, motta-statusline's mark) the state
+    // alone is pressed, without the word.
+    const isCompact = e.props.bodyColumns > 0 && e.props.bodyColumns < COMPACT_BELOW
+    const button = <Button key="keep-warm" plain dimColor={!isCompact} label={isCompact ? label : 'cache'} onPress={() => void toggle($)} />
     const chip = (
       <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5}>
         {e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button}
-        <Text>{label}</Text>
+        {isCompact ? null : <Text>{label}</Text>}
       </Box>
     )
     return withChip(Box, below, chip, 'cache-warmer', false)

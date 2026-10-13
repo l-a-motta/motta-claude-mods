@@ -261,3 +261,13 @@ test("a model switch leaves the cache cold and takes the engine's TTL", async ($
   expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. 5m/u)
   await ui.unmount()
 })
+
+test('a narrow band presses the state alone, without the word', async ($, on) => {
+  answerSession(on)
+  const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 50 } })
+  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('❄ --')
+  expect(await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never)).toBeUndefined()
+  await ui.press({ key: 'keep-warm' })
+  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('🔥 --')
+  await ui.unmount()
+})

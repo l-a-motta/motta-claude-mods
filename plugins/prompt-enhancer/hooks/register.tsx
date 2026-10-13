@@ -65,6 +65,8 @@ const EXCERPT_MESSAGES = 12
 const EXCERPT_MESSAGE_CHARS = 1_200
 const EXCERPT_CHARS = 10_000
 const PANE = 'prompt-enhancer'
+// Below this many cells the band draws compact, as motta-statusline's lines do.
+const COMPACT_BELOW = 80
 const PANE_TITLE = 'Enhance'
 const NO_BOX_TIP = 'This app does not let mods read your prompt box. Run /enhance followed by your prompt instead.'
 
@@ -472,11 +474,18 @@ export const register: Register = (on, options) => {
 
     const { Box, Text, Button } = $.ui.resolve(e)
     const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
-    const button = <Button key="enhance" plain dimColor label="enhance" onPress={() => void chip($)} />
+    // Compact (under COMPACT_BELOW cells, motta-statusline's mark) the ✦ alone
+    // is pressed; a desktop button drops its color, so it draws plain.
+    const isCompact = e.props.bodyColumns > 0 && e.props.bodyColumns < COMPACT_BELOW
+    const button = isCompact ? (
+      <Button key="enhance" plain label="✦" onPress={() => void chip($)} />
+    ) : (
+      <Button key="enhance" plain dimColor label="enhance" onPress={() => void chip($)} />
+    )
+    const pressable = e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button
     const ours = (
       <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5}>
-        <Text color="suggestion">✦</Text>
-        {!hasBox ? <Text dimColor>{'/enhance <your prompt>'}</Text> : e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button}
+        {!hasBox ? [<Text color="suggestion">✦</Text>, <Text dimColor>{isCompact ? '/enhance' : '/enhance <your prompt>'}</Text>] : isCompact ? pressable : [<Text color="suggestion">✦</Text>, pressable]}
       </Box>
     )
     return withChip(Box, below, ours, 'prompt-enhancer', true)

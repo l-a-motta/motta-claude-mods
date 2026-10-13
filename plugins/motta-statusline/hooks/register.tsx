@@ -69,6 +69,11 @@
 //   with it on a narrow band. The lines are keyed `band-lines:`, so a chip
 //   mod whose hook runs above this one finds the slots too (its withChip).
 //
+// Compact (a band or line under COMPACT_BELOW cells): the lines leave out
+// the repository a worktree belongs to, the last commit, the context's token
+// counts and the last slot (`out` and the rest), and the chips draw their
+// glyph alone; what is left keeps to fewer rows instead of wrapping into many.
+//
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
@@ -294,7 +299,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const ours = (chips: RenderChildren[]) => (
       <Box key="band-lines:motta-statusline" flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
-        {lines($, { Box, Text, Link, Button }, data, now, Svg, chips)}
+        {lines($, { Box, Text, Link, Button }, data, now, Svg, chips, isCompact(e.props.bodyColumns || e.viewport?.columns))}
       </Box>
     )
     if (share === 'beside') return ours(chipsOf(below))
@@ -321,11 +326,19 @@ export const register: Register = (on, options) => {
     const { Box, Text, Link, Button } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        {lines($, { Box, Text, Link, Button }, data, await $.clock.now())}
+        {lines($, { Box, Text, Link, Button }, data, await $.clock.now(), null, [], isCompact(e.viewport?.columns))}
         {hint}
       </Box>
     )
   })
+}
+
+// Below this many cells the lines draw compact; the chip mods read the same
+// width against the same mark.
+export const COMPACT_BELOW = 80
+
+export function isCompact(columns: number | undefined) {
+  return columns !== undefined && columns > 0 && columns < COMPACT_BELOW
 }
 
 // What `next(e)` hands back when no plugin beneath drew: the engine's own band
@@ -762,7 +775,7 @@ type Ui = { Box: any; Text: any; Link: any; Button: any }
 // view against origin's default), the file counts (the Changes pane), the
 // last commit once pushed (its page), the percentages (the Context and Usage
 // panes) and the last slot (cycles what it shows).
-function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null, chips: RenderChildren[] = []) {
+function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null, chips: RenderChildren[] = [], compact = false) {
   const { Box, Text, Link, Button } = ui
   const onDesktop = Svg !== null
   // Spacing comes from the layout alone, never from spaces in the text: a
@@ -817,7 +830,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       icon('folder', 'suggestion'),
       press('folder', w.label, () => void openFolder($, w.path)),
       ...(drift === null ? [] : [<Text color="suggestion">↳</Text>, press('cwd', drift, () => void openFolder($, d.cwd))]),
-      ...(w.worktreeOf ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
+      ...(w.worktreeOf && !compact ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
     ]),
   ]
   if (d.git) {
@@ -830,7 +843,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     const isChanged = g.staged + g.modified + g.untracked > 0
     const files = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale}>{isChanged ? 'changed' : 'clean'}</Text>
     line1.push(seg([press('changes', 'files', () => void openChanges($)), files, ...syncParts(Text, g, d.base)]))
-    if (d.commit) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
+    if (d.commit && !compact) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
   }
   if (d.pr && !onDesktop) line1.push(seg([tight(prSegment(Text, Link, d.pr, d.isPrStale))]))
 
@@ -843,7 +856,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       press('context', 'ctx', () => void openContext($)),
       bar(`context ${d.ctxPercent}%`, d.ctxPercent, ctxColor, compactShare(d.compactAt, d.ctxWindow), compactMark(d.compactAt, d.ctxWindow)),
       <Text color={ctxColor} bold>{d.ctxPercent}%</Text>,
-      <Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
+      ...(compact ? [] : [<Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>]),
     ]),
   ]
   for (const l of d.limits) {
@@ -858,7 +871,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     if (left) limit.push(<Text color="subtle">{left}</Text>)
     line2.push(seg(limit))
   }
-  line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
+  if (!compact) line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
 
   // Each line ends with its chip slot (`band-slot:`): a box that grows into
   // what the line's last row leaves, holding the chip at the line's right end.

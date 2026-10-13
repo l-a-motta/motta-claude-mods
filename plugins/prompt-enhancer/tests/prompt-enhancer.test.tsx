@@ -277,3 +277,11 @@ test("over the status line's slots, the chip takes line 1's and moves cache-warm
   expect(slot(0)).not.toContain('🔥')
   expect(slot(1)).toContain('🔥 42m')
 })
+
+test('a narrow band presses the ✦ alone', async ($, on) => {
+  world(on, { box: DRAFT })
+  await $.session.start({ ...START, surface: 'desktop' as const })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 50 } })
+  expect((await band.find({ key: 'enhance' }))?.props.label).toBe('✦')
+  expect(await band.find({ type: 'Text', text: '✦' })).toBeUndefined()
+})
