@@ -46,8 +46,9 @@ test('draws a limit as a bar with a tick where the window stands, and the time t
   })
   const texts = await ui.findAll({ type: 'Text' })
   const at = texts.findIndex(t => t.text === '12%')
-  expect(texts.slice(at - 4, at).map(t => [t.props.color, t.text])).toEqual([
-    ['success', '⣿⣀'],
+  expect(texts.slice(at - 5, at).map(t => [t.props.color, t.text])).toEqual([
+    ['#398749', '⣿'],
+    ['#4eba65', '⣀'],
     ['subtle', '⣀⣀⣀'],
     ['text', '|'],
     ['subtle', '⣀⣀⣀⣀⣀'],

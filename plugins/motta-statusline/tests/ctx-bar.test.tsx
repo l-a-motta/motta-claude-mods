@@ -1,9 +1,20 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { braille, cellDots, compactMark, compactShare, ctxLevel, elapsedShare, limitLevel, paceMark, resetIn, squaresSvg } from '../hooks/register.tsx'
+import { braille, cellDots, fadedColor, compactMark, compactShare, ctxLevel, elapsedShare, limitLevel, paceMark, resetIn, squaresSvg } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS } from './session.tsx'
 
 const HOUR = 3_600_000
+
+describe('fadedColor', () => {
+  test("blends a level's color toward the theme's ground; full strength is the color itself", () => {
+    expect(fadedColor('success', 'dark', 1)).toBe('#4eba65')
+    expect(fadedColor('warning', 'dark', 0.5)).toBe('#806104')
+    expect(fadedColor('#ff8700', 'dark', 0.5)).toBe('#804400')
+    expect(fadedColor('error', 'light', 0.5)).toBe('#d5959f')
+    // A theme key with no hex known is drawn whole.
+    expect(fadedColor('subtle', 'dark', 0.5)).toBe('subtle')
+  })
+})
 
 describe('ctxLevel', () => {
   test('is green under 30%, yellow to 50%, orange to 70% and red past it', () => {
@@ -111,14 +122,18 @@ test('draws the context as braille cells with its compact tick, the share and th
     component: 'PromptHint',
     props: { isDraft: false, isWorking: true, hint: 'esc to interrupt' },
   })
-  // 36% of 1M: three full cells and five dots of the fourth (yellow), the
-  // track to the tick before cell 8, and the two cells past it still drawn.
+  // 36% of 1M: three full cells and five dots of the fourth (yellow, fading
+  // in from the left), the track to the tick before cell 8, and the two cells
+  // past it still drawn.
   // `ctx` is the button that opens context-drill's Context pane, a space, then the bar.
   expect((await ui.find({ key: 'context' }))?.props.label).toBe('ctx')
   const texts = await ui.findAll({ type: 'Text' })
   const at = texts.findIndex(t => t.text?.startsWith('⣿'))
-  expect(texts.slice(at, at + 4).map(t => [t.props.color, t.text])).toEqual([
-    ['warning', '⣿⣿⣿⣦'],
+  expect(texts.slice(at, at + 7).map(t => [t.props.color, t.text])).toEqual([
+    ['#967104', '⣿'],
+    ['#b98c05', '⣿'],
+    ['#dca606', '⣿'],
+    ['#ffc107', '⣦'],
     ['subtle', '⣀⣀⣀⣀'],
     ['text', '|'],
     ['subtle', '⣀⣀'],

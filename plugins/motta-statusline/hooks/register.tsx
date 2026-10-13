@@ -29,7 +29,8 @@
 // when a limit turns orange or red, by these same colors.
 //
 // Each bar is ten braille cells of ten points, a cell's dots rising from its
-// bottom row as its points come. ctx is the context window, its dots green
+// bottom row as its points come, the lit cells fading in from the left as
+// the desktop's squares do. ctx is the context window, its dots green
 // under 30%, yellow to 50%, orange to 70% and red past it, with a tick where
 // auto-compact fires (from the local /context breakdown, no request sent),
 // then the share used and the tokens used over the window.
@@ -203,6 +204,8 @@ let cache: Cache | null = null
 let cacheTtl: 'auto' | '5m' | '1h' = 'auto'
 // The TTL the engine said on a model switch, null before one.
 let engineTtl: '5m' | '1h' | null = null
+// The theme's side, read on the full refreshes; the terminal's bars fade toward its ground.
+let scheme: Scheme = 'dark'
 
 export const register: Register = (on, options) => {
   placement = options.placement === 'above' ? 'above' : 'below'
@@ -460,6 +463,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
     const breakdown = ctx.breakdown
     if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
     if (data === null) slot = await readSlot($)
+    if (withGit) scheme = await readScheme($)
     const limits = limitsOf(usage.rateLimits)
     const model = await $.session.model()
     // A model switch the hook did not see still forfeits the cache.
@@ -894,7 +898,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   const bar = (alt: string, points: number, color: string, share: number | null, mark: number | null) =>
     Svg !== null
       ? <Svg source={squaresSvg(points, color, share)} alt={alt} width={SQ_W} height={SQ_H} />
-      : tight(meter(Text, cellDots(points), color, mark))
+      : tight(meter(Text, cellDots(points), color, mark, scheme))
 
   // An icon before a name: drawn as an outline image on the desktop (iconSvg),
   // a glyph in its color elsewhere.
@@ -1310,8 +1314,10 @@ function rateSegment(Text: any, r: Rate) {
 // draws the band in a proportional font, where spaces on a background come
 // out as tall slabs and box-drawing lines join into one long rule. The tick
 // sits between two cells, never on one, so the cells past it stay drawn. No
-// tick when `mark` is null.
-function meter(Text: any, dots: number[], color: string, mark: number | null) {
+// tick when `mark` is null. The lit cells fade in as the desktop's squares
+// do: the first at RAMP_FROM of the color, each after it a step brighter, the
+// last at full strength (fadedColor).
+function meter(Text: any, dots: number[], color: string, mark: number | null, scheme: Scheme = 'dark') {
   // One Text per run of one color, the tick its own.
   const runs: { color: string; text: string }[] = []
   const add = (text: string, runColor: string) => {
@@ -1319,10 +1325,13 @@ function meter(Text: any, dots: number[], color: string, mark: number | null) {
     if (last !== undefined && last.color === runColor) last.text += text
     else runs.push({ color: runColor, text })
   }
+  const lit = dots.filter(n => n > 0).length
+  let seen = 0
   dots.forEach((n, i) => {
     if (i === mark) runs.push({ color: 'text', text: '|' })
-    if (n === 0) add(TRACK, 'subtle')
-    else add(braille(n), color)
+    if (n === 0) return add(TRACK, 'subtle')
+    seen += 1
+    add(braille(n), fadedColor(color, scheme, RAMP_FROM + ((1 - RAMP_FROM) * seen) / lit))
   })
   if (mark === dots.length) runs.push({ color: 'text', text: '|' })
   return runs.map(r => (
@@ -1330,6 +1339,38 @@ function meter(Text: any, dots: number[], color: string, mark: number | null) {
       {r.text}
     </Text>
   ))
+}
+
+// Whether the terminal's theme is dark or light: a fade blends toward its
+// ground, black or white.
+export type Scheme = 'dark' | 'light'
+
+// The bar colors as the theme draws them, so a cell can be drawn fainter: a
+// theme key resolves only whole, so the fade needs its hex (Claude Code's own
+// dark and light values; a daltonized or ANSI theme is read as its side).
+const LEVEL_HEX: Record<Scheme, Record<string, string>> = {
+  dark: { success: '#4eba65', warning: '#ffc107', error: '#ff6b80' },
+  light: { success: '#2c7a39', warning: '#966c1e', error: '#ab2b3f' },
+}
+
+// `color` at `share` (0-1) of its strength, blended toward the theme's
+// ground; a color with no hex known is drawn whole.
+export function fadedColor(color: string, scheme: Scheme, share: number): string {
+  const hex = LEVEL_HEX[scheme][color] ?? (/^#[0-9a-f]{6}$/i.test(color) ? color : null)
+  if (hex === null || share >= 1) return hex ?? color
+  const ground = scheme === 'dark' ? 0 : 255
+  const channel = (at: number) => Math.round(ground + (parseInt(hex.slice(at, at + 2), 16) - ground) * share)
+  return `#${[1, 3, 5].map(at => channel(at).toString(16).padStart(2, '0')).join('')}`
+}
+
+// The theme from /config: light when its name says so, else dark.
+async function readScheme($: EngineInterface): Promise<Scheme> {
+  try {
+    const row = (await $.config.list()).find(r => r.key === 'theme')
+    return String(row?.value ?? '').includes('light') ? 'light' : 'dark'
+  } catch {
+    return scheme
+  }
 }
 
 const CELL_POINTS = 10
