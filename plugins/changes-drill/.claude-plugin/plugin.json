@@ -1,6 +1,6 @@
 {
   "name": "changes-drill",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch; with a guard for sensitive or out-of-scope files, a hunk peek, and a History section (what happened lately, in sentences or as a files tree) with a Branches button that opens branch-drill's pane (your branch against main, every branch as lanes or a subway map). Read-only: it changes nothing in the repository. No model calls, no tokens and no network: local git only, read while the pane is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
   "author": {
     "name": "l-a-motta"
