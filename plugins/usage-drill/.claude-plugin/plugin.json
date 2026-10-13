@@ -1,6 +1,6 @@
 {
   "name": "usage-drill",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Usage pane: each rate limit (5h, 7d) as one line, motta-statusline's bar with a tick where the window's time stands, its percent and when it resets, then a verdict in its color (on track, tight, ahead of pace, runs out at 21:05). Under details, 5h and 7d side by side: the readings this window against an even pace, burn rate, hourly budget, cost per turn, this session's share, past windows, and when each clears; then the weekly limit's activity, a GitHub-style grid of days by hours and a cross of the spend by model family; a row only where it has something to say. Toasts when a limit passes a threshold or turns orange or red. No request sent: it reads only the limits each response reports, kept between sessions. Opened by /usage-drill, or by $.usageDrill.open() from another mod (motta-statusline's 5h and 7d).",
   "author": {
     "name": "l-a-motta"
