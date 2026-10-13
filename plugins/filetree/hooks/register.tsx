@@ -3,7 +3,7 @@ import { LINUX_LAUNCH, openCommand, openWithCommand } from './open'
 
 import type { Activity, FileNode, FileTree, Outside, Theme } from '../types'
 import { BRANCH_ICON, chainOf, type GitAction, gitActions, readOnly, readTargets, resolve } from './git'
-import { FAR_TONES, TONES, VSCODE } from './colors'
+import { FAR_TONES, tagFill, TONES, VSCODE } from './colors'
 import type { RowSpec, RowsProps, Seg } from './rows'
 import { CHEVRON_CLOSED, CHEVRON_OPEN, fileIcon, GIT_COLOR } from './icons'
 import {
@@ -55,7 +55,17 @@ const ACTIVITY_TTL_MS = 45_000
 // is under its root. A prompt or the × clears them; the terminal shows the newest few.
 const OUTSIDE_KEEP = 50
 const OUTSIDE_ROWS = 5
+// Nerd Font's rounded half circles, the ends of a pill.
+const PILL_L = '\u{e0b6}'
+const PILL_R = '\u{e0b4}'
 const OUTSIDE_VERB: Record<string, string> = { read: 'read', change: 'changed' }
+// The right columns' widths, in cells: Oct 12 19:39, 15.2 K, a git letter.
+const DATE_W = 13
+const SIZE_W = 8
+const LETTER_W = 2
+const RIGHT_COLUMNS = DATE_W + SIZE_W + LETTER_W
+const ACTIVITY_CYCLE = ['reads and writes', 'writes', 'reads', 'none']
+const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'reads + writes', writes: 'writes only', reads: 'reads only', none: 'none' }
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
 const THEME_POLL_MS = 2000
 const FONT_SCRIPT =
@@ -87,10 +97,10 @@ let generation = 0
 let lastPress = { key: '', at: 0 }
 let noNerd = false
 let glyphSetting = 'auto'
-let openWithSetting = ''
+let openWithSetting = 'preview'
 let previewed: { path: string; text: string; note: string } | null = null
 let previewRows = 20
-let follow = true
+let follow = false
 let followClaude = true
 let scanning: Promise<void> | null = null
 let scanJobs: Job[] = []
@@ -112,7 +122,7 @@ let dirty: { root: string; files: Record<string, Change> } = { root: '', files: 
 let markId = 0
 let listSeq = 0
 let lastRoot = ''
-let sizeDefault = false
+let base = { activity: 'reads and writes', followClaude: true, open: 'preview', pinned: true }
 let sizeEpoch = 0
 let sizeActive = 0
 let sizeQueue: string[] = []
@@ -131,6 +141,23 @@ function osName($: EngineInterface): Promise<'linux' | 'darwin' | 'win32'> {
     }
   })()
   return platform
+}
+
+// The /config settings, with what the pane's chips changed for this session over them.
+function applySettings(o: FileTree['overrides']): void {
+  const activity = o.activity ?? base.activity
+  showReads = activity.includes('reads')
+  showWrites = activity.includes('writes')
+  followClaude = o.followClaude ?? base.followClaude
+  openWithSetting = o.open ?? base.open
+}
+
+async function override($: EngineInterface, o: FileTree['overrides']): Promise<void> {
+  await patch($, t => {
+    const overrides = { ...t.overrides, ...o }
+    applySettings(overrides)
+    return { overrides }
+  })
 }
 
 async function cwdOf($: EngineInterface): Promise<string> {
@@ -314,7 +341,7 @@ async function reset($: EngineInterface, root: string, focus = false): Promise<v
   searchIndex = null
   sizeEpoch += 1
   sizeQueue = []
-  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault }))
+  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, pinned: !follow, showKey: prev.showKey, showSettings: prev.showSettings, overrides: prev.overrides }))
   const title = `Files: ${root.split('/').pop() || root}`
   if (focus) await $.ui.open({ id: PANE, title, focus: true })
   else if (!noDock) await $.ui.open({ id: PANE, title })
@@ -451,7 +478,7 @@ function pumpSizes($: EngineInterface): void {
       .then(async bytes => {
         if (epoch === sizeEpoch) return patch($, cur => (inside(cur.root, dir) ? { dirSizes: { ...cur.dirSizes, [dir]: bytes } } : {}))
         const cur = await get($)
-        if (cur.showSize && inside(cur.root, dir) && !(dir in cur.dirSizes) && !sizeQueue.includes(dir)) sizeQueue.push(dir)
+        if (inside(cur.root, dir) && !(dir in cur.dirSizes) && !sizeQueue.includes(dir)) sizeQueue.push(dir)
       })
       .catch(() => undefined)
       .finally(() => {
@@ -490,7 +517,9 @@ function keepTop(cur: FileTree, expanded: string[]): Partial<FileTree> {
   return at < 0 ? {} : { scroll: at }
 }
 
-async function flash($: EngineInterface, tones: Record<string, string>): Promise<void> {
+// `verbs` names what Claude did to each file (reading, editing, …); a lit file
+// row shows it beside the name in its tone's color.
+async function flash($: EngineInterface, tones: Record<string, string>, verbs: Record<string, string> = {}): Promise<void> {
   const unique = Object.keys(tones)
   if (unique.length === 0) return
   const mine = ++generation
@@ -503,12 +532,15 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
     const bright = new Set([...(cur.flashOn ? cur.flash.filter(id => !unique.includes(id)) : []), ...unique])
     const dim = new Set<string>()
     const all: Record<string, string> = cur.flashOn ? { ...cur.flashTones } : {}
+    const said: Record<string, string> = cur.flashOn ? { ...cur.flashVerbs } : {}
     if (cur.flashOn) {
       for (const id of cur.flashDim) dim.add(id)
     }
     for (const id of unique) {
       const tone = tones[id] ?? 'change'
       all[id] = tone
+      if (id in verbs) said[id] = verbs[id] ?? ''
+      else delete said[id]
       if (id === BRANCH_ROW) continue
       const chain = ancestorsOf(id, cur.root)
       if (!chain.some(a => !open.has(a))) continue
@@ -526,6 +558,7 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
       flashDim: [...dim],
       flashOn: true,
       flashTones: all,
+      flashVerbs: said,
       expanded: [...open],
       ...keepTop(cur, [...open]),
     }
@@ -534,7 +567,7 @@ async function flash($: EngineInterface, tones: Record<string, string>): Promise
   blink = $.clock.after(FLASH_MS, () => {
     if (generation !== mine) return
     blink = null
-    void patch($, cur => (generation === mine ? { flash: [], flashDim: [], flashOn: false, flashTones: {} } : {}))
+    void patch($, cur => (generation === mine ? { flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} } : {}))
   })
 }
 
@@ -727,6 +760,7 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
   const fresh = await get($)
   const ignored = new Set(fresh.ignored)
   const tones: Record<string, string> = {}
+  const verbs: Record<string, string> = {}
   if (writes) {
     const found = fresh.top
       ? await changedInRepo($, t.root, since, before, fresh.ignored)
@@ -743,8 +777,13 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       return { expanded: cur.expanded.filter(id => ids.has(id)) }
     })
     const present = new Set((await get($)).nodes.map(n => n.id))
-    const touchTone = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))?.tone ?? 'change'
-    if (showWrites) for (const id of hits) if (present.has(id)) tones[id] = touchTone
+    const touch = actions.find(a => !['commit', 'push', 'add'].includes(a.verb))
+    if (showWrites)
+      for (const id of hits)
+        if (present.has(id)) {
+          tones[id] = touch?.tone ?? 'change'
+          verbs[id] = touch?.running ?? 'writing'
+        }
   }
   if (showReads) {
     const found: string[] = []
@@ -759,7 +798,11 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
     if (found.length) {
       await revealPaths($, found)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const r of found) if (shown.has(r) && !tones[r]) tones[r] = 'read'
+      for (const r of found)
+        if (shown.has(r) && !tones[r]) {
+          tones[r] = 'read'
+          verbs[r] = 'reading'
+        }
     }
   }
   if (showWrites && actions.length) {
@@ -769,13 +812,17 @@ async function afterBash($: EngineInterface, jobs: Job[]): Promise<void> {
       const paths = (await gitPaths($, final.root, final.prefix, committed)).filter(x => !underAny(x, ignored, final.root)).slice(0, READ_REVEAL_LIMIT)
       await revealPaths($, paths)
       const shown = new Set((await get($)).nodes.map(n => n.id))
-      for (const x of paths) if (shown.has(x)) tones[x] = 'commit'
+      for (const x of paths)
+        if (shown.has(x)) {
+          tones[x] = 'commit'
+          verbs[x] = committed ? 'committing' : 'staging'
+        }
     }
     const pushLike = actions.find(a => ['push', 'pull', 'fetch', 'checkout', 'switch', 'branch', 'merge', 'rebase', 'tag'].includes(a.verb) || a.kind.startsWith('gh '))
     if (pushLike) tones[BRANCH_ROW] = pushLike.tone
     else if (committed) tones[BRANCH_ROW] = 'commit'
   }
-  await flash($, tones)
+  await flash($, tones, verbs)
 }
 
 function scheduleScan($: EngineInterface, job: Job): void {
@@ -797,7 +844,7 @@ function scheduleScan($: EngineInterface, job: Job): void {
   })
 }
 
-async function touched($: EngineInterface, paths: string[], tone: string, show: boolean): Promise<void> {
+async function touched($: EngineInterface, paths: string[], tone: string, verb: string, show: boolean): Promise<void> {
   if (tone !== 'read' && previewed && paths.map(posix).includes(previewed.path)) previewed = null
   if (await followCwd($)) return
   const t = await get($)
@@ -816,8 +863,12 @@ async function touched($: EngineInterface, paths: string[], tone: string, show: 
   } else await revealPaths($, within)
   if (!show) return
   const tones: Record<string, string> = {}
-  for (const p of within) tones[p] = tone
-  await flash($, tones)
+  const verbs: Record<string, string> = {}
+  for (const p of within) {
+    tones[p] = tone
+    verbs[p] = verb
+  }
+  await flash($, tones, verbs)
 }
 
 async function reveal($: EngineInterface, paths: string[]): Promise<void> {
@@ -1027,7 +1078,7 @@ async function openFile($: EngineInterface, path: string, external = false): Pro
   if (!external && openWithSetting.trim() === 'preview') return showPreview($, path)
   const os = await osName($)
   const native = (p: string) => (os === 'win32' ? p.replace(/\//g, '\\') : p)
-  const custom = external ? null : openWithCommand(openWithSetting, native(path), native(dirname(path)))
+  const custom = external || openWithSetting.trim() === 'app' ? null : openWithCommand(openWithSetting, native(path), native(dirname(path)))
   const { argv, init } = custom ? { argv: os === 'linux' ? ['sh', '-c', LINUX_LAUNCH, 'sh', ...custom] : custom, init: { timeoutMs: 10_000 } } : openCommand(os, path)
   try {
     const run = await $.process.run(argv, init)
@@ -1093,18 +1144,24 @@ function shortPath(path: string): string {
 
 export const register: Register = (on, options) => {
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
-  const activity = typeof options?.activity === 'string' ? options.activity : 'reads and writes'
-  showReads = activity.includes('reads')
-  showWrites = activity.includes('writes')
-  followClaude = options?.follow !== 'off'
-  sizeDefault = options?.column === 'size'
-  openWithSetting = typeof options?.open === 'string' ? options.open : ''
+  base = {
+    activity: typeof options?.activity === 'string' ? options.activity : 'reads and writes',
+    followClaude: options?.follow !== 'off',
+    open: typeof options?.open === 'string' ? options.open : 'preview',
+    pinned: options?.root !== 'follows cwd',
+  }
+  follow = !base.pinned
+  applySettings({})
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'filetree', description: 'Show the file tree; args: [path] (no path = cwd)' })
     const windows = (await $.env.get('OS')) === 'Windows_NT'
     useDrives(windows)
     home = posix(((await $.env.get('HOME')) || (await $.env.get('USERPROFILE')) || '').replace(/[\\/]+$/, ''))
     activityId = Math.max(activityId, ...(await activities($)).map(a => a.id))
+    // A reload starts the module over; the pin and the chips' settings live in the state.
+    const saved = await get($)
+    follow = saved.root ? !saved.pinned : !base.pinned
+    applySettings(saved.overrides)
     void (async () => {
       pointer = await finePointerOk($)
       try {
@@ -1117,7 +1174,7 @@ export const register: Register = (on, options) => {
       themePoll?.cancel()
       themePoll = themeMtime ? $.clock.every(THEME_POLL_MS, () => void loadTheme($)) : null
       const t = await get($)
-      if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {} }))
+      if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} }))
       if (t.preview) await patch($, () => ({ preview: '', previewTop: 0 }))
       await setActivities($, cur => cur.map(a => (a.state === 'running' ? { ...a, state: 'failed', label: `${a.kind} interrupted` } : a)))
       const cwd = await cwdOf($)
@@ -1136,7 +1193,7 @@ export const register: Register = (on, options) => {
     noDock = false
     const arg = (e.args ?? '').trim()
     const cwd = await cwdOf($)
-    follow = !arg
+    follow = !arg && !base.pinned
     const root = arg ? resolve(cwd, arg, home) : cwd
     await reset($, root, true)
     return { text: `File tree on ${shortPath(root)}${follow ? ' (follows the cwd)' : ''}.` }
@@ -1152,6 +1209,7 @@ export const register: Register = (on, options) => {
     const before = actions.some(a => a.verb === 'commit') ? await get($) : null
     const head = before?.top ? await headOf($, before.root) : ''
     const pending: Pending | null = actions.length ? { actions, ids: await startGit($, actions), command, head } : null
+    const creates = e.tool === 'Write' && !(await exists($, posix(e.file_path)))
     let result: Awaited<ReturnType<typeof next>>
     try {
       result = await next(e)
@@ -1187,7 +1245,7 @@ export const register: Register = (on, options) => {
           : 'notebook_path' in e && typeof e.notebook_path === 'string'
             ? e.notebook_path
             : ''
-      if (file) void touched($, [file], 'change', showWrites)
+      if (file) void touched($, [file], 'change', e.tool === 'Write' ? (creates ? 'creating' : 'writing') : 'editing', showWrites)
     }
     return result
   })
@@ -1195,7 +1253,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const result = await next(e)
     if (result.deny || result.isError || e.tool !== 'Read' || !showReads) return result
-    void touched($, [posix(e.file_path)], 'read', true)
+    void touched($, [posix(e.file_path)], 'read', 'reading', true)
     return result
   })
 
@@ -1268,8 +1326,10 @@ export const register: Register = (on, options) => {
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
       void (async () => {
         await loadTheme($)
-        const root = follow || !lastRoot ? await cwdOf($) : lastRoot
         const t = await get($)
+        // lastRoot is empty after a reload; the pinned root is still in the state.
+        const pinnedRoot = lastRoot || t.root
+        const root = follow || !pinnedRoot ? await cwdOf($) : pinnedRoot
         if (t.root !== root || t.nodes.length === 0) await reset($, root)
       })()
     }
@@ -1394,18 +1454,15 @@ export const register: Register = (on, options) => {
     const rows = visibleRows(t)
     const away = (await outside($)).filter(o => !inside(t.root, o.path))
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
-    const stripRows = strip.length ? strip.length + 1 + (away.length > strip.length ? 1 : 0) : 0
-    const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
-    const countSegs = (c: [number, number, number] | undefined): Seg[] => {
-      if (!c) return []
-      const out: Seg[] = []
-      if (c[0] > 0) out.push({ t: ` ?:${c[0]}`, c: GIT_COLOR['?'] })
-      if (c[1] > 0) out.push({ t: ` M:${c[1]}`, c: GIT_COLOR.M })
-      if (c[2] > 0) out.push({ t: ` D:${c[2]}`, c: GIT_COLOR.D })
-      return out
-    }
-    const rootCounts = t.top ? countSegs(t.counts[t.root]) : []
-    const header = t.top ? [t.top.split('/').pop() ?? t.top, t.prefix.replace(/\/$/, '')].filter(Boolean).join('/') : t.root.split('/').pop() || t.root
+    // The list, its header and a rule above it.
+    const stripRows = strip.length ? strip.length + 2 + (away.length > strip.length ? 1 : 0) : 0
+    // What Claude did, beside the name: a pill with rounded ends where a Nerd Font
+    // draws them; elsewhere, the desktop among them, a fill could only be a block, so
+    // a spinner turning before the word instead.
+    const pill = (text: string, color: string): Seg[] =>
+      unicode
+        ? [{ t: ' ', c: color, spin: true }, { t: ` ${text}`, c: color }]
+        : [{ t: ' ' }, { t: PILL_L, c: tagFill(color, theme.bg) }, { t: text, c: color, bg: tagFill(color, theme.bg) }, { t: PILL_R, c: tagFill(color, theme.bg) }]
 
     const rowSpec = (r: (typeof rows)[number]): RowSpec => {
       const n = r.node
@@ -1416,27 +1473,22 @@ export const register: Register = (on, options) => {
       const isBright = bright.has(n.id)
       const isDim = !isBright && dimmed.has(n.id)
       const tone = t.flashTones[n.id] ?? 'change'
+      // What Claude is doing to the file, beside its name while it shimmers, in place
+      // of the date or size; a folder lit only because it was opened to show one says nothing.
+      const verb = isBright ? (t.flashVerbs[n.id] ?? '') : ''
       const iconColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : n.kind === 'dir' ? theme.accent : theme.muted))
       const nameColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : theme.fg || undefined))
-      const loc = t.diff[n.id]
-      const meta = t.showSize
-        ? n.kind === 'dir'
-          ? n.id in t.dirSizes
-            ? formatSize(t.dirSizes[n.id] ?? -1)
-            : '…'
-          : n.kind === 'file' || (n.kind === 'link' && n.size > 0)
-            ? formatSize(n.size)
-            : ''
-        : loc
-          ? ''
-          : n.kind === 'file'
-            ? stamp(n.mtime)
-            : ''
+      const loc = n.kind === 'dir' ? undefined : t.diff[n.id]
+      // Three columns at the right: when it last changed (files only; Claude's action
+      // pill takes its room while it shows), its size (a folder's worked out in the
+      // background, … until then) and its git letter.
+      const date = n.kind === 'file' ? stamp(n.mtime, now) : ''
+      const size =
+        n.kind === 'dir' ? (n.id in t.dirSizes ? formatSize(t.dirSizes[n.id] ?? -1) : '…') : n.kind === 'file' || (n.kind === 'link' && n.size > 0) ? formatSize(n.size) : ''
       const locText = loc ? `${loc[0] ? ` +${loc[0]}` : ''}${loc[1] ? ` -${loc[1]}` : ''}` : ''
-      const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
-      const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
-      const countsText = dirCounts.map(c => c.t).join('')
-      const cols = Math.max(4, width - r.depth * 2 - 6 - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length)
+      // Git letters are for files; a folder says something changed inside by its name's color.
+      const letter = isIgnored ? (unicode ? '⊘' : '\u{f05e}') : n.kind !== 'dir' && status ? status : ''
+      const cols = Math.max(4, width - r.depth * 2 - 6 - (verb ? SIZE_W + LETTER_W : RIGHT_COLUMNS) - locText.length - (verb ? verb.length + 3 : 0))
       const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
       const caret = n.kind === 'dir' ? (unicode ? (r.open ? '▾' : '▸') : r.open ? CHEVRON_OPEN : CHEVRON_CLOSED) + ' ' : '  '
       const isRepo = n.kind === 'dir' && n.id === t.top
@@ -1448,12 +1500,16 @@ export const register: Register = (on, options) => {
         lit ? { t: glyph + ' ', sh: tone, dim: isDim, one: true } : { t: glyph + ' ', c: iconColor },
         lit ? { t: name, sh: tone, dim: isDim, b: isBright } : { t: name, c: nameColor, b: n.id === t.selected, s: status === 'D' && n.kind !== 'dir' },
       ]
-      const right: Seg[] = []
-      if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
-      if (loc && loc[0] > 0) right.push({ t: ` +${loc[0]}`, c: VSCODE.linesAdded })
-      if (loc && loc[1] > 0) right.push({ t: ` -${loc[1]}`, c: VSCODE.linesRemoved })
-      right.push(...dirCounts)
-      if (badge) right.push({ t: badge, c: status ? gitColor : isIgnored ? VSCODE.ignored : theme.muted, b: true })
+      // Lines changed right after the name, then the action as a pill in its
+      // tool-borders color, the bright shade on a fill of it.
+      if (loc && loc[0] > 0) left.push({ t: ` +${loc[0]}`, c: VSCODE.linesAdded })
+      if (loc && loc[1] > 0) left.push({ t: ` -${loc[1]}`, c: VSCODE.linesRemoved })
+      if (verb) left.push(...pill(verb, FAR_TONES[tone]?.solid ?? theme.accent))
+      const right: Seg[] = [
+        ...(verb ? [] : [{ t: date, w: DATE_W, c: theme.muted }]),
+        { t: size, w: SIZE_W, c: theme.muted },
+        { t: letter, w: LETTER_W, c: isIgnored ? VSCODE.ignored : gitColor, b: true },
+      ]
       return { id: n.id, left: clean(left), right: clean(right) }
     }
 
@@ -1461,16 +1517,115 @@ export const register: Register = (on, options) => {
     const more = (id: string, n: number): RowSpec => ({ id, left: [{ t: `  ⋮ ${n.toLocaleString('en')} more`, c: theme.muted }], right: [] })
     const outsideSpec = (o: Outside): RowSpec => {
       const verb = OUTSIDE_VERB[o.tone] ?? 'changed'
-      const label = shortPath(o.path)
-      const cols = Math.max(8, width - verb.length - 4)
-      const name = label.length > cols ? '…' + label.slice(label.length - cols + 1) : label
+      const base = o.path.slice(o.path.lastIndexOf('/') + 1)
+      const folder = shortPath(dirname(o.path))
+      // Slack for the × beside the list and the desktop's proportional font.
+      const cols = Math.max(8, width - verb.length - 14)
+      const name = base.length > cols ? base.slice(0, cols - 1) + '…' : base
+      const room = cols - name.length - 2
+      const where = room < 4 ? '' : folder.length > room ? '…' + folder.slice(folder.length - room + 1) : folder
       return {
         id: o.path,
-        left: clean([{ t: '  ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }]),
+        left: clean([{ t: '    ' }, o.lit ? { t: name, sh: o.tone, b: true } : { t: name, c: theme.fg || undefined }, ...(where ? [{ t: `  ${where}`, c: theme.muted }] : [])]),
         right: [{ t: ` ${verb} `, c: FAR_TONES[o.tone]?.solid ?? theme.muted }],
       }
     }
-    const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0) + stripRows
+    // The list's header and its count; it shimmers in the newest file's color while
+    // that one does.
+    const outsideHead = (): RowSpec => {
+      const fresh = away.find(o => o.lit)
+      return {
+        id: '',
+        left: clean([fresh ? { t: 'outside this folder', sh: fresh.tone } : { t: 'outside this folder', c: theme.fg || undefined }, { t: ` (${away.length})`, c: theme.muted }]),
+        right: [],
+      }
+    }
+    // A thin line across the pane between its sections.
+    // Longer than any row and clipped by its one-line box: a truncating wrap would end
+    // it in an ellipsis.
+    const rule = (
+      <Box height={1} overflow="hidden">
+        <Text color={theme.muted} dimColor>
+          {'─'.repeat(width * 2)}
+        </Text>
+      </Box>
+    )
+    const pillText = (text: string, color: string) => (
+      <Text>
+        {pill(text, color)
+          .filter(s => s.spin || s.t !== ' ')
+          .map(s => (
+            <Text color={s.c} backgroundColor={s.bg}>
+              {s.spin ? '⠹' : s.t}
+            </Text>
+          ))}
+      </Text>
+    )
+    const letterText = (text: string, color: string) => (
+      <Text bold color={color}>
+        {text}
+      </Text>
+    )
+    // The key: one entry per mark, a sample of it drawn as the tree draws it and what
+    // it means, under a heading per kind; two columns when the pane is wide enough.
+    const keyCols = width >= 48 ? 2 : 1
+    const glyphOf = (plain: string, nerd: string) => (unicode ? plain : nerd)
+    const keySections: { title: string; sampleWidth: number; items: { sample: ReturnType<typeof pillText>; text: string }[] }[] = [
+      {
+        title: 'What Claude just did',
+        sampleWidth: 12,
+        items: [
+          { sample: pillText('reading', FAR_TONES.read?.solid ?? theme.accent), text: 'read the file' },
+          { sample: pillText('editing', FAR_TONES.change?.solid ?? theme.accent), text: 'changed it' },
+          { sample: pillText('committing', TONES.commit?.solid ?? theme.accent), text: 'committed it' },
+        ],
+      },
+      {
+        title: 'Git, since the last commit',
+        sampleWidth: 7,
+        items: [
+          { sample: letterText('M', GIT_COLOR.M ?? theme.muted), text: 'modified' },
+          { sample: letterText('?', GIT_COLOR['?'] ?? theme.muted), text: 'new, not in git' },
+          { sample: letterText('D', GIT_COLOR.D ?? theme.muted), text: 'deleted' },
+          { sample: letterText('U', GIT_COLOR.U ?? theme.muted), text: 'merge conflict' },
+          { sample: <Text color={GIT_COLOR.M}>src</Text>, text: 'folder: changes inside' },
+          { sample: <Text color={VSCODE.ignored}>{glyphOf('⊘', '\u{f05e}')}</Text>, text: 'ignored by git' },
+          {
+            sample: (
+              <Text>
+                <Text color={VSCODE.linesAdded}>+3</Text> <Text color={VSCODE.linesRemoved}>-1</Text>
+              </Text>
+            ),
+            text: 'lines added, removed',
+          },
+        ],
+      },
+      {
+        title: 'Rows',
+        sampleWidth: 10,
+        items: [
+          { sample: <Text color={theme.muted}>.env</Text>, text: 'hidden file' },
+          { sample: <Text bold>a.ts</Text>, text: 'sent with prompts' },
+          { sample: <Text backgroundColor={theme.selection}> a.ts </Text>, text: 'cursor' },
+          { sample: <Text color={theme.muted}>▸ ▾</Text>, text: 'folder shut, open' },
+        ],
+      },
+      {
+        title: 'Buttons',
+        sampleWidth: 3,
+        items: [
+          { sample: <Text>{glyphOf('↑', '\u{f005d}')}</Text>, text: 'up a folder (pins)' },
+          { sample: <Text>{glyphOf('⌂', '\u{f02dc}')}</Text>, text: 'back to the cwd' },
+          { sample: <Text>{glyphOf('↻', '\u{f0450}')}</Text>, text: 'refresh' },
+          { sample: <Text>{glyphOf('⊟', '\u{eac5}')}</Text>, text: 'collapse all' },
+        ],
+      },
+    ]
+    const keyRows = 2 + keySections.reduce((n, s) => n + 1 + Math.ceil(s.items.length / keyCols), 0)
+    // Rows above and below the tree: name, path, buttons and search between three
+    // rules, the settings and the key when open; below, a rule, the branch and the
+    // two labeled lines, and the outside list with its own rule.
+    const fixed = 11 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1519,7 +1674,7 @@ export const register: Register = (on, options) => {
     }
     view = { from, max, size: end - from }
     const shown = rows.slice(from, end)
-    if (t.showSize) wantSizes($, [...pinned, ...shown].filter(r => r.node.kind === 'dir' && !(r.node.id in t.dirSizes)).map(r => r.node.id))
+    wantSizes($, [...pinned, ...shown].filter(r => r.node.kind === 'dir' && !(r.node.id in t.dirSizes)).map(r => r.node.id))
     const specs: RowSpec[] = [
       ...(rows.length === 0 ? [note('empty')] : []),
       ...pinned.map(rowSpec),
@@ -1534,130 +1689,260 @@ export const register: Register = (on, options) => {
         ? { pos: max ? Math.round((from / max) * (specs.length - barSize)) : 0, size: barSize, thumb: theme.accent, track: theme.muted }
         : undefined
 
+    // The status lines at the bottom: an icon in a column of its own, then the value.
+    // The branch with its file counts, what goes with your prompts, the last git action.
+    const gitGlyph = unicode ? '±' : '\u{e702}'
+    const sentGlyph = '↳'
+    const statusLine = (icon: string, color: string | undefined, value: ReturnType<typeof Box>) => (
+      <Box flexDirection="row">
+        <Box width={3} flexShrink={0}>
+          <Text color={color}>{icon}</Text>
+        </Box>
+        {value}
+      </Box>
+    )
+    const hint = (text: string) => (
+      <Text color={theme.muted} italic>
+        {text}
+      </Text>
+    )
     const branchRow = () => {
-      if (!t.top || !t.branch) return null
+      if (!t.top) return statusLine(gitGlyph, theme.muted, <Text color={theme.muted}>no git repo · git status starts after git init</Text>)
+      if (!t.branch) return null
       const b = t.branch
       const isFlash = bright.has(BRANCH_ROW)
       const tone = t.flashTones[BRANCH_ROW] ?? 'push'
-      const label = b.head
-      return (
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Box flexDirection="row" flexShrink={0}>
-            <Text color={isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
-            <Text bold color={isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined}>
-              {label}
+      // The upstream only when it is not the branch's own name on its remote.
+      const named = b.upstream && b.upstream.slice(b.upstream.indexOf('/') + 1) !== b.head ? b.upstream : ''
+      const c = t.counts[t.root]
+      const tally = c ? ([['?', c[0]], ['M', c[1]], ['D', c[2]]] as [string, number][]).filter(([, n]) => n > 0) : []
+      return statusLine(
+        unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd,
+        isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent,
+        <Box flexDirection="row" flexGrow={1}>
+          <Box flexShrink={1} overflow="hidden">
+            <Text bold color={isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined} wrap="truncate-end">
+              {b.head}
             </Text>
-            {b.ahead > 0 && <Text color={TONES.push?.solid}>{` ↑${b.ahead}`}</Text>}
-            {b.behind > 0 && <Text color={TONES.pull?.solid}>{` ↓${b.behind}`}</Text>}
           </Box>
-          {b.upstream && (
+          {b.ahead > 0 && <Text color={TONES.push?.solid}>{` ↑${b.ahead}`}</Text>}
+          {b.behind > 0 && <Text color={TONES.pull?.solid}>{` ↓${b.behind}`}</Text>}
+          {named && (
             <Box flexShrink={1} overflow="hidden">
               <Text color={theme.muted} wrap="truncate-end">
-                {` ${b.upstream}`}
+                {` ${named}`}
               </Text>
             </Box>
           )}
           <Box flexGrow={1} />
-          <Box flexDirection="row" flexShrink={0}>
-            {totals[0] > 0 && <Text color={VSCODE.linesAdded}>{` +${totals[0]}`}</Text>}
-            {totals[1] > 0 && <Text color={VSCODE.linesRemoved}>{` -${totals[1]}`}</Text>}
-            {rootCounts.map(c => (
-              <Text color={c.c}>{c.t}</Text>
-            ))}
-            {rootCounts.length === 0 && totals[0] === 0 && totals[1] === 0 && <Text color={theme.muted}> clean</Text>}
-          </Box>
-        </Box>
+          {tally.map(([letter, n]) => (
+            <Text>
+              <Text bold color={GIT_COLOR[letter]}>
+                {` ${letter}`}
+              </Text>
+              <Text color={theme.muted}>{` ${n} `}</Text>
+            </Text>
+          ))}
+          {tally.length === 0 && <Text color={theme.muted}>clean </Text>}
+        </Box>,
       )
     }
-
-    const chip = (a: Activity) => {
-      const tone = a.state === 'failed' ? 'failed' : a.tone
-      const color = TONES[tone]?.solid ?? theme.accent
-      const icon = unicode ? a.plain : a.nerd
-      const hash = a.state === 'done' && a.kind === 'git commit' ? a.detail.split(' ')[0] ?? '' : ''
-      return (
-        <Box flexDirection="row" marginLeft={2}>
-          <Text color={color}>{icon + ' '}</Text>
+    const gitRow = () => {
+      if (!latest) return statusLine(gitGlyph, theme.muted, hint('none yet'))
+      const a = latest
+      const color = TONES[a.state === 'failed' ? 'failed' : a.tone]?.solid ?? theme.accent
+      const hash = a.state === 'done' && a.kind === 'git commit' ? (a.detail.split(' ')[0] ?? '') : ''
+      return statusLine(
+        unicode ? a.plain : a.nerd,
+        color,
+        <Box flexDirection="row">
           <Text bold={a.state === 'running'} color={color}>
             {a.state === 'running' ? `${a.label}…` : a.label}
           </Text>
           {hash && <Text color={theme.muted}>{` ${hash}`}</Text>}
-        </Box>
+        </Box>,
       )
     }
+
+    // The root as a breadcrumb on one line beside the follow badge: the folders above
+    // it dim, each a button that moves the tree there, pinned, and the root itself in
+    // the accent. A long path keeps its first two and as many of its last as fit.
+    const crumbParts = t.root.split('/')
+    const trail: { name: string; path: string }[] = []
+    for (let i = 0; i < crumbParts.length; i++) {
+      if (i > 0 && !crumbParts[i]) continue
+      const path = i === 0 ? `${crumbParts[0]}/` : crumbParts.slice(0, i + 1).join('/')
+      if (home && path !== home && inside(path, home)) continue
+      trail.push({ name: path === home ? '~' : i === 0 ? crumbParts[0] || '/' : (crumbParts[i] ?? ''), path })
+    }
+    const here = trail.pop() ?? { name: t.root, path: t.root }
+    const pathRoom = width - here.name.length - 22
+    const pathCost = (list: typeof trail) => list.reduce((n, c) => n + c.name.length + 3, 0)
+    let pathHead = trail
+    let pathTail: typeof trail = []
+    if (pathCost(trail) > pathRoom) {
+      pathHead = trail.slice(0, Math.min(2, trail.length))
+      for (let i = trail.length - 1; i >= pathHead.length; i--) {
+        const c = trail[i]
+        if (!c || pathCost(pathHead) + pathCost(pathTail) + c.name.length + 7 > pathRoom) break
+        pathTail.unshift(c)
+      }
+    }
+    const elided = pathHead.length + pathTail.length < trail.length
+    const crumb = (c: { name: string; path: string }) => (
+      <Button
+        key={`crumb:${c.path}`}
+        plain
+        dimColor
+        label={c.name}
+        onPress={() =>
+          void (async () => {
+            follow = false
+            await reset($, c.path)
+          })()
+        }
+      />
+    )
+    const sep = <Text color={theme.muted}>{' › '}</Text>
+    const pathLine = [...pathHead.map(crumb), ...(elided ? [<Text color={theme.muted}>…</Text>] : []), ...pathTail.map(crumb)].flatMap((el, i) => (i ? [sep, el] : [el]))
+    const pin = () =>
+      void (async () => {
+        if (follow) {
+          follow = false
+          await patch($, () => ({ pinned: true }))
+        } else {
+          follow = true
+          await reset($, await cwdOf($))
+        }
+      })()
+    const opens = openWithSetting.trim()
+    const openChoices = ['preview', 'app', ...(base.open.trim() && !['preview', 'app'].includes(base.open.trim()) ? [base.open] : [])]
+    const openLabel = opens === 'preview' ? 'preview' : !opens || opens === 'app' ? 'default app' : opens.split(/\s+/)[0]
+    const activityNow = ACTIVITY_CYCLE.find(a => a.includes('reads') === showReads && a.includes('writes') === showWrites) ?? 'none'
+    const settingRow = (label: string, control: ReturnType<typeof crumb>) => (
+      <Box flexDirection="row">
+        <Box width={17} flexShrink={0}>
+          <Text color={theme.muted}>{label}</Text>
+        </Box>
+        {control}
+      </Box>
+    )
 
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
-          <Text bold color={theme.accent} wrap="truncate-start">
-            {header}
-          </Text>
-          <Box flexGrow={1} />
-          <Box flexDirection="row" gap={2}>
-            <Button
-              key="up"
-              plain
-              dimColor
-              label={unicode ? '↑' : '\u{f005d}'}
-              onPress={() =>
-                void (async () => {
-                  follow = false
-                  await reset($, dirname(t.root))
-                })()
-              }
-            />
-            <Button
-              key="cwd"
-              plain
-              dimColor={!follow}
-              label={unicode ? '⌂' : '\u{f02dc}'}
-              onPress={() =>
-                void (async () => {
-                  follow = true
-                  await reset($, await cwdOf($))
-                })()
-              }
-            />
-            <Button
-              key="refresh"
-              plain
-              dimColor
-              label={unicode ? '↻' : '\u{f0450}'}
-              onPress={() =>
-                void (async () => {
-                  const cur = await get($)
-                  searchIndex = null
-                  await staleSizes($)
-                  await loadDirs($, [cur.root, ...cur.expanded])
-                  await detectRepo($)
-                  await refreshGit($)
-                  if (cur.query.trim()) await search($, cur.query)
-                })()
-              }
-            />
-            <Button
-              key="hidden"
-              plain
-              dimColor={!t.showHidden}
-              label={unicode ? (t.showHidden ? '◉' : '○') : t.showHidden ? '\u{f0208}' : '\u{f0209}'}
-              onPress={() => void patch($, cur => ({ showHidden: !cur.showHidden }))}
-            />
-            <Button
-              key="size"
-              plain
-              dimColor={!t.showSize}
-              label={unicode ? 'Σ' : '\u{f02ca}'}
-              onPress={() => void patch($, cur => ({ showSize: !cur.showSize }))}
-            />
-            <Button key="collapse" plain dimColor label={unicode ? '⊟' : '\u{eac5}'} onPress={() => void patch($, cur => ({ expanded: [], nodes: dropBelow(cur.nodes, cur.nodes.filter(x => x.parent === cur.root && x.kind === 'dir').map(x => x.id)) }))} />
-            {t.selected && (
-              <Button key="unselect" plain label={unicode ? '⊘' : '\u{f0777}'} onPress={() => void patch($, () => ({ selected: '' }))} />
-            )}
-            <Text> </Text>
+          <Box flexDirection="row" flexShrink={1} overflow="hidden">
+            {pathLine}
+            {pathLine.length > 0 && sep}
+            <Text bold color={theme.accent} wrap="truncate-end">
+              {here.name}
+            </Text>
           </Box>
+          <Box flexGrow={1} />
+          <Text color={follow ? TONES.commit?.solid : FAR_TONES.change?.solid}>●</Text>
+          <Button key="pin" plain label={follow ? 'following cwd' : 'pinned'} onPress={pin} />
+          <Text> </Text>
         </Box>
-        {branchRow()}
-        {!t.top && <Text color={theme.muted}>{unicode ? '± ' : '\u{e702} '}no git repo · git status starts after git init</Text>}
+        {rule}
+        <Box flexDirection="row" gap={1}>
+          <Button
+            key="up"
+            plain
+            dimColor
+            label={unicode ? '↑' : '\u{f005d}'}
+            onPress={() =>
+              void (async () => {
+                follow = false
+                await reset($, dirname(t.root))
+              })()
+            }
+          />
+          <Button
+            key="cwd"
+            plain
+            dimColor
+            label={unicode ? '⌂' : '\u{f02dc}'}
+            onPress={() => void (async () => reset($, await cwdOf($)))()}
+          />
+          <Button
+            key="refresh"
+            plain
+            dimColor
+            label={unicode ? '↻' : '\u{f0450}'}
+            onPress={() =>
+              void (async () => {
+                const cur = await get($)
+                searchIndex = null
+                await staleSizes($)
+                await loadDirs($, [cur.root, ...cur.expanded])
+                await detectRepo($)
+                await refreshGit($)
+                if (cur.query.trim()) await search($, cur.query)
+              })()
+            }
+          />
+          <Text color={theme.muted}>│</Text>
+          <Button
+            key="hidden"
+            plain
+            dimColor={!t.showHidden}
+            label={`${unicode ? (t.showHidden ? '◉' : '○') : t.showHidden ? '\u{f0208}' : '\u{f0209}'} hidden ${t.showHidden ? 'on' : 'off'}`}
+            onPress={() => void patch($, cur => ({ showHidden: !cur.showHidden }))}
+          />
+          <Button key="collapse" plain dimColor label={unicode ? '⊟' : '\u{eac5}'} onPress={() => void patch($, cur => ({ expanded: [], nodes: dropBelow(cur.nodes, cur.nodes.filter(x => x.parent === cur.root && x.kind === 'dir').map(x => x.id)) }))} />
+          <Button key="key" plain dimColor={!t.showKey} label="? key" onPress={() => void patch($, cur => ({ showKey: !cur.showKey }))} />
+          <Box flexGrow={1} />
+          <Button
+            key="settings"
+            plain
+            dimColor={!t.showSettings}
+            label={`${unicode ? '⚙' : '\u{f013}'} settings ${t.showSettings ? '▾' : '▸'}`}
+            onPress={() => void patch($, cur => ({ showSettings: !cur.showSettings }))}
+          />
+        </Box>
+        {t.showSettings && (
+          <Box flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
+            {settingRow('Follow Claude', <Button key="chip-follow" label={followClaude ? 'scrolls to it' : 'stays put'} onPress={() => void override($, { followClaude: !followClaude })} />)}
+            {settingRow(
+              'Claude activity',
+              <Button
+                key="chip-activity"
+                label={ACTIVITY_CHIP[activityNow] ?? activityNow}
+                onPress={() => void override($, { activity: ACTIVITY_CYCLE[(ACTIVITY_CYCLE.indexOf(activityNow) + 1) % ACTIVITY_CYCLE.length] ?? 'reads and writes' })}
+              />,
+            )}
+            {settingRow(
+              'Double-click',
+              <Button
+                key="chip-open"
+                label={openLabel}
+                onPress={() => void override($, { open: openChoices[(Math.max(0, openChoices.indexOf(opens || 'app')) + 1) % openChoices.length] ?? 'preview' })}
+              />,
+            )}
+          </Box>
+        )}
+        {t.showKey && (
+          <Box flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
+            {keySections.map(s => (
+              <Box flexDirection="column">
+                <Text bold color={theme.accent}>
+                  {s.title}
+                </Text>
+                <Box flexDirection="row" flexWrap="wrap">
+                  {s.items.map(item => (
+                    <Box flexDirection="row" width={keyCols === 2 ? '50%' : '100%'}>
+                      <Box width={s.sampleWidth} flexShrink={0}>
+                        {item.sample}
+                      </Box>
+                      <Text wrap="truncate-end">{item.text}</Text>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
+        {rule}
         <Box flexDirection="row">
           <Box flexGrow={1}>
             <Input
@@ -1673,46 +1958,57 @@ export const register: Register = (on, options) => {
           </Box>
           {t.query ? <Button key="clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void search($, '')} /> : null}
         </Box>
-        {strip.length > 0 && (
-          <Box flexDirection="row">
-            <Text color={theme.muted}>outside this folder</Text>
-            <Box flexGrow={1} />
-            <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
-          </Box>
-        )}
-        {strip.length > 0 && (
-          <Client
-            key="outside"
-            module="./rows.tsx"
-            props={{
-              rows: [...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`  ⋮ ${away.length - strip.length} more`)] : [])],
-              active: '',
-              activeBg: theme.selection,
-              hoverBg: faint(theme.selection),
-              tones: FAR_SHIMMER,
-              pointer,
-            } satisfies RowsProps}
-          />
-        )}
+        {rule}
         <Client
           key="rows"
           module="./rows.tsx"
           props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
         />
         <Box flexGrow={1} />
-        {(t.selected || latest) && (
+        {strip.length > 0 && rule}
+        {strip.length > 0 && (
           <Box flexDirection="row">
-            {t.selected ? (
-              <Box flexShrink={1}>
-                <Text dimColor wrap="truncate-start">
-                  selected: {t.selected !== t.root && inside(t.root, t.selected) ? t.selected.slice(t.root.endsWith('/') ? t.root.length : t.root.length + 1) : shortPath(t.selected)}
-                </Text>
-              </Box>
-            ) : null}
-            <Box flexGrow={1} />
-            {latest && chip(latest)}
+            <Box flexGrow={1} flexShrink={1}>
+              <Client
+                key="outside"
+                module="./rows.tsx"
+                props={{
+                  rows: [outsideHead(), ...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`    ⋮ ${away.length - strip.length} more`)] : [])],
+                  active: '',
+                  activeBg: theme.selection,
+                  hoverBg: faint(theme.selection),
+                  tones: FAR_SHIMMER,
+                  pointer,
+                } satisfies RowsProps}
+              />
+            </Box>
+            <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
           </Box>
         )}
+        {rule}
+        {branchRow()}
+        {/* Always drawn, so what each line is for shows before it holds anything. */}
+        {statusLine(
+          sentGlyph,
+          theme.accent,
+          t.selected ? (
+            <Box flexDirection="row" flexGrow={1}>
+              <Box flexShrink={1}>
+                <Text bold wrap="truncate-start">
+                  {t.selected !== t.root && inside(t.root, t.selected) ? relative(t.root, t.selected) : shortPath(t.selected)}
+                </Text>
+              </Box>
+              <Box flexGrow={1} />
+              <Button key="unselect" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void patch($, () => ({ selected: '' }))} />
+            </Box>
+          ) : (
+            hint('nothing yet: click a file')
+          ),
+        )}
+        {gitRow()}
+        <Text color={theme.muted} dimColor>
+          {`${sentGlyph} sent with your prompts · ${gitGlyph} last git action`}
+        </Text>
       </Box>
     )
   })

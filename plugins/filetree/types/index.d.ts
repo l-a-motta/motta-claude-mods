@@ -42,7 +42,6 @@ export type FileTree = {
   selected: string
   query: string
   showHidden: boolean
-  showSize: boolean
   dirSizes: Record<string, number>
   git: Record<string, string>
   diff: Record<string, [number, number]>
@@ -56,6 +55,13 @@ export type FileTree = {
   flashDim: string[]
   flashOn: boolean
   flashTones: Record<string, string>
+  flashVerbs: Record<string, string>
+  // Pinned: the tree stays on its root instead of following the cwd.
+  pinned: boolean
+  showKey: boolean
+  showSettings: boolean
+  // Settings changed from the pane's chips for this session, over /config.
+  overrides: { followClaude?: boolean; activity?: string; open?: string }
   scroll: number | null
   preview: string
   previewTop: number

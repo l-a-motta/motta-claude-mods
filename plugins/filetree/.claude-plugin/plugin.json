@@ -1,6 +1,6 @@
 {
   "name": "filetree",
-  "version": "0.2.27",
+  "version": "0.2.29",
   "description": "An IDE-style file tree for Claude Code that shows what Claude is doing and where in files",
   "types": "./types/index.d.ts",
   "author": {
@@ -47,21 +47,21 @@
         "off"
       ]
     },
-    "column": {
+    "root": {
       "type": "string",
-      "title": "Right column",
-      "description": "What the right column shows by default: date (last modified) or size (files in bytes, folders as disk usage computed in the background). The header button toggles it.",
-      "default": "date",
+      "title": "Tree folder",
+      "description": "pinned: the tree stays on the folder it opened on, or the one you move it to. follows cwd: it moves whenever Claude's shell changes folder (a cd, a worktree). The badge beside the path switches between the two.",
+      "default": "pinned",
       "options": [
-        "date",
-        "size"
+        "pinned",
+        "follows cwd"
       ]
     },
     "open": {
       "type": "string",
       "title": "Open with",
-      "description": "What a double-click or Enter does with a file. Empty: the default app. preview: show it in the pane (left goes back). Anything else is a command run instead: {path} is the file and {dir} its folder; without {path} the path goes last. Words split on spaces, quotes keep a word whole, and no shell runs it. It should start the viewer and return; on Linux it runs detached.",
-      "default": ""
+      "description": "What a double-click or Enter does with a file. preview (default): show it in the pane (left goes back, ↗ opens the default app). app (or empty): the default app. Anything else is a command run instead: {path} is the file and {dir} its folder; without {path} the path goes last. Words split on spaces, quotes keep a word whole, and no shell runs it. It should start the viewer and return; on Linux it runs detached.",
+      "default": "preview"
     }
   },
   "license": "MIT"

@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { LINUX_LAUNCH } from '../hooks/open'
-import { ancestorsOf, formatSize, replaceChildren, toNodes } from '../hooks/tree'
+import { ancestorsOf, formatSize, replaceChildren, stamp, toNodes } from '../hooks/tree'
 
 type World = {
   os: 'darwin' | 'linux' | 'win32'
@@ -118,10 +118,10 @@ async function texts(ui: any): Promise<string> {
   return JSON.stringify(await ui.drawn()) + rows
 }
 
-const STAMP = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/
+const STAMP = /"[A-Z][a-z]{2} \d{1,2} (\d{4}|\d{2}:\d{2})"|"\d{2}:\d{2}"/
 const NERD = /[\u{e000}-\u{f8ff}\u{f0000}-\u{fffff}]/u
 
-test('macOS Claude Code app: desktop pane draws, selects, opens with open', { timeoutMs: 20_000 }, async ($, on) => {
+test('macOS Claude Code app: desktop pane draws, selects, opens with open', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, {
@@ -134,11 +134,13 @@ test('macOS Claude Code app: desktop pane draws, selects, opens with open', { ti
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   const shown = await texts(ui)
-  for (const word of ['README.md', 'notes.md', 'src', 'main', 'origin/main']) expect(shown).toContain(word)
+  for (const word of ['README.md', 'notes.md', 'src', 'main', '↳ sent with your prompts · ± last git action']) expect(shown).toContain(word)
+  // origin/main is main's own name on its remote, so the branch line leaves it out
+  expect(shown).not.toContain('origin/main')
   expect(NERD.test(shown)).toBe(false)
   await ui.post({ press: `${root}/README.md` }, { in: 'rows' })
   await clock.settle()
-  expect(await texts(ui)).toContain('"selected: ","README.md"')
+  expect(await texts(ui)).toContain(sentWith('README.md'))
   const sent = await $.prompt.submit({ text: 'what is this?', wait: false } as any)
   expect(JSON.stringify(sent)).toContain(`${root}/README.md`)
   await ui.post({ press: `${root}/README.md` }, { in: 'rows' })
@@ -169,7 +171,7 @@ test('macOS outside a repo: write scan uses find -newer marker, not GNU -newermt
   expect(find).not.toContain('-newermt')
 })
 
-test('Windows: backslash paths shimmer, open hands the path to PowerShell as data, no find, sh or cmd', { timeoutMs: 20_000 }, async ($, on) => {
+test('Windows: backslash paths shimmer, open hands the path to PowerShell as data, no find, sh or cmd', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -189,7 +191,7 @@ test('Windows: backslash paths shimmer, open hands the path to PowerShell as dat
   expect(shown).toContain('+1')
   await $.tool.call({ tool: 'Edit', file_path: 'C:\\Users\\k\\AGENTS.md', old_string: 'a', new_string: 'b' } as any)
   await clock.settle()
-  expect(await texts(ui)).toContain(shimmer('~/AGENTS.md', 'change'))
+  expect(await texts(ui)).toContain(outsideHeader('change'))
   await $.tool.call({ tool: 'Bash', command: 'echo x >> src/a.ts' } as any)
   await clock.settle()
   await ui.post({ press: `${root}/a&calc&%USERNAME%.txt` }, { in: 'rows' })
@@ -201,7 +203,7 @@ test('Windows: backslash paths shimmer, open hands the path to PowerShell as dat
   await ui.unmount()
 })
 
-test('Linux unchanged: GNU find -newermt outside a repo, xdg-open detached', { timeoutMs: 20_000 }, async ($, on) => {
+test('Linux unchanged: GNU find -newermt outside a repo, xdg-open detached', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/scratch'
   const clock = world(on, { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: '', dirs: { [root]: [['a\\b.txt', 'file'], ['c.txt', 'file']] }, status: '', numstat: '' }, ran)
@@ -258,6 +260,53 @@ test('macOS app: every header button and the search box work on the desktop surf
   await ui.unmount()
 })
 
+test('the pane says what is on: the pin badge, breadcrumb, setting chips and the key', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: Ran = []
+  const root = '/Users/k/proj'
+  const w: World = {
+    os: 'darwin', env: { HOME: '/Users/k' }, cwd: root, top: '',
+    dirs: { [root]: [['README.md', 'file']], '/Users/k': [['proj', 'dir'], ['other', 'dir']], '/Users/k/other': [['b.txt', 'file']] },
+    status: '', numstat: '',
+  }
+  const clock = world(on, w, ran)
+  await $.session.start({ cwd: root, surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
+  await clock.settle()
+  let shown = await texts(ui)
+  for (const word of ['nothing yet: click a file', 'none yet', '"pinned"', '"~"', '"proj"', 'hidden on', '"? key"', 'settings ▸']) expect(shown).toContain(word)
+  expect(shown).not.toContain('What Claude just did')
+  expect(shown).not.toContain('sizes')
+  w.cwd = '/Users/k/other'
+  await $.prompt.submit({ text: 'next', wait: false } as any)
+  await clock.settle()
+  expect(await texts(ui)).toContain('README.md')
+  await ui.press({ key: 'pin' })
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain('"following cwd"')
+  expect(shown).toContain('b.txt')
+  await ui.press({ key: 'crumb:/Users/k' })
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain('"pinned"')
+  expect(shown).toContain('"id":"/Users/k/proj"')
+  await ui.press({ key: 'key' })
+  await ui.press({ key: 'settings' })
+  await clock.settle()
+  for (const word of ['Follow Claude', 'scrolls to it', 'reads + writes', '"preview"']) expect(await texts(ui)).toContain(word)
+  await ui.press({ key: 'chip-open' })
+  await ui.press({ key: 'chip-activity' })
+  await ui.press({ key: 'chip-follow' })
+  await clock.settle()
+  shown = await texts(ui)
+  for (const word of ['What Claude just did', 'settings ▾', 'default app', 'writes only', 'stays put']) expect(shown).toContain(word)
+  await $.tool.call({ tool: 'Read', file_path: '/Users/k/other/b.txt' } as any)
+  await clock.settle()
+  expect(await texts(ui)).not.toContain(shimmer('b.txt', 'read'))
+  await ui.unmount()
+})
+
 test('outside a repo only git rev-parse runs, never status, diff or ls-files', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/scratch'
@@ -311,32 +360,36 @@ test('files Claude reads or changes outside the root list above the tree, and a 
   await $.tool.call({ tool: 'Edit', file_path: '/home/k/AGENTS.md', old_string: 'a', new_string: 'b' } as any)
   await clock.settle()
   let shown = await texts(ui)
-  expect(shown).toContain('outside this folder')
-  expect(shown).toContain(shimmer('~/AGENTS.md', 'change'))
-  expect(shown).toContain('" changed "')
+  expect(shown).toContain(outsideHeader('change'))
+  expect(shown).toContain('" (1)"')
   expect(shown).toContain('a.txt')
+  shown = await texts(ui)
+  expect(shown).toContain(shimmer('AGENTS.md', 'change'))
+  expect(shown).toContain('"t":"  ~"')
+  expect(shown).toContain('" changed "')
   await $.tool.call({ tool: 'Read', file_path: '/srv/log.txt' } as any)
   await $.tool.call({ tool: 'Bash', command: 'cat ../notes.md' } as any)
   await clock.settle()
   shown = await texts(ui)
-  expect(shown).toContain(shimmer('/srv/log.txt', 'read'))
-  expect(shown).toContain(shimmer('~/notes.md', 'read'))
+  expect(shown).toContain(shimmer('log.txt', 'read'))
+  expect(shown).toContain(shimmer('notes.md', 'read'))
+  expect(shown).toContain('"t":"  /srv"')
   expect(shown).toContain('" read "')
-  const order = ['~/notes.md', '/srv/log.txt', '~/AGENTS.md'].map(p => shown.indexOf(`"t":"${p}"`))
+  const order = ['notes.md', 'log.txt', 'AGENTS.md'].map(p => shown.indexOf(`"t":"${p}"`))
   expect(order.every(i => i >= 0)).toBe(true)
   expect([...order].sort((x, y) => x - y)).toEqual(order)
   await clock.advance(5_000)
   await clock.settle()
   shown = await texts(ui)
-  expect(shown).toContain('"t":"~/AGENTS.md"')
-  expect(shown).not.toContain(shimmer('~/AGENTS.md', 'change'))
+  expect(shown).toContain(awayRow('AGENTS.md', '~'))
+  expect(shown).not.toContain(shimmer('AGENTS.md', 'change'))
   await ui.post({ press: '/home/k/AGENTS.md' }, { in: 'outside' })
   await clock.settle()
   shown = await texts(ui)
   expect(shown).toContain('"proj"')
-  expect(shown).toContain('"selected: ","AGENTS.md"')
-  expect(shown).toContain('"t":"/srv/log.txt"')
-  expect(shown).not.toContain('"t":"~/notes.md"')
+  expect(shown).toContain(sentWith('AGENTS.md'))
+  expect(shown).toContain(awayRow('log.txt', '/srv'))
+  expect(shown).not.toContain(awayRow('notes.md', '~'))
   await $.prompt.submit({ text: 'next', wait: false } as any)
   await clock.settle()
   expect(await texts(ui)).not.toContain('outside this folder')
@@ -354,14 +407,15 @@ test('the list keeps every outside file until the next prompt; the terminal show
   await clock.advance(5_000)
   await clock.settle()
   let shown = await texts(ui)
-  for (let i = 3; i <= 7; i++) expect(shown).toContain(`"t":"/srv/f${i}.txt"`)
-  expect(shown).not.toContain('"t":"/srv/f2.txt"')
+  shown = await texts(ui)
+  for (let i = 3; i <= 7; i++) expect(shown).toContain(awayRow(`f${i}.txt`, '/srv'))
+  expect(shown).not.toContain('f2.txt')
   expect(shown).toContain('⋮ 2 more')
   await $.tool.call({ tool: 'Read', file_path: '/srv/log.txt' } as any)
   await clock.advance(5_000)
   await clock.settle()
   shown = await texts(ui)
-  expect(shown).toContain('"t":"/srv/log.txt"')
+  expect(shown).toContain(awayRow('log.txt', '/srv'))
   expect(shown).toContain('⋮ 3 more')
   await $.prompt.submit({ text: 'next', wait: false } as any)
   await clock.settle()
@@ -371,8 +425,8 @@ test('the list keeps every outside file until the next prompt; the terminal show
   await $.tool.call({ tool: 'Read', file_path: '/srv/log.txt' } as any)
   await clock.settle()
   shown = await texts(ui)
-  expect(shown).toContain(shimmer('/srv/log.txt', 'read'))
-  expect(shown).not.toContain('/srv/f7.txt')
+  expect(shown).toContain(shimmer('log.txt', 'read'))
+  expect(shown).not.toContain('f7.txt')
   await ui.press({ key: 'outside-clear' })
   await clock.settle()
   expect(await texts(ui)).not.toContain('outside this folder')
@@ -389,13 +443,12 @@ test('desktop: an edit outside the root lists the file above the tree', { timeou
   await $.tool.call({ tool: 'Edit', file_path: '/home/k/AGENTS.md', old_string: 'a', new_string: 'b' } as any)
   await clock.settle()
   let shown = await texts(ui)
-  expect(shown).toContain('outside this folder')
-  expect(shown).toContain(shimmer('~/AGENTS.md', 'change'))
+  expect(shown).toContain(outsideHeader('change'))
   for (let i = 1; i <= 7; i++) await $.tool.call({ tool: 'Write', file_path: `/srv/f${i}.txt`, content: 'x' } as any)
   await clock.settle()
   shown = await texts(ui)
-  for (let i = 1; i <= 7; i++) expect(shown).toContain(`/srv/f${i}.txt`)
-  expect(shown).toContain('"t":"~/AGENTS.md"')
+  for (let i = 1; i <= 7; i++) expect(shown).toContain(`"t":"f${i}.txt"`)
+  expect(shown).toContain('"t":"AGENTS.md"')
   expect(shown).not.toContain('more')
   await ui.unmount()
 })
@@ -414,8 +467,9 @@ test('activity writes: a read outside the root stays out of the list, an edit th
   await $.tool.call({ tool: 'Write', file_path: '/home/k/notes.md', content: 'x' } as any)
   await clock.settle()
   const shown = await texts(ui)
-  expect(shown).toContain(shimmer('~/notes.md', 'change'))
-  expect(shown).not.toContain('/srv/log.txt')
+  expect(shown).toContain(outsideHeader('change'))
+  expect(shown).toContain('" (1)"')
+  expect(shown).not.toContain('log.txt')
   await ui.unmount()
 })
 
@@ -562,6 +616,41 @@ test('follow on: the tree scrolls to the file Claude reads', { timeoutMs: 20_000
   await ui.unmount()
 })
 
+test('a lit file says what Claude is doing to it, in its tool-borders color, and the folder opened to show it says nothing', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: Ran = []
+  const root = '/home/k/proj'
+  const w: World = { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: root, dirs: { [root]: [['src', 'dir'], ['a.txt', 'file']], [`${root}/src`]: [['b.ts', 'file']] }, status: '## main\0', numstat: '' }
+  const clock = world(on, w, ran)
+  await $.session.start({ cwd: root, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
+  await clock.settle()
+  // On the desktop the action is a spinner, then the word in its color.
+  const label = (verb: string, color: string) => `"spin":true},{"t":" ${verb}","c":"${color}"}`
+  await $.tool.call({ tool: 'Read', file_path: `${root}/src/b.ts` } as any)
+  await clock.settle()
+  let shown = await texts(ui)
+  expect(shown).toContain(shimmer('b.ts', 'read') + ',"dim":false')
+  expect(shown).toContain(label('reading', '#5b8fcc'))
+  expect(JSON.stringify(await ui.drawn()).match(/"t":" reading","c"/g)?.length).toBe(1)
+  await clock.advance(5_000)
+  await clock.settle()
+  expect(await texts(ui)).not.toContain(label('reading', '#5b8fcc'))
+  await $.tool.call({ tool: 'Edit', file_path: `${root}/a.txt`, old_string: 'a', new_string: 'b' } as any)
+  await clock.settle()
+  expect(await texts(ui)).toContain(label('editing', '#b8a531'))
+  await $.tool.call({ tool: 'Write', file_path: `${root}/a.txt`, content: 'x' } as any)
+  await clock.settle()
+  shown = await texts(ui)
+  expect(shown).toContain(label('writing', '#b8a531'))
+  expect(shown).not.toContain(label('editing', '#b8a531'))
+  await $.tool.call({ tool: 'Write', file_path: `${root}/new.txt`, content: 'x' } as any)
+  w.dirs[root] = [...(w.dirs[root] ?? []), ['new.txt', 'file']]
+  await clock.settle()
+  expect(await texts(ui)).toContain(label('creating', '#b8a531'))
+  await ui.unmount()
+})
+
 test('follow off: reads, writes and folders Claude opens above the view never move it', { timeoutMs: 20_000, options: { follow: 'off' } }, async ($, on) => {
   const { root, clock, ui, ids } = await scrolledTree($, on)
   await $.tool.call({ tool: 'Read', file_path: `${root}/f55.txt` } as any)
@@ -662,6 +751,9 @@ test('in the desktop app /filetree opens the pane without the terminal layout ch
   expect(opens.at(-1)).toMatchObject({ id: 'filetree', focus: true })
 })
 
+const sentWith = (name: string) => `"bold":true,"wrap":"truncate-start"},"children":[${JSON.stringify(name)}]`
+const outsideHeader = (tone: string) => shimmer('outside this folder', tone)
+const awayRow = (name: string, folder: string) => `"t":${JSON.stringify(name)}},{"t":${JSON.stringify('  ' + folder)}`
 const shimmer = (name: string, tone: string) => `"t":${JSON.stringify(name)},"sh":"${tone}"`
 const fullscreen = (args: string) => ({ command: 'filetree', args, origin: { kind: 'person' }, presentation: { isFullscreen: true, columns: 200 } }) as any
 
@@ -688,7 +780,7 @@ test('after /clear the tree rebuilds itself, keeps a pinned folder, and an empty
   await ui.unmount()
 })
 
-test('opener failures show a toast instead of failing silently', { timeoutMs: 20_000 }, async ($, on) => {
+test('opener failures show a toast instead of failing silently', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k' }, cwd: root, top: '', dirs: { [root]: [['a.xyz', 'file']] }, status: '', numstat: '', exits: { open: [1, 'No application knows how to open a.xyz\n'] } }, ran)
@@ -723,7 +815,7 @@ test('open with: a double-click and Enter run the configured command instead of 
   await ui.unmount()
 })
 
-test('open with preview: a double-click shows the file in the pane, left goes back to the tree, arrows scroll, ↗ opens the default app, a binary file shows a note', { timeoutMs: 20_000, options: { open: 'preview' } }, async ($, on) => {
+test('open with preview, the default: a double-click shows the file in the pane, left goes back to the tree, arrows scroll, ↗ opens the default app, a binary file shows a note', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/Users/k/proj'
   const clock = world(on, {
@@ -908,7 +1000,7 @@ test('replacing many folders in one batch keeps unchanged nodes and drops what v
   expect(out.find(n => n.id === '/r/b')?.loaded).toBe(true)
 })
 
-test('a cwd change moves the tree and drops the old selection before the next prompt', { timeoutMs: 20_000 }, async ($, on) => {
+test('a cwd change moves the tree and drops the old selection before the next prompt', { timeoutMs: 20_000, options: { root: 'follows cwd' } }, async ($, on) => {
   const ran: Ran = []
   const a = '/home/k/repo-a'
   const b = '/home/k/repo-b'
@@ -1117,6 +1209,14 @@ test('without an Omarchy theme the pane keeps the terminal background and nothin
   await ui.unmount()
 })
 
+test('stamp: the time alone today, the day and time this year, the day and year before', async () => {
+  const now = new Date(2026, 9, 12, 22, 0).getTime()
+  expect(stamp(new Date(2026, 9, 12, 19, 39).getTime(), now)).toBe('19:39')
+  expect(stamp(new Date(2026, 9, 11, 1, 49).getTime(), now)).toBe('Oct 11 01:49')
+  expect(stamp(new Date(2025, 2, 3, 8, 5).getTime(), now)).toBe('Mar 3 2025')
+  expect(stamp(0, now)).toBe('')
+})
+
 test('formatSize: bytes, binary units, one decimal under 100, ? for unknown', async () => {
   expect(formatSize(0)).toBe('0 B')
   expect(formatSize(1023)).toBe('1023 B')
@@ -1126,7 +1226,7 @@ test('formatSize: bytes, binary units, one decimal under 100, ? for unknown', as
   expect(formatSize(-1)).toBe('?')
 })
 
-test('size column: the toggle swaps dates for sizes, folders are sized with du, an edit re-sizes its folders', { timeoutMs: 20_000 }, async ($, on) => {
+test('date and size together: folders are sized with du, an edit re-sizes its folders', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/proj'
   const clock = world(on, {
@@ -1139,14 +1239,10 @@ test('size column: the toggle swaps dates for sizes, folders are sized with du, 
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  expect(await texts(ui)).toMatch(STAMP)
-  expect(ran.some(a => a[0] === 'du')).toBe(false)
-  await ui.press({ key: 'size' })
-  await clock.settle()
   const sized = await texts(ui)
-  expect(sized).not.toMatch(STAMP)
-  expect(sized).toContain(' 1 B')
-  expect(sized).toContain(' 2.0 M')
+  expect(sized).toMatch(STAMP)
+  expect(sized).toContain('"1 B"')
+  expect(sized).toContain('"2.0 M"')
   expect(ran).toContainEqual(['du', '-skxH', `${root}/src`])
   const before = ran.filter(a => a[0] === 'du').length
   await $.tool.call({ tool: 'Edit', file_path: `${root}/src/a.ts`, old_string: 'a', new_string: 'b' } as any)
@@ -1154,13 +1250,10 @@ test('size column: the toggle swaps dates for sizes, folders are sized with du, 
   await ui.press({ key: 'refresh' })
   await clock.settle()
   expect(ran.filter(a => a[0] === 'du').length).toBeGreaterThan(before)
-  await ui.press({ key: 'size' })
-  await clock.settle()
-  expect(await texts(ui)).toMatch(STAMP)
   await ui.unmount()
 })
 
-test('size column on Windows sums file sizes with fs.list instead of du', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('size column on Windows sums file sizes with fs.list instead of du', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -1172,12 +1265,12 @@ test('size column on Windows sums file sizes with fs.list instead of du', { time
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  expect(await texts(ui)).toContain(' 3 B')
+  expect(await texts(ui)).toContain('"3 B"')
   expect(ran.some(a => a[0] === 'du')).toBe(false)
   await ui.unmount()
 })
 
-test('a folder whose size job goes stale mid-run is sized again instead of waiting forever', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('a folder whose size job goes stale mid-run is sized again instead of waiting forever', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/proj'
   const clock = world(on, {
@@ -1195,11 +1288,11 @@ test('a folder whose size job goes stale mid-run is sized again instead of waiti
   await clock.settle()
   await clock.advance(1_500)
   await clock.settle()
-  expect(await texts(ui)).toContain(' 2.0 M')
+  expect(await texts(ui)).toContain('"2.0 M"')
   await ui.unmount()
 })
 
-test('on Windows a folder size does not walk into linked folders, like du', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('on Windows a folder size does not walk into linked folders, like du', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -1213,13 +1306,13 @@ test('on Windows a folder size does not walk into linked folders, like du', { ti
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   const shown = await texts(ui)
-  expect(shown).toContain(' 2 B')
-  expect(shown).not.toContain(' 6 B')
+  expect(shown).toContain('"2 B"')
+  expect(shown).not.toContain('"6 B"')
   await ui.unmount()
 })
 
 for (const os of ['linux', 'win32'] as const) {
-  test(`${os}: a failed file opener is visible`, { timeoutMs: 20_000 }, async ($, on) => {
+  test(`${os}: a failed file opener is visible`, { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
     const ran: Ran = []
     const root = os === 'linux' ? '/home/k/proj' : 'C:/Users/k/proj'
     const clock = world(on, {
