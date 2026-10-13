@@ -25,7 +25,7 @@
     {
       "name": "usage-drill",
       "source": "./plugins/usage-drill",
-      "description": "A Usage pane: each rate limit (5h, 7d) with its percent, reset time, where the pace so far ends and its readings this window against an even pace. motta-statusline's 5h and 7d open it; so does /usage-drill."
+      "description": "A Usage pane: each rate limit (5h, 7d) as motta-statusline's bar with a verdict; its readings, burn rate, budget, cost per turn, past windows, a GitHub-style activity grid and the spend by model. Toasts at thresholds. No request sent. motta-statusline's 5h and 7d open it; so does /usage-drill."
     },
     {
       "name": "assumption-check",

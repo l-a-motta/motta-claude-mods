@@ -1,11 +1,224 @@
 {
   "name": "usage-drill",
-  "version": "0.1.0",
-  "description": "A Usage pane: each rate limit (5h, 7d) with its percent, when it resets, where the pace so far ends, and its readings this window against an even pace (kept between sessions). Opened by /usage-drill, or by $.usageDrill.open() from another mod (motta-statusline's 5h and 7d).",
+  "version": "0.2.0",
+  "description": "A Usage pane: each rate limit (5h, 7d) as one line, motta-statusline's bar with a tick where the window's time stands, its percent and when it resets, then a verdict in its color (on track, tight, ahead of pace, runs out at 21:05). Under details, 5h and 7d side by side: the readings this window against an even pace, burn rate, hourly budget, cost per turn, this session's share, past windows, and when each clears; then the weekly limit's activity, a GitHub-style grid of days by hours and a cross of the spend by model family; a row only where it has something to say. Toasts when a limit passes a threshold or turns orange or red. No request sent: it reads only the limits each response reports, kept between sessions. Opened by /usage-drill, or by $.usageDrill.open() from another mod (motta-statusline's 5h and 7d).",
   "author": {
     "name": "l-a-motta"
   },
   "repository": "https://github.com/l-a-motta/motta-claude-mods",
   "license": "MIT",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "gauge": {
+      "type": "string",
+      "title": "Headline",
+      "description": "bar: motta-statusline's bar across the pane, its tick where the window's time stands. number: the percent alone.",
+      "default": "bar",
+      "options": [
+        "bar",
+        "number"
+      ]
+    },
+    "sparkFill": {
+      "type": "string",
+      "title": "Readings line",
+      "description": "Details: how the readings this window are drawn on the desktop: area fills under the line.",
+      "default": "area",
+      "options": [
+        "area",
+        "line"
+      ]
+    },
+    "paceGuide": {
+      "type": "boolean",
+      "title": "Even-pace guide",
+      "description": "Details: the dashed line from 0% as the window opens to 100% as it resets, under the readings.",
+      "default": true
+    },
+    "projectionLine": {
+      "type": "boolean",
+      "title": "Projection",
+      "description": "Details: a dotted line from now to where the pace so far ends: the reset, or 100% before it.",
+      "default": true
+    },
+    "burnRate": {
+      "type": "boolean",
+      "title": "Burn rate",
+      "description": "Details: points an hour over the lookback.",
+      "default": true
+    },
+    "burnLookback": {
+      "type": "string",
+      "title": "Burn lookback",
+      "description": "The span the burn rate is measured over.",
+      "default": "60m",
+      "options": [
+        "15m",
+        "30m",
+        "60m"
+      ]
+    },
+    "runway": {
+      "type": "boolean",
+      "title": "Runs-out verdict",
+      "description": "The verdict says when the limit reaches 100%, in red, when that comes before the reset.",
+      "default": true
+    },
+    "runwayBasis": {
+      "type": "string",
+      "title": "Runway basis",
+      "description": "What the runs-out verdict runs on. window average: the rate since the window opened. recent: the burn rate.",
+      "default": "window average",
+      "options": [
+        "window average",
+        "recent"
+      ]
+    },
+    "budget": {
+      "type": "boolean",
+      "title": "Hourly budget",
+      "description": "Details: the points an hour that end the window at the target, shown only past it or under twice the rate the limit goes at.",
+      "default": true
+    },
+    "budgetTarget": {
+      "type": "number",
+      "title": "Budget target",
+      "description": "The percent the hourly budget ends the window at.",
+      "default": 90
+    },
+    "turnCosts": {
+      "type": "boolean",
+      "title": "Cost per turn",
+      "description": "Details: what the limit moved over each of this session's turns. A turn also carries what other sessions spent while this one sat idle, which only shows on its first response.",
+      "default": true
+    },
+    "turnCount": {
+      "type": "number",
+      "title": "Turns shown",
+      "description": "How many of this session's last turns the per-turn line shows (3 to 40).",
+      "default": 20
+    },
+    "turnShape": {
+      "type": "string",
+      "title": "Turns as",
+      "description": "bars: a block per turn, as tall as its share of the largest. list: each turn's points.",
+      "default": "bars",
+      "options": [
+        "bars",
+        "list"
+      ]
+    },
+    "sessionShare": {
+      "type": "boolean",
+      "title": "This session's share",
+      "description": "Details: the points this session's turns took this window, and the rest of the window's.",
+      "default": true
+    },
+    "dollars": {
+      "type": "string",
+      "title": "Dollars",
+      "description": "per 1%: this session's cost over the points its turns took. total: its cost so far. off: neither.",
+      "default": "per 1%",
+      "options": [
+        "per 1%",
+        "total",
+        "off"
+      ]
+    },
+    "toastAt": {
+      "type": "string",
+      "title": "Toast at",
+      "description": "A toast as a limit passes each of these percents.",
+      "default": "50/75/90",
+      "options": [
+        "50/75/90",
+        "75/90",
+        "90",
+        "off"
+      ]
+    },
+    "toastAhead": {
+      "type": "boolean",
+      "title": "Toast on color",
+      "description": "A toast when a limit turns orange (running ahead of its window) or red: motta-statusline's colors.",
+      "default": true
+    },
+    "history": {
+      "type": "boolean",
+      "title": "Past windows",
+      "description": "Details: a block per past window, its color by motta-statusline's thresholds. Filed as each window resets.",
+      "default": true
+    },
+    "historyCount": {
+      "type": "number",
+      "title": "Windows shown",
+      "description": "How many past windows (3 to 24).",
+      "default": 24
+    },
+    "historyMetric": {
+      "type": "string",
+      "title": "Window figure",
+      "description": "peak: its highest reading. at reset: its last.",
+      "default": "peak",
+      "options": [
+        "peak",
+        "at reset"
+      ]
+    },
+    "heatmap": {
+      "type": "boolean",
+      "title": "Activity",
+      "description": "Details: the weekly limit as GitHub draws contributions, a square per three hours of each day back as far as the pane is wide; under it a cross of the spend by model family (Opus, Sonnet, Haiku, Fable), measured from the session's own cost ledger across each step, with the busiest hour and day. Kept by day across weeks.",
+      "default": true
+    },
+    "idleHint": {
+      "type": "boolean",
+      "title": "If you stop now",
+      "description": "Details: when each limit clears if no more is spent.",
+      "default": true
+    },
+    "clock": {
+      "type": "string",
+      "title": "Clock",
+      "description": "24h or 12h times.",
+      "default": "24h",
+      "options": [
+        "24h",
+        "12h"
+      ]
+    },
+    "resetAs": {
+      "type": "string",
+      "title": "Reset as",
+      "description": "both: 16:47, in 2h05m. relative: in 2h05m. absolute: 16:47.",
+      "default": "both",
+      "options": [
+        "both",
+        "relative",
+        "absolute"
+      ]
+    },
+    "density": {
+      "type": "string",
+      "title": "Density",
+      "description": "comfy: a line between the limits and between the detail rows. compact: none.",
+      "default": "comfy",
+      "options": [
+        "comfy",
+        "compact"
+      ]
+    },
+    "redFrom": {
+      "type": "number",
+      "title": "Red from",
+      "description": "The percent a limit turns red at (motta-statusline: 80).",
+      "default": 80
+    },
+    "paceMargin": {
+      "type": "number",
+      "title": "Ahead by",
+      "description": "Points ahead of the window's time that turn a limit orange (motta-statusline: 10).",
+      "default": 10
+    }
+  }
 }
