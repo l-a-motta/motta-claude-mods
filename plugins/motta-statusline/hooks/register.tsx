@@ -863,7 +863,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
 
   return [
     <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line1}</Box>,
-    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line2}</Box>,
+    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={space.outer} marginTop={onDesktop ? DESKTOP_LINE_GAP : 0}>{line2}</Box>,
   ]
 }
 
@@ -871,6 +871,9 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
 // between segments (`outer`). A desktop cell is wider than a space in its
 // proportional font, so its inner gap is half a cell.
 const DESKTOP_SPACE = { inner: 0.5, outer: 2 }
+// The extra room between the desktop's two lines, in rows; a terminal's rows
+// are whole, so it keeps none.
+const DESKTOP_LINE_GAP = 0.35
 const TERMINAL_SPACE = { inner: 1, outer: 3 }
 // The padding a desktop button puts on each side of its label, in cells:
 // measured from the band, about four fifths of a cell.
@@ -1083,29 +1086,31 @@ async function readSlot($: EngineInterface): Promise<Slot> {
 }
 
 // The desktop's bar: ten blocks of ten small squares, SQ_COLS wide and
-// SQ_ROWS tall, each block a tenth of the bar on a track of its own, one
-// square a point, lit block by block from the left and each block from its
-// bottom row up, left then right, each square a step brighter than the one
-// lit before it (RAMP_FROM). A tick stands exactly where `share` (0-1)
-// falls, measured along the blocks' tracks, the gaps left out. An image has no theme keys: the
-// colors are the desktop's, the track and tick following its light or dark
-// scheme.
+// SQ_ROWS tall, each block a tenth of the bar, one square a point: every
+// square is drawn, an empty one in the track's gray, a lit one in the color,
+// lit block by block from the left and each block from its bottom row up,
+// left then right, each a step brighter than the one lit before it
+// (RAMP_FROM). A tick stands exactly where `share` (0-1)
+// falls, measured along the blocks' tracks, the gaps left out. The squares
+// snap to whole pixels (crispEdges): a bar placed after proportional text
+// starts between pixels, and smoothed squares there blur into each other.
+// An image has no theme keys: the colors are the desktop's, the track and
+// tick following its light or dark scheme.
 export function squaresSvg(points: number, color: string, share: number | null): string {
   const lit = Math.min(100, Math.max(0, Math.round(points)))
   const fill = SVG_COLORS[color] ?? color
   const blockX = (block: number) => 1 + block * SQ_STRIDE
-  const tracks: string[] = []
-  const squares: string[] = []
-  for (let block = 0; block < 10; block++) {
-    tracks.push(`<rect x="${blockX(block) - 1}" y="0" width="${SQ_TRACK}" height="${SQ_H}" rx="1.5"/>`)
-  }
-  for (let i = 0; i < lit; i++) {
+  // Square `i` (0-99): its block, then its column and its row from the bottom.
+  const square = (i: number, extra = '') => {
     const block = Math.floor(i / 10)
     const col = i % SQ_COLS
     const row = SQ_ROWS - 1 - Math.floor((i % 10) / SQ_COLS)
-    const opacity = (RAMP_FROM + ((1 - RAMP_FROM) * (i + 1)) / lit).toFixed(3)
-    squares.push(`<rect x="${blockX(block) + col * SQ_PITCH}" y="${1 + row * SQ_PITCH}" width="2" height="2" opacity="${opacity}"/>`)
+    return `<rect x="${blockX(block) + col * SQ_PITCH}" y="${1 + row * SQ_PITCH_Y}" width="${SQ_SQUARE_W}" height="${SQ_SQUARE_H}"${extra}/>`
   }
+  const empty: string[] = []
+  const squares: string[] = []
+  for (let i = lit; i < 100; i++) empty.push(square(i))
+  for (let i = 0; i < lit; i++) squares.push(square(i, ` opacity="${(RAMP_FROM + ((1 - RAMP_FROM) * (i + 1)) / lit).toFixed(3)}"`))
   let tick = ''
   if (share !== null) {
     // The share in points, placed along its block's track; 100 is the bar's end.
@@ -1116,22 +1121,27 @@ export function squaresSvg(points: number, color: string, share: number | null):
     tick = `<rect class="tk" x="${Math.round(x * 100) / 100}" y="0" width="1.5" height="${SQ_H}" rx="0.75"/>`
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SQ_W}" height="${SQ_H}" viewBox="0 0 ${SQ_W} ${SQ_H}">
-<style>.k{fill:#e4e4e2}.tk{fill:#1f1f1f}@media (prefers-color-scheme: dark){.k{fill:#2c2c2c}.tk{fill:#ececec}}</style>
-<g class="k">${tracks.join('')}</g>
-<g fill="${fill}">${squares.join('')}</g>${tick}
+<style>.k{fill:#dcdcd9}.tk{fill:#1f1f1f}@media (prefers-color-scheme: dark){.k{fill:#383838}.tk{fill:#ececec}}</style>
+<g class="k" shape-rendering="crispEdges">${empty.join('')}</g>
+<g fill="${fill}" shape-rendering="crispEdges">${squares.join('')}</g>${tick}
 </svg>`
 }
 
 const SQ_COLS = 2
 const SQ_ROWS = 5
-const SQ_PITCH = 3
+// A square's size and the step from one to the next, across and down: a gap
+// of one between squares, so each reads on its own.
+const SQ_SQUARE_W = 3
+const SQ_SQUARE_H = 3
+const SQ_PITCH = SQ_SQUARE_W + 1
+const SQ_PITCH_Y = SQ_SQUARE_H + 1
 // The space between two blocks' tracks, and from one block's start to the next.
 const SQ_GAP = 2
 // A block's track, from its left edge to its right.
 const SQ_TRACK = SQ_COLS * SQ_PITCH + 1
 const SQ_STRIDE = SQ_TRACK + SQ_GAP
 const SQ_W = 10 * SQ_STRIDE - SQ_GAP
-const SQ_H = SQ_ROWS * SQ_PITCH + 1
+const SQ_H = SQ_ROWS * SQ_PITCH_Y + 1
 const SVG_COLORS: Record<string, string> = { success: '#4eba65', warning: '#e5b84b', error: '#ef5350', suggestion: '#6a9ef5', merged: '#a371f7', subtle: '#8a8a8a' }
 
 // The strength of the bar's first square; each square after it, in the
