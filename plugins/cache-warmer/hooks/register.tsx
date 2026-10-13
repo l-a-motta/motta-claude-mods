@@ -29,8 +29,9 @@
 // prefix afresh) reads it as 5 minutes, and before either a subscription
 // (rate limits reported) is read as 1 hour and anything else as 5 minutes.
 //
-// The band's chips stack in one column at its right, ✦ enhance on top and
-// this one under it, whatever order the hooks on the band run in (withChip).
+// The band's chips go ✦ enhance first and this one after it, whatever order
+// the hooks on the band run in (withChip): one to a line at the end of
+// motta-statusline's lines, else stacked in one column at the band's right.
 // Under a survey nothing is drawn, so its number keys are the only ones.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
@@ -141,7 +142,7 @@ export const register: Register = (on, options) => {
     const label = chipLabel(await read($, isOn), warmth, await read($, pings), await read($, isPinging))
     const button = <Button key="keep-warm" plain dimColor label="cache" onPress={() => void toggle($)} />
     const chip = (
-      <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5} paddingX={1}>
+      <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5}>
         {e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button}
         <Text>{label}</Text>
       </Box>
@@ -267,22 +268,29 @@ async function toggle($: EngineInterface) {
   $.ui.toast(`Keeping the cache warm: a one-word ping ${lead} min before it expires, while idle, for up to ${hours}h after your last turn. Press again to stop.${when}`)
 }
 
-// The band's chips stack in one column at its right. The hooks on the band
-// run in an order no mod picks, so each chip mod finds the column wherever it
-// is: the root of what the plugins beneath drew when that is keyed
-// `band-beside:`, else a `band-beside:` Box inside it (motta-statusline draws
-// one at the right of its lines). The column is rebuilt keyed for this mod
-// with the chip first (`isFirst`) or last. With no column yet, the chip
-// starts one, beside their tree; a tree that shares the band from under the
-// status line (`band-under:`) keeps sharing it.
+// The band's chips. The hooks on the band run in an order no mod picks, so
+// each chip mod finds its place in whatever the plugins beneath drew:
+// - motta-statusline's lines (`band-lines:`) end each line with a slot
+//   (`band-slot:`), a growing box that holds its chip at the line's right end
+//   and wraps with the line on a narrow band. The chips are dealt out again,
+//   one to a line in order (this one first when `isFirst`), the extras with
+//   the last line's.
+// - else a chip column (`band-beside:`), the root of their tree or inside it,
+//   rebuilt keyed for this mod with the chip first or last.
+// - with neither, the chip starts a column, beside their tree; a tree that
+//   shares the band from under the status line (`band-under:`) keeps sharing it.
+// A chip carries no inset of its own: the column, or the lines, give it the
+// band's one cell. prompt-enhancer and cache-warmer hold the same function.
 export function withChip(Box: any, below: unknown, chip: unknown, mod: string, isFirst: boolean) {
   const column = (inner: unknown[]) => (
-    <Box key={`band-beside:${mod}`} flexDirection="column" alignItems="flex-end">
+    <Box key={`band-beside:${mod}`} flexDirection="column" alignItems="flex-end" paddingX={1}>
       {isFirst ? [chip, ...inner] : [...inner, chip]}
     </Box>
   )
   if (isFree(below)) return column([])
-  const swapped = swapBeside(below, beside => column([beside]))
+  const seated = swapKeyed(below, 'band-lines:', lines => seatChip(lines, chip, isFirst))
+  if (seated !== undefined) return seated
+  const swapped = swapKeyed(below, 'band-beside:', beside => column(chipsOf(beside)))
   if (swapped !== undefined) return swapped
   const belowKey = (below as { props?: { key?: unknown } }).props?.key
   const isUnder = typeof belowKey === 'string' && belowKey.startsWith('band-under:')
@@ -298,19 +306,53 @@ export function withChip(Box: any, below: unknown, chip: unknown, mod: string, i
 
 type Node = { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
 
-// The tree with its outermost `band-beside:` Box swapped for `swap`'s, or
-// undefined when it holds none.
-function swapBeside(node: unknown, swap: (beside: unknown) => unknown, depth = 0): unknown {
+const keyOf = (node: unknown): string => {
+  const el = node as Node | null
+  return el !== null && typeof el === 'object' && el.type === 'Box' && typeof el.props?.key === 'string' ? el.props.key : ''
+}
+
+// The tree with its outermost Box whose key starts with `prefix` swapped for
+// `swap`'s, or undefined when it holds none.
+function swapKeyed(node: unknown, prefix: string, swap: (found: Node) => unknown, depth = 0): unknown {
   if (node === null || typeof node !== 'object' || depth > 8) return undefined
   const el = node as Node
   if (el.type !== 'Box') return undefined
-  if (typeof el.props?.key === 'string' && el.props.key.startsWith('band-beside:')) return swap(node)
+  if (keyOf(el).startsWith(prefix)) return swap(el)
   const children = el.children ?? []
   for (let i = 0; i < children.length; i++) {
-    const swapped = swapBeside(children[i], swap, depth + 1)
+    const swapped = swapKeyed(children[i], prefix, swap, depth + 1)
     if (swapped !== undefined) return { ...el, children: children.map((c, j) => (j === i ? swapped : c)) }
   }
   return undefined
+}
+
+// The chips of a chip column, a column nested in it giving its own in its place.
+function chipsOf(node: unknown, depth = 0): unknown[] {
+  if (depth > 8 || !keyOf(node).startsWith('band-beside:')) return node === null || node === undefined ? [] : [node]
+  return ((node as Node).children ?? []).flatMap(c => chipsOf(c, depth + 1))
+}
+
+// The status line's lines with the chips dealt out again over their slots.
+function seatChip(lines: Node, chip: unknown, isFirst: boolean): unknown {
+  const slots: Node[] = []
+  const find = (node: unknown, depth: number) => {
+    if (depth > 4 || node === null || typeof node !== 'object') return
+    if (keyOf(node).startsWith('band-slot:')) return void slots.push(node as Node)
+    for (const c of (node as Node).children ?? []) find(c, depth + 1)
+  }
+  find(lines, 0)
+  if (slots.length === 0) return { ...lines, children: [...(lines.children ?? []), chip] }
+  const held = slots.flatMap(s => s.children ?? [])
+  const chips = isFirst ? [chip, ...held] : [...held, chip]
+  const dealt = new Map(slots.map((s, i) => [s, i === slots.length - 1 ? chips.slice(i) : chips.slice(i, i + 1)]))
+  const deal = (node: unknown, depth: number): unknown => {
+    if (depth > 4 || node === null || typeof node !== 'object') return node
+    const el = node as Node
+    const mine = dealt.get(el)
+    if (mine !== undefined) return { ...el, children: mine }
+    return el.children === undefined ? el : { ...el, children: el.children.map(c => deal(c, depth + 1)) }
+  }
+  return deal(lines, 0)
 }
 
 // What `next(e)` hands back when no plugin beneath drew in the band: the

@@ -64,6 +64,10 @@ type Setup = {
   // cache-warmer's chip column beneath, alone or at the right of the status
   // line's lines.
   hasWarmChip?: boolean
+  // The status line's lines as it draws them now: keyed `band-lines:`, each
+  // line ending in a chip slot, cache-warmer's chip in the first when
+  // hasWarmChip.
+  hasSlots?: boolean
 }
 
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
@@ -110,6 +114,22 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
         <Text>CTX 36% 360k/1M</Text>
       </Box>
     )
+    if (setup.hasSlots) {
+      return (
+        <Box key="band-lines:motta-statusline" flexDirection="column" paddingX={1}>
+          <Box key="line1" flexDirection="row" flexWrap="wrap">
+            <Text>📁 motta-claude-mods 🌿 main</Text>
+            <Box key="band-slot:1" flexDirection="row" flexGrow={1} justifyContent="flex-end">
+              {setup.hasWarmChip ? [<Box key="warm-chip" flexDirection="row"><Text>🔥 42m</Text></Box>] : []}
+            </Box>
+          </Box>
+          <Box key="line2" flexDirection="row" flexWrap="wrap">
+            <Text>CTX 36% 360k/1M</Text>
+            <Box key="band-slot:2" flexDirection="row" flexGrow={1} justifyContent="flex-end" />
+          </Box>
+        </Box>
+      )
+    }
     if (setup.hasWarmChip && setup.hasStatusLine) {
       return (
         <Box flexDirection="row">

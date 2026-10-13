@@ -25,7 +25,7 @@ const result = (read: number): TurnStepResult => ({
   usage: { model: 'claude-opus-5-5', ...usage(read) },
 })
 
-type Beneath = 'nothing' | 'enhance' | 'statusline'
+type Beneath = 'nothing' | 'enhance' | 'statusline' | 'slots'
 
 // The engine beneath the mod: a subscription session (rate limits reported,
 // so an hour's TTL), steps that read the cache, forks counted, and in the
@@ -62,6 +62,25 @@ function answerSession(on: Parameters<TestBody>[1], beneath: Beneath = 'nothing'
       </Box>
     )
     if (beneath === 'enhance') return enhance
+    // The status line as it draws now, prompt-enhancer's chip in line 1's slot.
+    if (beneath === 'slots') {
+      return (
+        <Box key="band-lines:motta-statusline" flexDirection="column">
+          <Box key="line1" flexDirection="row">
+            <Text>📁 folder</Text>
+            <Box key="band-slot:1" flexDirection="row">
+              <Box key="enhance-chip" flexDirection="row">
+                <Text>✦ enhance</Text>
+              </Box>
+            </Box>
+          </Box>
+          <Box key="line2" flexDirection="row">
+            <Text>ctx</Text>
+            <Box key="band-slot:2" flexDirection="row" />
+          </Box>
+        </Box>
+      )
+    }
     return (
       <Box flexDirection="row">
         <Box flexDirection="column">
@@ -196,6 +215,19 @@ for (const beneath of ['nothing', 'enhance', 'statusline'] as const) {
     await ui.unmount()
   })
 }
+
+test("in the status line's slots, the chip takes line 2's, under ✦ enhance on line 1", async ($, on) => {
+  answerSession(on, 'slots')
+  const ui = await $.ui.mount(BAND)
+  type El = { props?: { key?: unknown }; children?: El[] }
+  const drawn = (await ui.drawn()) as El
+  expect(drawn.props?.key).toBe('band-lines:motta-statusline')
+  const slot = (i: number) => JSON.stringify(drawn.children?.[i]?.children?.at(-1))
+  expect(slot(0)).toContain('✦ enhance')
+  expect(slot(0)).not.toContain('keep-warm')
+  expect(slot(1)).toContain('keep-warm')
+  await ui.unmount()
+})
 
 test('a ping that finds the cache lapsed reads the TTL as 5 minutes', async ($, on) => {
   const { clock, forks, toasts } = answerSession(on, 'nothing', { ...usage(0), cache_creation_input_tokens: 50_000 })

@@ -64,9 +64,10 @@
 //   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
-//   tree takes the band. The chips are seated one to a line, at its right
-//   end and centered on it (chipsOf), so each lines up with its line; the
-//   lines then leave the right inset to the chips' own.
+//   tree takes the band. The chips are dealt one to a line, into a slot that
+//   ends the line (`band-slot:`), so each lines up with its line and wraps
+//   with it on a narrow band. The lines are keyed `band-lines:`, so a chip
+//   mod whose hook runs above this one finds the slots too (its withChip).
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -291,9 +292,8 @@ export const register: Register = (on, options) => {
     const { Box, Text, Link, Button } = table
     const Svg = e.surface === 'desktop' && 'Svg' in table ? table.Svg : null
     const now = await $.clock.now()
-    // The chips sit at the lines' right ends, inset by their own padding.
     const ours = (chips: RenderChildren[]) => (
-      <Box flexDirection="column" paddingLeft={1} paddingRight={chips.length > 0 ? 0 : 1} flexGrow={1} flexShrink={1}>
+      <Box key="band-lines:motta-statusline" flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
         {lines($, { Box, Text, Link, Button }, data, now, Svg, chips)}
       </Box>
     )
@@ -860,21 +860,22 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   }
   line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
 
-  // A line with a chip holds its segments in a growing box, the chip at its
-  // right end, centered on the line; chips past the lines get a row of their own.
-  const row = (key: string, segs: unknown[], chip: RenderChildren | undefined, marginTop: number) =>
-    chip === undefined ? (
-      <Box key={key} flexDirection="row" flexWrap="wrap" columnGap={space.outer} marginTop={marginTop} paddingRight={chips.length > 0 ? 1 : 0}>{segs}</Box>
-    ) : (
-      <Box key={key} flexDirection="row" alignItems="center" columnGap={space.outer} marginTop={marginTop}>
-        <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} columnGap={space.outer}>{segs}</Box>
-        {chip}
+  // Each line ends with its chip slot (`band-slot:`): a box that grows into
+  // what the line's last row leaves, holding the chip at the line's right end.
+  // On a narrow band the slot wraps with the segments, so a chip takes no
+  // width from the line, and lands right-aligned on a row of its own. The
+  // first chip goes to line 1, the rest to line 2; a chip mod drawing above
+  // deals them out again (its withChip).
+  const slots = [chips.slice(0, 1), chips.slice(1)]
+  const row = (i: number, segs: unknown[], marginTop: number) => (
+    <Box key={`line${i + 1}`} flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={space.outer} marginTop={marginTop}>
+      {segs}
+      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={1} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
+        {slots[i]}
       </Box>
-    )
-  const lineGap = onDesktop ? DESKTOP_LINE_GAP : 0
-  const rows = [row('line1', line1, chips[0], 0), row('line2', line2, chips[1], lineGap)]
-  if (chips.length > 2) rows.push(<Box key="chips" flexDirection="row" justifyContent="flex-end" marginTop={lineGap}>{chips.slice(2)}</Box>)
-  return rows
+    </Box>
+  )
+  return [row(0, line1, 0), row(1, line2, onDesktop ? DESKTOP_LINE_GAP : 0)]
 }
 
 // The gaps, in character cells: between a segment's items (`inner`) and

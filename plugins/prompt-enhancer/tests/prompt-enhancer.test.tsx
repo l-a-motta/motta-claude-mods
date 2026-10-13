@@ -260,7 +260,20 @@ for (const hasStatusLine of [false, true]) {
     const column = hasStatusLine ? drawn.children?.at(-1) : drawn
     expect(column?.props?.key).toBe('band-beside:prompt-enhancer')
     expect(JSON.stringify(column?.children?.[0])).toContain('enhance')
-    expect(column?.children?.[1]?.props?.key).toBe('band-beside:cache-warmer')
+    expect(JSON.stringify(column?.children?.[1])).toContain('🔥 42m')
+    expect(column?.children).toHaveLength(2)
     if (hasStatusLine) expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
   })
 }
+
+test("over the status line's slots, the chip takes line 1's and moves cache-warmer's to line 2", async ($, on) => {
+  world(on, { hasWarmChip: true, hasSlots: true })
+  await $.session.start({ ...START, surface: 'desktop' as const })
+  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const drawn = (await band.drawn()) as Node
+  expect(drawn.props?.key).toBe('band-lines:motta-statusline')
+  const slot = (i: number) => JSON.stringify(drawn.children?.[i]?.children?.at(-1))
+  expect(slot(0)).toContain('enhance')
+  expect(slot(0)).not.toContain('🔥')
+  expect(slot(1)).toContain('🔥 42m')
+})

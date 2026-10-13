@@ -23,8 +23,8 @@ async function desktopBand($: Parameters<TestBody>[0]) {
 
 type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
 
-// The chips a line ends with, by key.
-const chipKeys = (root: Node) => root.children?.map(row => (row.children?.length === 2 ? row.children[1]?.props?.key : undefined))
+// The chips each line's slot holds, by key.
+const chipKeys = (root: Node) => root.children?.map(row => row.children?.at(-1)?.children?.map(c => c.props?.key))
 
 test("seats the chips one to a line, at its right end, on the desktop", async ($, on) => {
   answerSession(on, null, 'chip')
@@ -35,7 +35,9 @@ test("seats the chips one to a line, at its right end, on the desktop", async ($
   const root = (await band.drawn()) as Node
   expect(root.props?.flexDirection).toBe('column')
   expect(root.children?.map(c => c.props?.key)).toEqual(['line1', 'line2'])
-  expect(chipKeys(root)).toEqual(['enhance-chip', 'cache-chip'])
+  expect(root.props?.key).toBe('band-lines:motta-statusline')
+  expect(root.children?.map(row => row.children?.at(-1)?.props?.key)).toEqual(['band-slot:1', 'band-slot:2'])
+  expect(chipKeys(root)).toEqual([['enhance-chip'], ['cache-chip']])
 })
 
 test("draws prompt-enhancer's card under its lines", async ($, on) => {
