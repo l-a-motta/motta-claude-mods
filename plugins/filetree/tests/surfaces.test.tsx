@@ -625,13 +625,14 @@ test('a lit file says what Claude is doing to it, in its tool-borders color, and
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  const label = (verb: string, color: string) => `"t":"${verb}","c":"${color}","bg"`
+  // On the desktop the action is a spinner, then the word in its color.
+  const label = (verb: string, color: string) => `"spin":true},{"t":" ${verb}","c":"${color}"}`
   await $.tool.call({ tool: 'Read', file_path: `${root}/src/b.ts` } as any)
   await clock.settle()
   let shown = await texts(ui)
   expect(shown).toContain(shimmer('b.ts', 'read') + ',"dim":false')
   expect(shown).toContain(label('reading', '#5b8fcc'))
-  expect(JSON.stringify(await ui.drawn()).match(/"t":"reading","c"/g)?.length).toBe(1)
+  expect(JSON.stringify(await ui.drawn()).match(/"t":" reading","c"/g)?.length).toBe(1)
   await clock.advance(5_000)
   await clock.settle()
   expect(await texts(ui)).not.toContain(label('reading', '#5b8fcc'))

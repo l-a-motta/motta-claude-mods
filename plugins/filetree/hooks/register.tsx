@@ -1456,11 +1456,12 @@ export const register: Register = (on, options) => {
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
     // The list, its header and a rule above it.
     const stripRows = strip.length ? strip.length + 2 + (away.length > strip.length ? 1 : 0) : 0
-    // What Claude did is a pill beside the name: rounded ends where a Nerd Font draws
-    // them, else a faint fill hugging the word.
+    // What Claude did, beside the name: a pill with rounded ends where a Nerd Font
+    // draws them; elsewhere, the desktop among them, a fill could only be a block, so
+    // a spinner turning before the word instead.
     const pill = (text: string, color: string): Seg[] =>
       unicode
-        ? [{ t: ' ' }, { t: text, c: color, bg: tagFill(color, theme.bg, 0.86) }]
+        ? [{ t: ' ', c: color, spin: true }, { t: ` ${text}`, c: color }]
         : [{ t: ' ' }, { t: PILL_L, c: tagFill(color, theme.bg) }, { t: text, c: color, bg: tagFill(color, theme.bg) }, { t: PILL_R, c: tagFill(color, theme.bg) }]
 
     const rowSpec = (r: (typeof rows)[number]): RowSpec => {
@@ -1552,10 +1553,10 @@ export const register: Register = (on, options) => {
     const pillText = (text: string, color: string) => (
       <Text>
         {pill(text, color)
-          .slice(1)
+          .filter(s => s.spin || s.t !== ' ')
           .map(s => (
             <Text color={s.c} backgroundColor={s.bg}>
-              {s.t}
+              {s.spin ? '⠹' : s.t}
             </Text>
           ))}
       </Text>
