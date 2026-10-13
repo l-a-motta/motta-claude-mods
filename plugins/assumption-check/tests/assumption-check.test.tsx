@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
-import { groupLabel, ordered, parseAssumptions, parseSource, TOOL_DESCRIPTION } from '../hooks/register.tsx'
+import { BUDGET, countNodes, groupLabel, MAX_ROWS, ordered, parseAssumptions, parseSource, TOOL_DESCRIPTION } from '../hooks/register.tsx'
 import { command, ENGINE_SECTION, LOGGED, PANE_PROPS, typed, world } from './world.tsx'
 
 const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
@@ -120,6 +121,59 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.unmount()
   })
 }
+
+test('hover cards detail the actions and drill into the cards, and a phone gets none', async ($, on) => {
+  world(on)
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  await $.prompt.submit(typed('add retry'))
+  await $.tool.call({ tool: TOOL, ...LOGGED })
+
+  // A1 is open, A2 folded: its card shows the why the row hides.
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+  // A card line is pieces of nested Text: a dim label, a value, a key chip.
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('"Why: "')
+  expect(drawn).toContain('It is in package.json')
+  expect(drawn).toContain('▸ opens, then right')
+  expect(drawn).toContain('" r "')
+  expect(drawn).toContain('"Marks it wrong"')
+  expect(drawn).toContain('" w "')
+  // wrong and why? reach Claude: a tag says so, in place of the words.
+  expect(drawn).toContain('" sends a prompt "')
+  expect(drawn).not.toContain('sends Claude a prompt')
+  expect(drawn).toContain('"Removes the card"')
+  expect(drawn).toContain('" d "')
+  expect(drawn).toContain('"Confirms 2 open cards"')
+  expect(drawn).toContain('"To check: "')
+  expect(drawn).toContain("Folds P1's 2 cards")
+  expect(drawn).toContain('"low confidence"')
+  expect(drawn).toContain('"turn off: Claude stops logging"')
+  // Tones: delete's card is danger red, a stat filter's action blue; the
+  // terminal draws them as the border's color.
+  const deleteCard = JSON.stringify(await ui.find({ key: 'tip:delete-A1' }))
+  expect(deleteCard).toContain('#ef8a80')
+  expect(drawn).toContain('#8db4f0')
+  // The cards hang under keys of their own; the buttons keep theirs.
+  expect(await ui.find({ key: 'tip:wrong-A1' })).toBeDefined()
+  expect(await ui.find({ key: 'ghead-P1' })).toBeDefined()
+  await ui.press({ key: 'right-A1' })
+  const after = JSON.stringify(await ui.drawn())
+  expect(after).toContain('"Back to check"')
+  expect(after).toContain('" u "')
+  await ui.unmount()
+
+  // The desktop draws the tone as a bar down the card's left edge.
+  const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
+  expect(JSON.stringify(await desk.find({ key: 'tip:delete-A1' }))).toContain('"width":0.25')
+  await desk.unmount()
+
+  const phone = await $.ui.mount({ ...MOUNT, surface: 'mobile' })
+  const bare = JSON.stringify(await phone.drawn())
+  expect(bare).not.toContain('It is in package.json')
+  expect(bare).not.toContain("Claude isn't told")
+  await phone.unmount()
+})
 
 test('an empty correction lets Claude ask, and "why?" asks for the reasoning', async ($, on) => {
   const { seen } = world(on)
@@ -350,4 +404,94 @@ test('capture is on from the session start when the startOn option is unset', as
   await $.session.start(START)
   expect(seen.tools).toEqual(['note_assumption'])
   expect(seen.described).toEqual([TOOL_DESCRIPTION])
+})
+
+// A long session: a prompt per size, each logging that many assumptions,
+// one in five of low confidence.
+async function longSession($: Parameters<TestBody>[0], sizes: number[]) {
+  await $.session.start(START)
+  await $.command.run(command('on'))
+  for (const [p, size] of sizes.entries()) {
+    await $.prompt.submit(typed(`prompt ${p + 1}: change part ${p + 1} of the app`))
+    const assumptions = Array.from({ length: size }, (_, i) => ({
+      statement: `Assumption ${i + 1} of prompt ${p + 1}, on how its part is meant to work`,
+      why: 'The code around it reads that way',
+      confidence: i % 5 === 0 ? 'low' : 'medium',
+      category: 'scope',
+      source: `src/part${p + 1}.ts:${i + 1}`,
+      impact: 'That part is reworked',
+    }))
+    await $.tool.call({ tool: TOOL, assumptions })
+  }
+}
+const fours = (n: number) => new Array<number>(n).fill(4)
+
+describe('the element budget', () => {
+  test('80 assumptions over 15 prompts: the desktop drops the info cards, then every card; the terminal keeps them', async ($, on) => {
+    world(on)
+    await longSession($, [...fours(14), 24])
+    const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
+    // Level 1: the folded cards' info peeks go, the actions' cards stay.
+    const one = await desk.drawn()
+    expect(countNodes(one)).toBeLessThanOrEqual(BUDGET)
+    expect(JSON.stringify(one)).not.toContain('"Why: "')
+    expect(JSON.stringify(one)).toContain('"Removes the card"')
+    expect(JSON.stringify(one)).toContain('"Confirms 24 open cards"')
+
+    const term = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+    const full = await term.drawn()
+    expect(countNodes(full)).toBeGreaterThan(BUDGET)
+    expect(JSON.stringify(full)).toContain('"Why: "')
+    await term.unmount()
+
+    // Every prompt open under a filter: level 2, no card and no host lit or
+    // scoped for one, every row still drawn.
+    await desk.press({ key: 'filter-open' })
+    const two = await desk.drawn()
+    expect(countNodes(two)).toBeLessThanOrEqual(BUDGET)
+    const drawn = JSON.stringify(two)
+    expect(drawn).not.toContain('"Removes the card"')
+    expect(drawn).not.toContain('#ffffff10')
+    expect(drawn).not.toContain('"scope":"tip:')
+    expect(drawn).not.toContain('folded to fit the pane')
+    expect(await desk.find({ key: 'card-A1' })).toBeDefined()
+    expect(await desk.find({ key: 'card-A80' })).toBeDefined()
+    await desk.unmount()
+  })
+
+  test('past the cards, the open prompts after the newest two fold, a line says so, and ▸ opens one alone', async ($, on) => {
+    world(on)
+    await longSession($, [...fours(13), 30, 30])
+    const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
+    await desk.press({ key: 'filter-open' })
+    expect(countNodes(await desk.drawn())).toBeLessThanOrEqual(BUDGET)
+    expect(await desk.find({ text: '13 prompts folded to fit the pane · ▸ opens one alone, the filter cleared' })).toBeDefined()
+    expect(await desk.find({ key: 'toggle-P1' })).toBeDefined()
+    expect(await desk.find({ key: 'card-A1' })).toBeUndefined()
+    expect(await desk.find({ key: 'card-A53' })).toBeDefined()
+
+    const term = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+    expect(await term.find({ key: 'card-A1' })).toBeDefined()
+    expect(JSON.stringify(await term.drawn())).not.toContain('folded to fit the pane')
+    await term.unmount()
+
+    await desk.press({ key: 'toggle-P1' })
+    expect(await desk.find({ key: 'card-A1' })).toBeDefined()
+    expect(await desk.find({ key: 'card-A53' })).toBeUndefined()
+    expect(JSON.stringify(await desk.drawn())).not.toContain('folded to fit the pane')
+    await desk.unmount()
+  })
+
+  test('at the last level only the newest prompt is open, with MAX_ROWS of its cards and a line for the rest', async ($, on) => {
+    world(on)
+    await longSession($, [...fours(13), 45, 50])
+    const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
+    await desk.press({ key: 'filter-open' })
+    const drawn = await desk.drawn()
+    expect(countNodes(drawn)).toBeLessThanOrEqual(BUDGET)
+    expect(JSON.stringify(drawn).split('"key":"card-A').length - 1).toBe(MAX_ROWS)
+    expect(await desk.find({ text: '+35 more in P15, folded to fit the pane · a count box above narrows them' })).toBeDefined()
+    expect(await desk.find({ text: '14 prompts folded to fit the pane · ▸ opens one alone, the filter cleared' })).toBeDefined()
+    await desk.unmount()
+  })
 })
