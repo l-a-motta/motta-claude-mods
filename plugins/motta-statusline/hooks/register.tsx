@@ -24,8 +24,8 @@
 // asked through the noun its mod adds to `$`; without that mod, a toast says
 // to install it), and the last slot cycles: output and rate, cost, the session's
 // turns and time, the turns left before auto-compact (its word, `out`,
-// `cost`, `session` or `compact`, is what is pressed). A toast says when a
-// limit turns orange or red.
+// `cost`, `session` or `compact`, is what is pressed). usage-drill toasts
+// when a limit turns orange or red, by these same colors.
 //
 // Each bar is ten braille cells of ten points, a cell's dots rising from its
 // bottom row as its points come. ctx is the context window, its dots green
@@ -175,8 +175,6 @@ let prAskedAt = 0
 let isAskingPr = false
 let placement: 'above' | 'below' = 'below'
 let slot: Slot = 'rate'
-// Each limit's last color, so a toast says when one turns orange or red.
-const limitColors = new Map<string, string>()
 
 export const register: Register = (on, options) => {
   placement = options.placement === 'above' ? 'above' : 'below'
@@ -251,7 +249,6 @@ export const register: Register = (on, options) => {
     if (data !== null) {
       const limits = limitsOf(e.rateLimits)
       data = { ...data, ...contextFigures(e.context), limits }
-      await noteLimits($, limits)
       await paint($)
     }
     return measured
@@ -422,7 +419,6 @@ async function refreshAll($: EngineInterface, withGit = true) {
       startedAt: usage.startedAt,
       slot,
     }
-    await noteLimits($, limits)
     if (withGit) await refreshGit($)
     else await paint($)
   } catch {
@@ -1084,33 +1080,6 @@ async function readSlot($: EngineInterface): Promise<Slot> {
   } catch {
     return 'rate'
   }
-}
-
-type Limit = Data['limits'][number]
-
-// After each reading of the limits: toasts once when a limit turns orange
-// (running ahead of its window) or red. The first reading after a load only sets the colors.
-async function noteLimits($: EngineInterface, limits: Limit[]) {
-  const now = await $.clock.now()
-  for (const l of limits) {
-    if (l.resetsAt === null) continue
-    const pace = elapsedShare(l.resetsAt, l.windowMs, now)
-    const color = limitLevel(l.percent, pace)
-    const before = limitColors.get(l.label)
-    limitColors.set(l.label, color)
-    const rank = LEVEL_RANK[color] ?? 0
-    if (before !== undefined && rank > (LEVEL_RANK[before] ?? 0) && rank >= 2) {
-      $.ui.toast(limitToast(l, pace, color, now), { timeoutMs: 8_000 })
-    }
-  }
-}
-
-const LEVEL_RANK: Record<string, number> = { success: 0, warning: 1, '#ff8700': 2, error: 3 }
-
-export function limitToast(l: Limit, pace: number | null, color: string, now: number) {
-  if (color === 'error') return `${l.label} limit at ${l.percent}%${l.resetsAt === null ? '' : `, resets in ${resetIn(l.resetsAt - now)}`}`
-  const ahead = pace === null ? 0 : Math.round(l.percent - pace * 100)
-  return `${l.label} limit is ${ahead} points ahead of its window: ${projection(l.percent, pace, l.windowMs)}`
 }
 
 // The desktop's bar: ten blocks of ten small squares, SQ_COLS wide and

@@ -89,27 +89,3 @@ test('cycles the last slot through rate, cost, session and runway', async ($, on
   await ui.unmount()
 })
 
-test('toasts once when a limit turns orange, running ahead of its window', async ($, on) => {
-  const clock = answerSession(on)
-  const toasts: string[] = []
-  on('ui.toast', ($, e) => {
-    toasts.push(e.text)
-    return { value: undefined } as never
-  })
-  on('session.measure', ($, e) => ({ changed: e.changed }))
-  const ui = await $.ui.mount({
-    plugin: 'motta-statusline',
-    surface: 'terminal',
-    component: 'PromptHint',
-    props: { isDraft: false, isWorking: false, hint: 'esc to interrupt' },
-  })
-  const resetsAt = new Date(clock.now() + 4 * HOUR).toISOString()
-  const measure = (percentUsed: number) =>
-    $.session.measure({ context: { tokens: 360_000, window: 1_000_000, percent: 36 }, rateLimits: [{ kind: 'five_hour', percentUsed, resetsAt }], changed: ['rateLimits'] })
-  // 20% of the window gone: 25% is 5 points ahead, 35% is 15.
-  await measure(25)
-  await measure(35)
-  await measure(36)
-  expect(toasts).toEqual(['5h limit is 15 points ahead of its window: 20% of the window gone · at this pace 100% in about 1h51m, before the reset'])
-  await ui.unmount()
-})
