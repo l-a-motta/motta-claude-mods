@@ -1,28 +1,119 @@
-// changes-drill: a Changes pane of each file changed against HEAD, its git
-// status letter and its lines added and deleted.
+// changes-drill: a Changes pane that says what the desktop's diff view does
+// not: which turn changed each file and who (Claude, a subagent, Claude's
+// shell, or you outside Claude), against a baseline of your choice (HEAD, the
+// session's start, the last turn, the base branch), with what to look at
+// (sensitive files, files outside a scope, source without a test, a diff past
+// a review budget) and a commit plan by unit. It only reads: nothing it draws
+// stages, reverts or writes anything.
 //
-// Read fresh on open and after each main-session turn while the pane is up.
-// Opened by /changes-drill, or by another mod through the noun this mod adds
-// to `$`, `$.changesDrill.open()`: a mod opens only its own panes, so
-// motta-statusline's files asks this one to.
+// It makes no model call, adds nothing to the model's context and makes no
+// network call: the turns
+// and touches come from the engine's own events, and the files from local git,
+// read on open, on Refresh, and after a turn (or an edit) while the pane is up.
+// With the pane closed, a turn that changed files is read once at its end, and
+// only when an alert is on. Opened by /changes-drill, or by another mod
+// through `$.changesDrill.open()` (motta-statusline's files).
 
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ChangesDrillOpened } from '../types'
+import type { ChangesDrillOpened, ChangesDrillSnapshot, ChangesDrillTouch, ChangesDrillTurn } from '../types'
+import { branchOf, isGenerated, isSensitive, numstat, parseChanges, parseNameStatus, repoPath, withNumstat } from './git.ts'
+import type { Change } from './git.ts'
+import { changesPane } from './pane.tsx'
 
 const PANE = 'changes-drill'
 
-// One changed file: git's two-letter status, the path, and its lines added
-// and deleted against HEAD (null for a binary file or one git has no count
-// for, such as an untracked one).
-export type Change = { status: string; path: string; added: number | null; deleted: number | null }
+const turnsAtom = atom({ plugin: 'changes-drill', key: 'turns' } as const, [] as ChangesDrillTurn[])
+const touchesAtom = atom({ plugin: 'changes-drill', key: 'touches' } as const, {} as Record<string, ChangesDrillTouch>)
+const sessionAtom = atom({ plugin: 'changes-drill', key: 'session' } as const, null as ChangesDrillSnapshot | null)
+const turnAtom = atom({ plugin: 'changes-drill', key: 'turn' } as const, null as ChangesDrillSnapshot | null)
+const warnedAtom = atom({ plugin: 'changes-drill', key: 'warned' } as const, { budget: false, sensitive: [] as string[] })
 
-// The last reading: the branch and its changes, or null outside a repository.
-type Reading = { branch: string; changes: Change[] }
+export type Settings = {
+  group: 'turn' | 'folder' | 'author' | 'stage' | 'flat'
+  baseline: 'HEAD' | 'session start' | 'last turn' | 'base branch'
+  sort: 'recent' | 'lines' | 'path' | 'status'
+  bars: 'blocks' | 'proportional' | 'off'
+  density: 'compact' | 'comfortable'
+  refresh: 'each turn' | 'each edit' | 'manual'
+  age: boolean
+  author: boolean
+  churn: boolean
+  churnEdits: number
+  guard: boolean
+  scope: string
+  tests: boolean
+  fold: boolean
+  budget: boolean
+  budgetLines: number
+  toast: boolean
+  peek: boolean
+  peekLines: number
+  plan: boolean
+  planStyle: 'conventional' | 'plain'
+}
+
+function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
+}
+const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
+const count = (value: unknown, fallback: number, min: number) => (typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.round(value)) : fallback)
+
+export function settingsOf(options: Record<string, unknown> | undefined): Settings {
+  const o = options ?? {}
+  return {
+    group: pick(o.groupBy, ['turn', 'folder', 'author', 'stage', 'flat'], 'turn'),
+    baseline: pick(o.baseline, ['HEAD', 'session start', 'last turn', 'base branch'], 'HEAD'),
+    sort: pick(o.sort, ['recent', 'lines', 'path', 'status'], 'recent'),
+    bars: pick(o.bars, ['blocks', 'proportional', 'off'], 'blocks'),
+    density: pick(o.density, ['compact', 'comfortable'], 'compact'),
+    refresh: pick(o.refresh, ['each turn', 'each edit', 'manual'], 'each turn'),
+    age: flag(o.showAge, true),
+    author: flag(o.showAuthor, true),
+    churn: flag(o.churn, false),
+    churnEdits: count(o.churnEdits, 5, 2),
+    guard: flag(o.guard, true),
+    scope: typeof o.scope === 'string' ? o.scope.trim().replace(/\\/g, '/').replace(/^\.?\//, '') : '',
+    tests: flag(o.testHint, false),
+    fold: flag(o.foldGenerated, false),
+    budget: flag(o.budget, true),
+    budgetLines: count(o.budgetLines, 800, 10),
+    toast: flag(o.turnToast, true),
+    peek: flag(o.peek, false),
+    peekLines: count(o.peekLines, 4, 1),
+    plan: flag(o.commitPlan, true),
+    planStyle: pick(o.commitStyle, ['conventional', 'plain'], 'conventional'),
+  }
+}
+
+// A changed file as the pane draws it: the change, the last touch of it this
+// session, when it last changed, and whether it is committed on the branch
+// (the base-branch baseline) rather than in the work tree.
+export type Row = Change & { touch?: ChangesDrillTouch; changedAt?: number; isCommitted: boolean }
+
+// The last reading: the repository's root, the branch, the baseline it was
+// read against, the rows and when; null outside a repository.
+export type Reading = { top: string; branch: string; against: string; base: string; rows: Row[]; at: number }
+
+// What the module keeps between draws; a reload starts it over, the reading
+// included, which the next open or turn reads again.
+let settings = settingsOf(undefined)
 let reading: Reading | null = null
 let isRead = false
+let kicked = false
+let isWindows: boolean | null = null
+let shellRan = false
+let selected: string | null = null
+let showGenerated = false
+let peekCache: { key: string; lines: string[] } | null = null
+let editTimer: { cancel: () => void } | null = null
+const tops = new Map<string, string | null>()
+const mergeBases = new Map<string, { base: string; sha: string }>()
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  settings = settingsOf(options as Record<string, unknown> | undefined)
+
   // The noun's own answer is the bottom of its event; the hook on
   // `changesDrill.open` below answers first with this mod's `$`.
   on('engine.create', async (_, e, next) => {
@@ -33,8 +124,16 @@ export const register: Register = on => {
   on('changesDrill.open', async $ => ({ value: await open($) }))
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'changes-drill', description: 'Show the files changed against HEAD, with their lines' })
-    return next(e)
+    await $.command.register({ name: 'changes-drill', description: 'Show the files changed, by turn and by who, with what to check and commit' })
+    const result = await next(e)
+    await backfill($)
+    // A reload raises session.start again: the snapshot stays the first one.
+    if (settings.baseline === 'session start' && (await read($, sessionAtom)) === null) {
+      const top = await topOf($)
+      const snap = top ? await snapshot($, top) : null
+      if (snap) await update($, sessionAtom, () => snap)
+    }
+    return result
   })
 
   on('command.run', { command: 'changes-drill' }, async $ => {
@@ -42,36 +141,383 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? 'Changes pane opened.' : `Changes pane waits: ${opened.reason ?? 'not placed'}` }
   })
 
+  on('turn.start', async ($, e, next) => {
+    const result = await next(e)
+    if ((e as { agentId?: string }).agentId !== undefined) return result
+    shellRan = false
+    const now = await $.clock.now()
+    const text = firstLine(e.text)
+    await backfill($)
+    await update($, turnsAtom, list => {
+      // The transcript backfill may already hold this turn's prompt.
+      const last = list[list.length - 1]
+      if (last && last.id.startsWith('transcript:') && last.text === text) return [...list.slice(0, -1), { ...last, id: e.turnId, at: now }]
+      return [...list, { n: (last?.n ?? 0) + 1, id: e.turnId, text, at: now }].slice(-200)
+    })
+    if (settings.baseline === 'last turn') {
+      const top = await topOf($)
+      const snap = top ? await snapshot($, top) : null
+      if (snap) await update($, turnAtom, () => snap)
+    }
+    return result
+  })
+
+  on('tool.call', async ($, e, next) => {
+    if (e.tool !== 'Edit' && e.tool !== 'Write' && e.tool !== 'NotebookEdit' && e.tool !== 'Bash') return next(e)
+    const result = await next(e)
+    if (result.deny || result.isError) return result
+    if (e.tool === 'Bash') {
+      if (result.isReadOnly !== true) shellRan = true
+      return result
+    }
+    const file = e.tool === 'NotebookEdit' ? e.notebook_path : e.file_path
+    if (typeof file !== 'string' || !file) return result
+    const key = await keyOf($, file)
+    const now = await $.clock.now()
+    const turn = (await read($, turnsAtom)).at(-1)?.n ?? 0
+    const who = e.agentId === undefined ? 'claude' : 'agent'
+    await update($, touchesAtom, all => ({ ...all, [key]: { who, turn, edits: (all[key]?.edits ?? 0) + 1, at: now } }))
+    if (settings.refresh === 'each edit' && (await isUp($))) {
+      editTimer?.cancel()
+      editTimer = $.clock.after(600, () => void refresh($))
+    }
+    return result
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId === undefined && (await $.ui.panes()).some(p => p.id === PANE)) await refresh($)
+    if (e.agentId !== undefined || settings.refresh === 'manual') return result
+    const up = await isUp($)
+    const turn = (await read($, turnsAtom)).at(-1)?.n ?? 0
+    const touched = Object.values(await read($, touchesAtom)).some(t => t.turn === turn)
+    const alerts = settings.toast || settings.budget || settings.guard
+    if (!up && !(alerts && (touched || shellRan))) return result
+    const before = reading
+    await readChanges($)
+    if (shellRan && before && reading) await attributeShell($, before, reading, turn)
+    shellRan = false
+    await alert($, turn)
+    if (up) $.ui.invalidate('ui.render')
     return result
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
-    return changesPane($, Box, Text, Button)
+    const { Box, Text, Button, Code } = $.ui.resolve(e)
+    // A reload (an edit, an option changed) drops the reading: read once.
+    if (!isRead && !kicked) {
+      kicked = true
+      void refresh($)
+    }
+    return changesPane({
+      Box,
+      Text,
+      Button,
+      Code,
+      isDesktop: e.surface === 'desktop',
+      settings,
+      reading: isRead ? reading : undefined,
+      turns: await read($, turnsAtom),
+      session: await read($, sessionAtom),
+      now: await $.clock.now(),
+      selected,
+      showGenerated,
+      peek: selected && peekCache?.key === peekKey(selected) ? peekCache.lines : null,
+      on: {
+        refresh: () => void refresh($),
+        select: path => void select($, path),
+        toggleGenerated: () => {
+          showGenerated = !showGenerated
+          $.ui.invalidate('ui.render')
+        },
+      },
+    })
   })
 }
 
-async function readChanges($: EngineInterface) {
+// --- tracking --------------------------------------------------------------
+
+const firstLine = (text: string) => {
+  const line = text.split('\n').find(l => l.trim())?.trim() ?? ''
+  return line.length > 60 ? `${line.slice(0, 59)}…` : line
+}
+
+let isBackfilled = false
+
+// The turns and Claude's edits from the session's own transcript, when this
+// process tracked none yet: after a restart or a resume, or a mod enabled
+// mid-session. One local read of the transcript; nothing reaches the model.
+// Their times are unknown (0), so the files' own times stand in.
+async function backfill($: EngineInterface) {
+  if (isBackfilled) return
+  isBackfilled = true
+  if ((await read($, turnsAtom)).length || Object.keys(await read($, touchesAtom)).length) return
+  let messages: unknown
   try {
-    const cwd = await $.session.cwd()
-    const run = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], { cwd, timeoutMs: 5_000 })
-    if (run.exitCode !== 0) {
-      reading = null
-    } else {
-      let changes = parseChanges(run.stdout)
-      if (changes.length > 0) {
-        const stat = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd, timeoutMs: 5_000 })
-        if (stat.exitCode === 0) changes = withNumstat(changes, stat.stdout)
-      }
-      reading = { branch: branchOf(run.stdout), changes }
+    messages = await $.session.messages()
+  } catch {
+    return
+  }
+  if (!Array.isArray(messages)) return
+  const turns: ChangesDrillTurn[] = []
+  const touches: Record<string, ChangesDrillTouch> = {}
+  for (const m of messages as { role: string; text: string; toolUses?: { tool: string; input: Record<string, unknown>; isError?: true }[]; toolResults?: unknown[] }[]) {
+    if (m.role === 'user') {
+      // A prompt: text that is not a tool result nor a command's own record.
+      if (m.text.trim() && !m.toolResults?.length && !m.text.trimStart().startsWith('<')) turns.push({ n: turns.length + 1, id: `transcript:${turns.length + 1}`, text: firstLine(m.text), at: 0 })
+      continue
     }
+    for (const use of m.toolUses ?? []) {
+      if ((use.tool !== 'Edit' && use.tool !== 'Write' && use.tool !== 'NotebookEdit') || use.isError) continue
+      const file = use.input.file_path ?? use.input.notebook_path
+      if (typeof file !== 'string' || !file) continue
+      const key = await keyOf($, file)
+      touches[key] = { who: 'claude', turn: turns.length, edits: (touches[key]?.edits ?? 0) + 1, at: 0 }
+    }
+  }
+  if (!turns.length && !Object.keys(touches).length) return
+  await update($, turnsAtom, list => (list.length ? list : turns.slice(-200)))
+  await update($, touchesAtom, all => (Object.keys(all).length ? all : touches))
+}
+
+// --- reading ---------------------------------------------------------------
+
+async function windows($: EngineInterface) {
+  isWindows ??= (await $.env.get('OS')) === 'Windows_NT'
+  return isWindows
+}
+
+// The touches' key for a file: its absolute path with forward slashes, lower
+// case on Windows, so a tool's path and git's meet.
+async function keyOf($: EngineInterface, file: string) {
+  const path = file.replace(/\\/g, '/')
+  const absolute = /^([a-z]:)?\//i.test(path) ? path : `${(await $.session.cwd()).replace(/\\/g, '/').replace(/\/+$/, '')}/${path}`
+  return (await windows($)) ? absolute.toLowerCase() : absolute
+}
+
+async function git($: EngineInterface, top: string, args: string[]) {
+  return $.process.run(['git', '--no-optional-locks', '-C', top, ...args], { timeoutMs: 8_000 })
+}
+
+// The repository's root for the session's folder, once per folder.
+async function topOf($: EngineInterface) {
+  const cwd = await $.session.cwd()
+  if (tops.has(cwd)) return tops.get(cwd) ?? null
+  try {
+    const run = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd, timeoutMs: 5_000 })
+    const top = run.exitCode === 0 ? run.stdout.trim() : null
+    tops.set(cwd, top)
+    return top
+  } catch {
+    return null
+  }
+}
+
+// A commit of the work tree as it stands, tracked files only, made without
+// touching the stash list or any ref; HEAD when nothing is changed.
+async function snapshot($: EngineInterface, top: string): Promise<ChangesDrillSnapshot | null> {
+  try {
+    const at = await $.clock.now()
+    const made = await git($, top, ['stash', 'create'])
+    const sha = made.exitCode === 0 ? made.stdout.trim() : ''
+    if (sha) return { sha, at }
+    const head = await git($, top, ['rev-parse', 'HEAD'])
+    return head.exitCode === 0 ? { sha: head.stdout.trim(), at } : null
+  } catch {
+    return null
+  }
+}
+
+// The base branch's merge base with HEAD: origin's default branch, else a
+// local main or master. Local refs only; nothing is fetched.
+async function mergeBase($: EngineInterface, top: string, branch: string) {
+  const known = mergeBases.get(`${top}\n${branch}`)
+  if (known) return known
+  const remote = await git($, top, ['rev-parse', '--abbrev-ref', 'origin/HEAD'])
+  const candidates = [remote.exitCode === 0 ? remote.stdout.trim() : '', 'origin/main', 'main', 'origin/master', 'master'].filter(Boolean)
+  for (const base of candidates) {
+    if (base === branch) continue
+    const mb = await git($, top, ['merge-base', 'HEAD', base])
+    if (mb.exitCode === 0 && mb.stdout.trim()) {
+      const found = { base: base.replace(/^origin\//, ''), sha: mb.stdout.trim() }
+      mergeBases.set(`${top}\n${branch}`, found)
+      return found
+    }
+  }
+  return null
+}
+
+async function readChanges($: EngineInterface) {
+  await backfill($)
+  try {
+    const top = await topOf($)
+    if (!top) {
+      reading = null
+      isRead = true
+      return
+    }
+    const status = await git($, top, ['status', '--porcelain=v1', '--branch'])
+    if (status.exitCode !== 0) {
+      reading = null
+      isRead = true
+      return
+    }
+    const branch = branchOf(status.stdout)
+    const working = parseChanges(status.stdout)
+    const now = await $.clock.now()
+    let against = 'HEAD'
+    let base = 'HEAD'
+    let since = 0
+    let changes: Change[]
+    let committed = new Set<string>()
+    if (settings.baseline === 'session start' || settings.baseline === 'last turn') {
+      const snap = settings.baseline === 'session start' ? await read($, sessionAtom) : await read($, turnAtom)
+      if (snap) {
+        base = snap.sha
+        since = snap.at
+        against = settings.baseline === 'session start' ? 'session start' : 'last turn'
+      }
+    } else if (settings.baseline === 'base branch') {
+      const mb = await mergeBase($, top, branch)
+      if (mb) {
+        base = mb.sha
+        against = mb.base
+      }
+    }
+    if (base === 'HEAD') {
+      changes = working
+      if (working.some(c => c.status !== '??')) {
+        const stat = await git($, top, ['diff', '--numstat', '--no-renames', 'HEAD'])
+        if (stat.exitCode === 0) changes = withNumstat(working, stat.stdout)
+      }
+    } else {
+      const stat = await git($, top, ['diff', '--numstat', '--no-renames', base])
+      const counts = stat.exitCode === 0 ? numstat(stat.stdout) : new Map<string, [number | null, number | null]>()
+      const byPath = new Map(working.map(c => [c.path, c]))
+      let named = new Map<string, Change>()
+      if (settings.baseline === 'base branch') {
+        const names = await git($, top, ['diff', '--name-status', '--no-renames', base])
+        if (names.exitCode === 0) named = new Map(parseNameStatus(names.stdout).map(c => [c.path, c]))
+      }
+      changes = []
+      for (const [path, [added, deleted]] of counts) {
+        const own = byPath.get(path)
+        if (!own) committed.add(path)
+        changes.push({ status: own?.status ?? named.get(path)?.status ?? ' M', path, added, deleted })
+      }
+      for (const c of working) if (c.status === '??') changes.push(c)
+      if (settings.baseline !== 'base branch') committed = new Set()
+    }
+    const touches = await read($, touchesAtom)
+    const rows: Row[] = []
+    for (const c of changes) {
+      const key = await keyOf($, `${top.replace(/\\/g, '/')}/${c.path}`)
+      rows.push({ ...c, touch: touches[key], isCommitted: committed.has(c.path) })
+    }
+    await withTimes($, top, rows, now)
+    // An untracked file counts for a session or turn baseline only when it
+    // changed after the snapshot.
+    const kept = since ? rows.filter(r => r.status !== '??' || (r.changedAt ?? now) >= since || r.touch !== undefined) : rows
+    reading = { top, branch, against, base, rows: kept, at: now }
     isRead = true
   } catch {
     // git missing or slow: the last reading stays.
   }
+}
+
+// Each row's last change (its touch, else the file's mtime) and an untracked
+// file's lines, from the file itself: up to 200 files, 40 of them read.
+async function withTimes($: EngineInterface, top: string, rows: Row[], now: number) {
+  const wantsTime = settings.age || settings.sort === 'recent' || settings.baseline === 'session start' || settings.baseline === 'last turn'
+  let reads = 0
+  await Promise.all(
+    rows.slice(0, 200).map(async row => {
+      const path = `${top}/${row.path}`
+      if (row.status === '??' && !row.path.endsWith('/') && reads < 40) {
+        reads += 1
+        try {
+          const st = await $.fs.stat(path)
+          row.changedAt = row.touch?.at || st.mtimeMs
+          if (st.kind === 'file' && st.size < 512_000) {
+            const text = await $.fs.read(path)
+            if (!text.includes('\u0000')) row.added = text.length === 0 ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
+          }
+        } catch {
+          // gone or unreadable: no count.
+        }
+        return
+      }
+      if (row.touch?.at) row.changedAt = row.touch.at
+      else if (wantsTime && !row.status.includes('D') && !row.isCommitted) {
+        try {
+          row.changedAt = (await $.fs.stat(path)).mtimeMs
+        } catch {
+          row.changedAt = undefined
+        }
+      }
+      if (row.changedAt !== undefined) row.changedAt = Math.min(row.changedAt, now)
+    }),
+  )
+}
+
+// Files that changed during a turn whose shell ran a command that writes, and
+// that no Edit or Write of the turn named: Claude's shell changed them.
+async function attributeShell($: EngineInterface, before: Reading, after: Reading, turn: number) {
+  const was = new Map(before.rows.map(r => [r.path, r]))
+  const now = await $.clock.now()
+  const keys: string[] = []
+  for (const row of after.rows) {
+    if (row.touch?.turn === turn || row.isCommitted) continue
+    const old = was.get(row.path)
+    if (old && old.status === row.status && old.added === row.added && old.deleted === row.deleted) continue
+    keys.push(await keyOf($, `${after.top.replace(/\\/g, '/')}/${row.path}`))
+  }
+  if (!keys.length) return
+  await update($, touchesAtom, all => {
+    const next = { ...all }
+    for (const key of keys) next[key] = { who: 'shell', turn, edits: (all[key]?.edits ?? 0) + 1, at: now }
+    return next
+  })
+  const touches = await read($, touchesAtom)
+  for (const row of after.rows) {
+    const key = await keyOf($, `${after.top.replace(/\\/g, '/')}/${row.path}`)
+    row.touch = touches[key] ?? row.touch
+    if (row.touch) row.changedAt = row.touch.at
+  }
+}
+
+export const reviewable = (rows: readonly Row[], fold: boolean) => rows.filter(r => !(fold && isGenerated(r.path)))
+export const linesOf = (rows: readonly Row[]) => rows.reduce((n, r) => n + (r.added ?? 0) + (r.deleted ?? 0), 0)
+
+// The turn's toasts: what it changed, a diff that passed the budget (once,
+// until it falls back under), a sensitive file that is not ignored (once each).
+async function alert($: EngineInterface, turn: number) {
+  const r = reading
+  if (!r) return
+  if (settings.toast) {
+    const mine = r.rows.filter(row => row.touch?.turn === turn)
+    if (mine.length) {
+      const names = mine.slice(0, 2).map(row => row.path.slice(row.path.lastIndexOf('/') + 1))
+      $.ui.toast(`Turn ${turn} changed ${mine.length} file${mine.length === 1 ? '' : 's'}: ${names.join(', ')}${mine.length > 2 ? ` +${mine.length - 2} more` : ''}`)
+    }
+  }
+  const warned = await read($, warnedAtom)
+  if (settings.budget) {
+    const lines = linesOf(reviewable(r.rows, true))
+    const over = lines > settings.budgetLines
+    if (over && !warned.budget) $.ui.toast(`The diff passed ${settings.budgetLines} lines (${lines} against ${r.against}): a good point to commit or split`)
+    if (over !== warned.budget) await update($, warnedAtom, w => ({ ...w, budget: over }))
+  }
+  if (settings.guard) {
+    const fresh = r.rows.filter(row => row.status === '??' && isSensitive(row.path) && !warned.sensitive.includes(row.path))
+    for (const row of fresh.slice(0, 3)) $.ui.toast(`${row.path} looks sensitive and is not in .gitignore`)
+    if (fresh.length) await update($, warnedAtom, w => ({ ...w, sensitive: [...w.sensitive, ...fresh.map(row => row.path)].slice(-100) }))
+  }
+}
+
+// --- the pane -------------------------------------------------------------
+
+async function isUp($: EngineInterface) {
+  return (await $.ui.panes()).some(p => p.id === PANE)
 }
 
 async function open($: EngineInterface): Promise<ChangesDrillOpened> {
@@ -81,86 +527,55 @@ async function open($: EngineInterface): Promise<ChangesDrillOpened> {
 }
 
 async function refresh($: EngineInterface) {
+  mergeBases.clear()
   await readChanges($)
+  if (selected) await loadPeek($, selected)
   $.ui.invalidate('ui.render')
 }
 
-// Each changed file: its status letter, path, and lines added and deleted.
-function changesPane($: EngineInterface, Box: any, Text: any, Button: any) {
-  if (!isRead) return <Text dimColor>No reading yet.</Text>
+const peekKey = (path: string) => `${reading?.at ?? 0}\n${path}`
+
+async function select($: EngineInterface, path: string) {
+  selected = selected === path ? null : path
+  if (selected) await loadPeek($, selected)
+  $.ui.invalidate('ui.render')
+}
+
+// The first lines of a file's diff against the baseline (an untracked file's
+// own first lines), read when the row is pressed: one git call, none before.
+async function loadPeek($: EngineInterface, path: string) {
   const r = reading
-  const header = (text: string) => (
-    <Box flexDirection="row" columnGap={1}>
-      <Text color="subtle">{text}</Text>
-      <Button key="refresh" plain dimColor label="Refresh" onPress={() => void refresh($)} />
-    </Box>
-  )
-  if (r === null) return header('Not in a git repository.')
-  if (r.changes.length === 0) return header(`Nothing changed on ${r.branch}.`)
-  const added = r.changes.reduce((n, c) => n + (c.added ?? 0), 0)
-  const deleted = r.changes.reduce((n, c) => n + (c.deleted ?? 0), 0)
-  return (
-    <Box flexDirection="column">
-      {header(`${r.changes.length} files · +${added} −${deleted} against HEAD`)}
-      {r.changes.map(c => (
-        <Box key={c.path} flexDirection="row" columnGap={1}>
-          <Text color={statusColor(c.status)}>{statusLetter(c.status)}</Text>
-          <Box flexShrink={1}>
-            <Text wrap="truncate-start">{c.path}</Text>
-          </Box>
-          {c.added !== null && <Text color="success">+{c.added}</Text>}
-          {c.deleted !== null && <Text color="error">−{c.deleted}</Text>}
-        </Box>
-      ))}
-    </Box>
-  )
-}
-
-// The branch from `git status --branch`'s `## ` line.
-export function branchOf(out: string) {
-  const head = out.split('\n')[0]?.startsWith('## ') ? (out.split('\n')[0] ?? '').slice(3) : ''
-  const name = head.startsWith('No commits yet on ') ? head.slice('No commits yet on '.length) : head
-  return (name.split('...')[0] ?? '').split(' ')[0] || 'HEAD'
-}
-
-// The changed files of `git status --porcelain=v1`, a rename by its new path.
-export function parseChanges(out: string): Change[] {
-  return out
-    .split('\n')
-    .filter(line => line.length > 3 && !line.startsWith('## '))
-    .map(line => {
-      const path = line.slice(3)
-      return { status: line.slice(0, 2), path: path.includes(' -> ') ? (path.split(' -> ')[1] ?? path) : path, added: null, deleted: null }
-    })
-}
-
-// The changes with their lines from `git diff --numstat HEAD`: `added
-// deleted path` per file, `-` for a binary one.
-export function withNumstat(changes: Change[], out: string): Change[] {
-  const counts = new Map<string, [number | null, number | null]>()
-  for (const line of out.split('\n')) {
-    const [added, deleted, path] = line.split('\t')
-    if (path === undefined) continue
-    counts.set(path, [added === '-' ? null : Number(added), deleted === '-' ? null : Number(deleted)])
+  const row = r?.rows.find(x => x.path === path)
+  if (!settings.peek || !r || !row || peekCache?.key === peekKey(path)) return
+  let lines: string[] = []
+  try {
+    if (row.status === '??') {
+      if (!row.path.endsWith('/')) lines = trimHunk(['@@ -0,0 +1 @@', ...(await $.fs.read(`${r.top}/${row.path}`)).split('\n').map(l => `+${l.replace(/\r$/, '')}`)], settings.peekLines)
+    } else {
+      const diff = await git($, r.top, ['diff', '--no-color', '--no-ext-diff', '-U1', r.base, '--', row.path])
+      lines = trimHunk(diff.stdout.split('\n').map(l => l.replace(/\r$/, '')), settings.peekLines)
+    }
+  } catch {
+    lines = []
   }
-  return changes.map(c => {
-    const n = counts.get(c.path)
-    return n ? { ...c, added: n[0], deleted: n[1] } : c
-  })
+  peekCache = { key: peekKey(path), lines }
 }
 
-// `M`, `A`, `D`, `R`, `U` (a conflict) or `?` (untracked), from git's XY.
-export function statusLetter(xy: string) {
-  if (xy === '??') return '?'
-  if (xy.includes('U') || xy === 'AA' || xy === 'DD') return 'U'
-  return (xy[0] !== ' ' ? xy[0] : xy[1]) ?? '?'
-}
-
-function statusColor(xy: string) {
-  const letter = statusLetter(xy)
-  if (letter === '?') return 'subtle'
-  if (letter === 'A') return 'success'
-  if (letter === 'D' || letter === 'U') return 'error'
-  if (letter === 'R') return 'suggestion'
-  return 'warning'
+// A diff's first hunk cut to `count` lines, its `@@` header counted again so
+// the cut hunk still parses as one.
+export function trimHunk(diff: readonly string[], count: number): string[] {
+  const from = diff.findIndex(l => l.startsWith('@@'))
+  if (from < 0) return []
+  const head = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(diff[from] ?? '')
+  if (!head) return []
+  const body: string[] = []
+  for (const line of diff.slice(from + 1)) {
+    if (line.startsWith('@@') || body.length >= count) break
+    if (line.startsWith('\\')) continue
+    if (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) body.push(line)
+  }
+  const old = body.filter(l => !l.startsWith('+')).length
+  const now = body.filter(l => !l.startsWith('-')).length
+  const at = (start: string, n: number) => (n === 0 ? `${Math.max(0, Number(start) - (start === '0' ? 0 : 1))},0` : `${Number(start) || 1},${n}`)
+  return body.length ? [`@@ -${at(head[1] ?? '0', old)} +${at(head[2] ?? '0', now)} @@${head[3] ?? ''}`, ...body] : []
 }
