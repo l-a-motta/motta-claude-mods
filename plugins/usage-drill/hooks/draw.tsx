@@ -125,6 +125,8 @@ export function verdictOf(l: Limit, pace: number | null, burn: number | null, no
 export const BUDGET = 1000
 // Characters of the serialized tree, an inline SVG's source included.
 export const CHAR_BUDGET = 200_000
+// The level with no cards: the terminal's (see fit).
+export const NO_CARDS = 2
 export const TOP_LEVEL = 2
 // Elements in a tree, counted as the live measure counted them.
 export function countNodes(tree: unknown): number {
@@ -140,9 +142,10 @@ export function countNodes(tree: unknown): number {
   return nodes
 }
 // Draws at level 0, then 1, 2, ... until the tree fits `budget` or `top` is
-// reached. Only the desktop (and VS Code) has the limit: the terminal keeps
-// level 0.
+// reached. Only the desktop (and VS Code) has the limit. The terminal draws
+// no hover cards at all, its folds left out: level NO_CARDS.
 export function fit<T>(surface: string, top: number, draw: (level: number) => T, budget = BUDGET): T {
+  if (surface === 'terminal') return draw(NO_CARDS)
   if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
   let tree = draw(0)
   for (let level = 1; level <= top && (countNodes(tree) > budget || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)

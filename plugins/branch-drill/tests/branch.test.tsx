@@ -122,7 +122,7 @@ function repo(on: any, calls: string[][], r: Repo = {}) {
 const mount = ($: any, surface: string, columns = 60) => $.ui.mount({ plugin: 'branch-drill', surface, component: 'Pane', requestId: 'branch-drill', props: { title: 'Branches', isFocused: false, bodyColumns: columns } as never })
 
 for (const surface of ['desktop', 'terminal'] as const) {
-  test(`/branch-drill opens the pane: Me and All, their cards, and a commit's files (${surface})`, async ($, on) => {
+  test(`/branch-drill opens the pane: Me and All, ${surface === 'desktop' ? 'their cards' : 'no hover cards'}, and a commit's files (${surface})`, async ($, on) => {
     const calls: string[][] = []
     const opened: string[] = []
     repo(on, calls, { opened })
@@ -139,19 +139,32 @@ for (const surface of ['desktop', 'terminal'] as const) {
     expect(drawn).toContain('not on GitHub yet')
     // All: the lanes, a merge said the short way, the draft on top.
     expect(drawn).toContain('Merge PR #12 ·')
-    expect(drawn).toContain('statusline-bar-height')
     expect(drawn).toContain('Your changes ·')
     expect(drawn).toContain('you are here')
-    // Hover cards: the head's Refresh, a picker, a chip, a lane's tags, the oldest row.
-    expect(drawn).toContain('Refresh re-reads the branches and commits from git')
-    expect(drawn).toContain('Switches All between Lanes and Subway')
-    expect(drawn).toContain("Click to see what's in it.")
-    expect(drawn).toContain('You are here: HEAD, on')
-    expect(drawn).toContain('The historyDepth option sets how many')
-    // A commit's card: its id bold, its subject italic; Refresh's an action.
-    expect(drawn).toContain(`{"bold":true},"children":["${MAIN_TIP.slice(0, 7)}"]`)
-    expect(drawn).toMatch(/\{"italic":true\},"children":\["[^"]*statusline-bar-height/)
-    expect(drawn).toContain(surface === 'desktop' ? '{"width":0.25,"backgroundColor":"#8db4f0"}' : '"borderStyle":"round","borderColor":"#8db4f0"')
+    if (surface === 'desktop') {
+      expect(drawn).toContain('statusline-bar-height')
+      // Hover cards: the head's Refresh, a picker, a chip, a lane's tags, the oldest row.
+      expect(drawn).toContain('Refresh re-reads the branches and commits from git')
+      expect(drawn).toContain('Switches All between Lanes and Subway')
+      expect(drawn).toContain("Click to see what's in it.")
+      expect(drawn).toContain('You are here: HEAD, on')
+      expect(drawn).toContain('The historyDepth option sets how many')
+      // A commit's card: its id bold, its subject italic; Refresh's an action.
+      expect(drawn).toContain(`{"bold":true},"children":["${MAIN_TIP.slice(0, 7)}"]`)
+      expect(drawn).toMatch(/\{"italic":true\},"children":\["[^"]*statusline-bar-height/)
+      expect(drawn).toContain('{"width":0.25,"backgroundColor":"#8db4f0"}')
+    } else {
+      // The merge's row, cut to the 60 columns: its card held the whole subject.
+      expect(drawn).toContain('"label":"statusline-ba…"')
+      // The terminal draws no hover card: none of their text, no hidden box.
+      expect(drawn).not.toContain('Refresh re-reads the branches and commits from git')
+      expect(drawn).not.toContain('Switches All between Lanes and Subway')
+      expect(drawn).not.toContain("Click to see what's in it.")
+      expect(drawn).not.toContain('You are here: HEAD, on')
+      expect(drawn).not.toContain('The historyDepth option sets how many')
+      expect(drawn).not.toContain('"display":"none"')
+      expect(drawn).not.toContain('"borderStyle":"round"')
+    }
     // Only reads: no git command that writes.
     for (const a of calls) expect(['commit', 'push', 'fetch', 'checkout', 'reset', 'add'].some(w => a.includes(w))).toBe(false)
     // Opening a commit reads its files, once.
@@ -211,9 +224,12 @@ test('over the budget, the desktop drops the cards before it cuts any commit', {
   // pane over the budget at level 1: level 2 draws no card at all.
   expect(d).not.toContain('Click to see its files.')
   expect(d).not.toContain('Refresh re-reads the branches and commits from git')
-  // Every row is still there, and the terminal keeps every card.
+  // Every row is still there; level 0 draws the commits' cards.
   expect(d).toContain('feat: change number 1"')
-  expect(t).toContain('Click to see its files.')
+  expect(JSON.stringify(drawAt(0, longLog(50), { me: 'tracks', all: 'lanes' }))).toContain('Click to see its files.')
+  // The terminal draws none, and every row.
+  expect(t).not.toContain('Click to see its files.')
+  expect(t).not.toContain('Refresh re-reads the branches and commits from git')
   expect(t).toContain('feat: change number 1"')
 })
 
@@ -229,9 +245,11 @@ test('far over the budget, the desktop cuts the lanes to 15 commits and says how
   expect(d).not.toContain('Refresh re-reads')
   expect(d).toContain('feat: change number 120"')
   expect(d).not.toContain('feat: change number 100"')
-  // The terminal draws them all, with their cards.
-  expect(JSON.stringify(term)).toContain('feat: change number 1"')
-  expect(JSON.stringify(term)).toContain('Click to see its files.')
+  // The terminal draws them all, uncut, and no card.
+  const t = JSON.stringify(term)
+  expect(t).toContain('feat: change number 1"')
+  expect(t).not.toContain('more commits hidden')
+  expect(t).not.toContain('Click to see its files.')
 })
 
 // Each level drawn straight from the view, plain element names standing in

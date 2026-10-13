@@ -1,6 +1,6 @@
 {
   "name": "assumption-check",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A side pane of the assumptions Claude makes, one dropdown per prompt, with counts that filter: mark one right, or wrong (type the fix or let Claude ask), ask why, open its source, or delete it. On from the start, /assumption-check off to stop; nothing in the pane reaches Claude unless you press wrong or why.",
   "author": {
     "name": "l-a-motta"

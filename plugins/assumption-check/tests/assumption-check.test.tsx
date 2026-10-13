@@ -122,15 +122,32 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
-test('hover cards detail the actions and drill into the cards, and a phone gets none', async ($, on) => {
+test('hover cards detail the actions and drill into the cards on the desktop; the terminal and a phone get none', async ($, on) => {
   world(on)
   await $.session.start(START)
   await $.command.run(command('on'))
   await $.prompt.submit(typed('add retry'))
   await $.tool.call({ tool: TOOL, ...LOGGED })
 
+  // The terminal draws no card and no room for one; the rows and their
+  // buttons stay.
+  const term = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+  const plain = JSON.stringify(await term.drawn())
+  expect(plain).not.toContain('"display":"none"')
+  expect(plain).not.toContain('"Why: "')
+  expect(plain).not.toContain('It is in package.json')
+  expect(plain).not.toContain('"Marks it wrong"')
+  expect(plain).not.toContain('"Removes the card"')
+  expect(plain).not.toContain('"Confirms 2 open cards"')
+  expect(plain).not.toContain('#ffffff10')
+  expect(plain).not.toContain('"scope":"tip:')
+  expect(await term.find({ key: 'tip-room' })).toBeUndefined()
+  expect(await term.find({ key: 'wrong-A1' })).toBeDefined()
+  expect(await term.find({ key: 'card-A2' })).toBeDefined()
+  await term.unmount()
+
   // A1 is open, A2 folded: its card shows the why the row hides.
-  const ui = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
+  const ui = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
   // A card line is pieces of nested Text: a dim label, a value, a key chip.
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('"Why: "')
@@ -150,9 +167,10 @@ test('hover cards detail the actions and drill into the cards, and a phone gets 
   expect(drawn).toContain('"low confidence"')
   expect(drawn).toContain('"turn off: Claude stops logging"')
   // Tones: delete's card is danger red, a stat filter's action blue; the
-  // terminal draws them as the border's color.
+  // desktop draws them as a bar down the card's left edge.
   const deleteCard = JSON.stringify(await ui.find({ key: 'tip:delete-A1' }))
   expect(deleteCard).toContain('#ef8a80')
+  expect(deleteCard).toContain('"width":0.25')
   expect(drawn).toContain('#8db4f0')
   // The cards hang under keys of their own; the buttons keep theirs.
   expect(await ui.find({ key: 'tip:wrong-A1' })).toBeDefined()
@@ -162,11 +180,6 @@ test('hover cards detail the actions and drill into the cards, and a phone gets 
   expect(after).toContain('"Back to check"')
   expect(after).toContain('" u "')
   await ui.unmount()
-
-  // The desktop draws the tone as a bar down the card's left edge.
-  const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
-  expect(JSON.stringify(await desk.find({ key: 'tip:delete-A1' }))).toContain('"width":0.25')
-  await desk.unmount()
 
   const phone = await $.ui.mount({ ...MOUNT, surface: 'mobile' })
   const bare = JSON.stringify(await phone.drawn())
@@ -427,7 +440,7 @@ async function longSession($: Parameters<TestBody>[0], sizes: number[]) {
 const fours = (n: number) => new Array<number>(n).fill(4)
 
 describe('the element budget', () => {
-  test('80 assumptions over 15 prompts: the desktop drops the info cards, then every card; the terminal keeps them', async ($, on) => {
+  test('80 assumptions over 15 prompts: the desktop drops the info cards, then every card; the terminal draws none', async ($, on) => {
     world(on)
     await longSession($, [...fours(14), 24])
     const desk = await $.ui.mount({ ...MOUNT, surface: 'desktop' })
@@ -438,10 +451,15 @@ describe('the element budget', () => {
     expect(JSON.stringify(one)).toContain('"Removes the card"')
     expect(JSON.stringify(one)).toContain('"Confirms 24 open cards"')
 
+    // The terminal: no card at all, and nothing folded to fit.
     const term = await $.ui.mount({ ...MOUNT, surface: 'terminal' })
-    const full = await term.drawn()
-    expect(countNodes(full)).toBeGreaterThan(BUDGET)
-    expect(JSON.stringify(full)).toContain('"Why: "')
+    const bare = JSON.stringify(await term.drawn())
+    expect(bare).not.toContain('"Why: "')
+    expect(bare).not.toContain('"Removes the card"')
+    expect(bare).not.toContain('"Confirms 24 open cards"')
+    expect(bare).not.toContain('"display":"none"')
+    expect(bare).not.toContain('folded to fit the pane')
+    expect(await term.find({ key: 'card-A80' })).toBeDefined()
     await term.unmount()
 
     // Every prompt open under a filter: level 2, no card and no host lit or

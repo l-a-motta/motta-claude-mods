@@ -1,6 +1,6 @@
 {
   "name": "context-drill",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A Context pane that drills into what fills the window, read when it opens, after each turn while it is shown and on Refresh (a local estimate, no request sent): the /context categories as a stacked bar with the auto-compact tick and what grew since you opened it, the fill per turn against the auto-compact point, turns left before it fires, cache health, the heaviest messages and tokens by tool, then the memory files, MCP tools by server, agents and skills, and the startup cost against your average; a footer compacts with a focus you pick. Every part is a setting. Opened by /context-drill, or by $.contextDrill.open() from another mod (motta-statusline's ctx).",
   "author": {
     "name": "l-a-motta"

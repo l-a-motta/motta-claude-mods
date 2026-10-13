@@ -263,39 +263,54 @@ function answerBoth(on: Parameters<TestBody>[1]) {
   on('ui.open', () => ({ value: { isPlaced: true } }))
 }
 
-for (const surface of ['terminal', 'desktop'] as const) {
-  test(`hover cards carry the figures behind the rows (${surface})`, async ($, on) => {
-    answerBoth(on)
-    await $.command.run({ command: 'usage-drill', args: '' } as never)
-    const pane = await $.ui.mount({ plugin: 'usage-drill', surface, component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
-    const drawn = JSON.stringify(await pane.drawn())
-    // Card text is split into styled pieces: values plain, labels dim.
-    // The 5h head sits on the pane's top line: its card is revealed below it.
-    expect(drawn).toContain('"30.4%"')
-    expect(drawn).toContain('" used of a 5-hour window"')
-    expect(drawn).toContain('"69.6 pts"')
-    expect(drawn).toContain('tip:5h:head')
-    expect(drawn).toContain('"41.2%"')
-    expect(drawn).toContain('" used of a 7-day window"')
-    // The verdict card takes its status: on track, its color word green.
-    expect(drawn).toContain('"green"')
-    expect(drawn).toContain('": heading for under 80% by the reset"')
-    expect(drawn).toContain('"other sessions: "')
-    expect(drawn).toContain('"1 turn, +2"')
-    expect(drawn).toContain('"70%"')
-    expect(drawn).toContain('" at its end"')
-    // The Details button's card: the action, then its hotkey as a chip.
-    expect(drawn).toContain('"Hides the 5h and 7d details "')
-    expect(drawn).toContain('" d "')
-    expect(drawn).toContain('"Opus "')
-    expect(drawn).toContain('"$3.00"')
-    // Tone colors: the action's accent, the verdict's good, the plain cards' faint.
-    expect(drawn).toContain('#8db4f0')
-    expect(drawn).toContain('#7fc97f')
-    expect(drawn).toContain('#6f6d68')
-    expect(await pane.find({ key: 'details' } as never)).toBeDefined()
-  })
-}
+test('hover cards carry the figures behind the rows (desktop)', async ($, on) => {
+  answerBoth(on)
+  await $.command.run({ command: 'usage-drill', args: '' } as never)
+  const pane = await $.ui.mount({ plugin: 'usage-drill', surface: 'desktop', component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
+  const drawn = JSON.stringify(await pane.drawn())
+  // Card text is split into styled pieces: values plain, labels dim.
+  // The 5h head sits on the pane's top line: its card is revealed below it.
+  expect(drawn).toContain('"30.4%"')
+  expect(drawn).toContain('" used of a 5-hour window"')
+  expect(drawn).toContain('"69.6 pts"')
+  expect(drawn).toContain('tip:5h:head')
+  expect(drawn).toContain('"41.2%"')
+  expect(drawn).toContain('" used of a 7-day window"')
+  // The verdict card takes its status: on track, its color word green.
+  expect(drawn).toContain('"green"')
+  expect(drawn).toContain('": heading for under 80% by the reset"')
+  expect(drawn).toContain('"other sessions: "')
+  expect(drawn).toContain('"1 turn, +2"')
+  expect(drawn).toContain('"70%"')
+  expect(drawn).toContain('" at its end"')
+  // The Details button's card: the action, then its hotkey as a chip.
+  expect(drawn).toContain('"Hides the 5h and 7d details "')
+  expect(drawn).toContain('" d "')
+  expect(drawn).toContain('"Opus "')
+  expect(drawn).toContain('"$3.00"')
+  // Tone colors: the action's accent, the verdict's good, the plain cards' faint.
+  expect(drawn).toContain('#8db4f0')
+  expect(drawn).toContain('#7fc97f')
+  expect(drawn).toContain('#6f6d68')
+  expect(await pane.find({ key: 'details' } as never)).toBeDefined()
+})
+
+test('the terminal draws no hover cards, the rows and the Details button kept', async ($, on) => {
+  answerBoth(on)
+  await $.command.run({ command: 'usage-drill', args: '' } as never)
+  const pane = await $.ui.mount({ plugin: 'usage-drill', surface: 'terminal', component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
+  const drawn = JSON.stringify(await pane.drawn())
+  expect(drawn).toContain('41%')
+  expect(drawn).not.toContain('"display":"none"')
+  expect(drawn).not.toContain('" used of a 5-hour window"')
+  expect(drawn).not.toContain('"69.6 pts"')
+  expect(drawn).not.toContain('tip:5h:head')
+  expect(drawn).not.toContain('": heading for under 80% by the reset"')
+  expect(drawn).not.toContain('"Hides the 5h and 7d details "')
+  expect(drawn).not.toContain('" d "')
+  expect(await pane.find({ key: 'tip-room' } as never)).toBeUndefined()
+  expect(await pane.find({ key: 'details' } as never)).toBeDefined()
+})
 
 test('no hover cards on a phone', async ($, on) => {
   answerBoth(on)
@@ -354,7 +369,7 @@ describe('the element budget', () => {
   const draw = (surface: 'desktop' | 'terminal') => (level: number) => usagePane(table, surface === 'desktop' ? 'Svg' : null, view(surface), level)
   const counts = [0, 1, 2].map(level => countNodes(draw('desktop')(level)))
 
-  test('each level draws fewer elements; info cards go first, then every card', () => {
+  test('each level draws fewer elements; info cards go first, then every card; the terminal draws none', () => {
     expect(counts[0]).toBeGreaterThan(counts[1])
     expect(counts[1]).toBeGreaterThan(counts[2])
     // Between level 1 and level 0: level 1, the action and status cards kept.
@@ -370,10 +385,13 @@ describe('the element budget', () => {
     expect(two).not.toContain('#7fc97f')
     expect(two).not.toContain('#ffffff10')
     expect(two).not.toContain('"scope":"tip:')
-    // The terminal has no limit: every card stays.
-    const terminal = JSON.stringify(fit('terminal', TOP_LEVEL, draw('terminal'), 1))
-    expect(terminal).toContain('" used of a 5-hour window"')
-    expect(terminal).toContain('"Hides the 5h and 7d details "')
+    // The terminal draws no card at all, however much room the budget leaves.
+    const terminal = JSON.stringify(fit('terminal', TOP_LEVEL, draw('terminal')))
+    expect(countNodes(JSON.parse(terminal))).toBe(countNodes(draw('terminal')(2)))
+    expect(terminal).not.toContain('" used of a 5-hour window"')
+    expect(terminal).not.toContain('"Hides the 5h and 7d details "')
+    expect(terminal).not.toContain('"display":"none"')
+    expect(terminal).not.toContain('"scope":"tip:')
   })
 
   test('the mounted desktop pane stays under the budget with every card', async ($, on) => {

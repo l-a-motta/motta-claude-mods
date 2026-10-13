@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { brailleRuns, litSquares, squaresSvg } from '../hooks/bars.ts'
-import { BUDGET, compactSummary, config, countNodes, figure, fit, growth, sections, short, shortPath, startupLine, fillLevel, transcriptWeights } from '../hooks/register.tsx'
+import { BUDGET, compactSummary, config, countNodes, figure, fit, growth, NO_CARDS, sections, short, shortPath, startupLine, fillLevel, transcriptWeights } from '../hooks/register.tsx'
 
 const BREAKDOWN = {
   categories: [
@@ -211,63 +211,94 @@ function pieceColor(n: any, text: string): string | undefined {
   if (n.type === 'Text' && n.children?.length === 1 && n.children[0] === text && n.props?.color) return n.props.color
   return pieceColor(n.children, text)
 }
-
-for (const surface of ['terminal', 'desktop'] as const) {
-  test(`hover cards carry the exact figures and what each control does (${surface})`, async ($, on) => {
-    stubReads(on, DRILLED)
-    await $.command.run({ command: 'context-drill', args: '' } as never)
-    const pane = await $.ui.mount({ plugin: 'context-drill', surface, component: 'Pane', requestId: 'context-drill', props: { title: 'Context', isFocused: false, bodyColumns: 80 } as never })
-    let tree = await pane.drawn()
-    let drawn = lines(tree).join('\n')
-    // Tones: the header's the fill level (36%: warn), a fold heading's and
-    // Refresh's action, Compact now's warn, a plain card's info.
-    expect(cardTone(tree, '360,000 of 1,000,000 tokens · 36%')).toBe('#e7c06b')
-    expect(cardTone(tree, 'Unfolds MCP tools')).toBe('#8db4f0')
-    expect(cardTone(tree, 'Reads the breakdown, the turns and the transcript again')).toBe('#8db4f0')
-    expect(cardTone(tree, 'Closes this pane and runs /compact')).toBe('#e7c06b')
-    expect(cardTone(tree, '360,000 of 1,000,000 tokens · Opus 5.5')).toBe('#6f6d68')
-    // Labels dim, separators faint, the cache's read green and written amber.
-    expect(pieceColor(tree, 'breakdown window ')).toBe('#9c9a94')
-    expect(pieceColor(tree, ' · ')).toBe('#6f6d68')
-    expect(pieceColor(tree, 'read')).toBe('#7fc97f')
-    expect(pieceColor(tree, 'written')).toBe('#e7c06b')
-    // A memory file's path: its folder dim.
-    expect(pieceColor(tree, 'C:/code/')).toBe('#9c9a94')
-    // The header and a legend entry, revealed downward by scope.
-    expect(drawn).toContain('360,000 of 1,000,000 tokens · 36%')
-    expect(drawn).toContain('Opus 5.5 · breakdown window 1,000,000 (model default)')
-    expect(drawn).toContain('Messages · 240,000 tokens')
-    expect(JSON.stringify(tree)).toContain('tip:cat:Messages')
-    // The forecast, a cache row, a heaviest row, a heading and the footer.
-    expect(drawn).toContain('Fires at 835,000 · 475,000 to go')
-    expect(drawn).toContain('104,000 read · 88.1%')
-    expect(drawn).toContain('A Read call: its input and result')
-    expect(drawn).toContain('Unfolds MCP tools')
-    expect(drawn).toContain('Closes this pane and runs /compact')
-    expect(drawn).toContain('Reads the breakdown, the turns and the transcript again')
-    // A preset's own instructions on the picker's card.
-    await pane.select({ key: 'focus', value: 'keep-task' })
-    tree = await pane.drawn()
-    drawn = lines(tree).join('\n')
-    // The picker's card is an action; the preset's instructions a quote.
-    expect(cardTone(tree, 'Picks what Compact now asks the summary to keep')).toBe('#8db4f0')
-    expect(JSON.stringify(tree)).toContain('"italic":true},"children":["\\"Keep the current task in full')
-    expect(drawn).toContain('Keep the current task in full: what is being built, the files being changed, and what is left to do.')
-    expect(drawn).toContain('Focus: Keep current task, picked at left')
-    // MCP rows list their tools, loaded and deferred.
-    await pane.press({ key: 'fold:MCP tools' })
-    tree = await pane.drawn()
-    drawn = lines(tree).join('\n')
-    expect(drawn).toContain('Loaded: one 300')
-    expect(drawn).toContain('Deferred, 0 until searched: two')
-    // Names repeated across plugins keep keys of their own, and a skill names its plugin.
-    expect(await pane.find({ key: 'Agents:reviewer' })).toBeDefined()
-    expect(await pane.find({ key: 'Agents:reviewer#1' })).toBeDefined()
-    expect(await pane.find({ key: 'Skills:deploy#1' })).toBeDefined()
-    expect(drawn).toContain('From ops · plugin')
-    expect(drawn).toContain('150 tokens in the listing')
-  })
+// The hover cards drawn: every absolutely placed box.
+function cardCount(n: any): number {
+  if (Array.isArray(n)) return n.reduce((sum, c) => sum + cardCount(c), 0)
+  if (!n || typeof n !== 'object') return 0
+  return (n.props?.position === 'absolute' ? 1 : 0) + cardCount(n.children)
 }
+
+test('hover cards carry the exact figures and what each control does (desktop)', async ($, on) => {
+  stubReads(on, DRILLED)
+  await $.command.run({ command: 'context-drill', args: '' } as never)
+  const pane = await $.ui.mount({ plugin: 'context-drill', surface: 'desktop', component: 'Pane', requestId: 'context-drill', props: { title: 'Context', isFocused: false, bodyColumns: 80 } as never })
+  let tree = await pane.drawn()
+  let drawn = lines(tree).join('\n')
+  // Tones: the header's the fill level (36%: warn), a fold heading's and
+  // Refresh's action, Compact now's warn, a plain card's info.
+  expect(cardTone(tree, '360,000 of 1,000,000 tokens · 36%')).toBe('#e7c06b')
+  expect(cardTone(tree, 'Unfolds MCP tools')).toBe('#8db4f0')
+  expect(cardTone(tree, 'Reads the breakdown, the turns and the transcript again')).toBe('#8db4f0')
+  expect(cardTone(tree, 'Closes this pane and runs /compact')).toBe('#e7c06b')
+  expect(cardTone(tree, '360,000 of 1,000,000 tokens · Opus 5.5')).toBe('#6f6d68')
+  // Labels dim, separators faint, the cache's read green and written amber.
+  expect(pieceColor(tree, 'breakdown window ')).toBe('#9c9a94')
+  expect(pieceColor(tree, ' · ')).toBe('#6f6d68')
+  expect(pieceColor(tree, 'read')).toBe('#7fc97f')
+  expect(pieceColor(tree, 'written')).toBe('#e7c06b')
+  // A memory file's path: its folder dim.
+  expect(pieceColor(tree, 'C:/code/')).toBe('#9c9a94')
+  // The header and a legend entry, revealed downward by scope.
+  expect(drawn).toContain('360,000 of 1,000,000 tokens · 36%')
+  expect(drawn).toContain('Opus 5.5 · breakdown window 1,000,000 (model default)')
+  expect(drawn).toContain('Messages · 240,000 tokens')
+  expect(JSON.stringify(tree)).toContain('tip:cat:Messages')
+  // The forecast, a cache row, a heaviest row, a heading and the footer.
+  expect(drawn).toContain('Fires at 835,000 · 475,000 to go')
+  expect(drawn).toContain('104,000 read · 88.1%')
+  expect(drawn).toContain('A Read call: its input and result')
+  expect(drawn).toContain('Unfolds MCP tools')
+  expect(drawn).toContain('Closes this pane and runs /compact')
+  expect(drawn).toContain('Reads the breakdown, the turns and the transcript again')
+  // A preset's own instructions on the picker's card.
+  await pane.select({ key: 'focus', value: 'keep-task' })
+  tree = await pane.drawn()
+  drawn = lines(tree).join('\n')
+  // The picker's card is an action; the preset's instructions a quote.
+  expect(cardTone(tree, 'Picks what Compact now asks the summary to keep')).toBe('#8db4f0')
+  expect(JSON.stringify(tree)).toContain('"italic":true},"children":["\\"Keep the current task in full')
+  expect(drawn).toContain('Keep the current task in full: what is being built, the files being changed, and what is left to do.')
+  expect(drawn).toContain('Focus: Keep current task, picked at left')
+  // MCP rows list their tools, loaded and deferred.
+  await pane.press({ key: 'fold:MCP tools' })
+  tree = await pane.drawn()
+  drawn = lines(tree).join('\n')
+  expect(drawn).toContain('Loaded: one 300')
+  expect(drawn).toContain('Deferred, 0 until searched: two')
+  // Names repeated across plugins keep keys of their own, and a skill names its plugin.
+  expect(await pane.find({ key: 'Agents:reviewer' })).toBeDefined()
+  expect(await pane.find({ key: 'Agents:reviewer#1' })).toBeDefined()
+  expect(await pane.find({ key: 'Skills:deploy#1' })).toBeDefined()
+  expect(drawn).toContain('From ops · plugin')
+  expect(drawn).toContain('150 tokens in the listing')
+})
+
+test('the terminal draws no hover cards, its rows and controls all there', async ($, on) => {
+  stubReads(on, DRILLED)
+  await $.command.run({ command: 'context-drill', args: '' } as never)
+  const pane = await $.ui.mount({ plugin: 'context-drill', surface: 'terminal', component: 'Pane', requestId: 'context-drill', props: { title: 'Context', isFocused: false, bodyColumns: 80 } as never })
+  let tree = await pane.drawn()
+  let drawn = lines(tree).join('\n')
+  expect(cardCount(tree)).toBe(0)
+  expect(drawn).toContain('Messages')
+  expect(drawn).not.toContain('360,000 of 1,000,000 tokens · 36%')
+  expect(drawn).not.toContain('Messages · 240,000 tokens')
+  expect(drawn).not.toContain('Unfolds MCP tools')
+  expect(drawn).not.toContain('Closes this pane and runs /compact')
+  expect(drawn).not.toContain('Reads the breakdown, the turns and the transcript again')
+  expect(await pane.find({ key: 'compact' })).toBeDefined()
+  expect(await pane.find({ key: 'refresh' })).toBeDefined()
+  // An unfolded section's rows draw, still with no card.
+  await pane.press({ key: 'fold:MCP tools' })
+  tree = await pane.drawn()
+  drawn = lines(tree).join('\n')
+  expect(cardCount(tree)).toBe(0)
+  expect(await pane.find({ key: 'MCP tools:b' })).toBeDefined()
+  expect(drawn).not.toContain('Loaded: one 300')
+  expect(await pane.find({ key: 'Agents:reviewer#1' })).toBeDefined()
+  expect(await pane.find({ key: 'Skills:deploy#1' })).toBeDefined()
+  expect(drawn).not.toContain('From ops · plugin')
+})
 
 test('a phone gets no hover cards', async ($, on) => {
   stubReads(on, BREAKDOWN)
@@ -318,22 +349,24 @@ const INFO_CARD = 'From ops · plugin'
 const ACTION_CARD = 'Reads the breakdown, the turns and the transcript again'
 
 for (const surface of ['desktop', 'terminal'] as const) {
-  test(`a pane over the element budget sheds info cards first (${surface})`, async ($, on) => {
+  test(`a pane over the element budget sheds info cards first; the terminal draws none (${surface})`, async ($, on) => {
     stubReads(on, crowded(60))
     await $.command.run({ command: 'context-drill', args: '' } as never)
     const pane = await $.ui.mount({ plugin: 'context-drill', surface, component: 'Pane', requestId: 'context-drill', props: { title: 'Context', isFocused: false, bodyColumns: 80 } as never })
     const tree = await pane.drawn()
     const drawn = lines(tree).join('\n')
     expect(drawn).toContain('skill-59')
-    expect(drawn).toContain(ACTION_CARD)
     if (surface === 'desktop') {
       // About 2,270 elements with every card; 921 with the action and status ones.
       expect(countNodes(tree)).toBeLessThanOrEqual(BUDGET)
+      expect(drawn).toContain(ACTION_CARD)
       expect(drawn).not.toContain(INFO_CARD)
     } else {
-      // A terminal has no such limit: every card stays.
-      expect(countNodes(tree)).toBeGreaterThan(BUDGET)
-      expect(drawn).toContain(INFO_CARD)
+      // A terminal has no such limit and draws no cards: every row stays, untrimmed.
+      expect(cardCount(tree)).toBe(0)
+      expect(drawn).not.toContain('trimmed to fit')
+      expect(drawn).not.toContain(ACTION_CARD)
+      expect(drawn).not.toContain(INFO_CARD)
     }
   })
 }
@@ -352,7 +385,7 @@ test('a pane still over the budget with no cards trims its sections and says so'
   expect(drawn).toContain('+290 more · trimmed to fit, fold other sections to list them')
 })
 
-test('fit draws the richest level that fits, up to the top one, and only on the desktop', () => {
+test('fit draws the richest level that fits, up to the top one, on the desktop; the terminal draws the one with no cards', () => {
   const tree = (size: number) => Array.from({ length: size }, () => ({ type: 'Box', props: {}, children: [] }))
   const drawn: number[] = []
   const draw = (level: number) => {
@@ -362,5 +395,15 @@ test('fit draws the richest level that fits, up to the top one, and only on the 
   expect(countNodes(fit('desktop', 5, draw))).toBe(BUDGET - 300)
   expect(drawn).toEqual([0, 1, 2])
   expect(countNodes(fit('desktop', 1, draw))).toBe(BUDGET + 100)
-  expect(countNodes(fit('terminal', 5, draw))).toBe(BUDGET + 500)
+  // The terminal draws NO_CARDS once, whatever its size, its folds left out.
+  drawn.length = 0
+  expect(countNodes(fit('terminal', 5, draw))).toBe(BUDGET + 500 - 400 * NO_CARDS)
+  expect(drawn).toEqual([NO_CARDS])
+  // Under the budget the desktop draws every card.
+  drawn.length = 0
+  fit('desktop', 5, (level: number) => {
+    drawn.push(level)
+    return tree(10)
+  })
+  expect(drawn).toEqual([0])
 })

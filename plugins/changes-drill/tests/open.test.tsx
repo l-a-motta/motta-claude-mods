@@ -106,7 +106,13 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.find({ type: 'Text', text: '+2' })).toBeDefined()
     expect(drawn).toContain('looks sensitive')
     // A sensitive file's cards are danger (red): its row's, and the warning's.
-    expect(drawn).toContain(surface === 'desktop' ? '{"width":0.25,"backgroundColor":"#ef8a80"}' : '"borderStyle":"round","borderColor":"#ef8a80"')
+    // The terminal draws no hover card: no hidden box, no card border.
+    if (surface === 'desktop') {
+      expect(drawn).toContain('{"width":0.25,"backgroundColor":"#ef8a80"}')
+    } else {
+      expect(drawn).not.toContain('"display":"none"')
+      expect(drawn).not.toContain('"borderStyle":"round"')
+    }
     // No review budget and no commit plan any more.
     expect(drawn).not.toContain('lines to review')
     expect(drawn).not.toContain('Commit plan')
@@ -170,7 +176,8 @@ test('after a restart, the turns and Claude\'s edits come back from the transcri
 const LONG = 'plugins/a-plugin-with-a-long-name/hooks/deeply/nested/folders/for/the/file.tsx'
 
 for (const surface of ['desktop', 'terminal'] as const) {
-  test(`hover cards say what each figure stands for, and what a press does (${surface})`, { options: { peek: true, churn: true, churnEdits: 2 } }, async ($, on) => {
+  const title = surface === 'desktop' ? 'hover cards say what each figure stands for, and what a press does' : 'no hover cards in the terminal: the rows, their figures and their keys stay'
+  test(`${title} (${surface})`, { options: { peek: true, churn: true, churnEdits: 2 } }, async ($, on) => {
     repo(on, undefined, `## main\n M ${LONG}\n M manifest.json\n`, `3\t1\tmanifest.json\n12\t4\t${LONG}\n`)
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('ui.panes', () => ({ value: [{ id: 'changes-drill' }] }))
@@ -180,13 +187,29 @@ for (const surface of ['desktop', 'terminal'] as const) {
     await $.command.run({ command: 'changes-drill', args: '' } as never)
     const pane = await $.ui.mount({ plugin: 'changes-drill', surface, component: 'Pane', requestId: 'changes-drill', props: { title: 'Changes', isFocused: false, bodyColumns: 90 } as never })
     const drawn = JSON.stringify(await pane.drawn())
+    // The rows on every surface: the long one keeps its key, and the path
+    // still presses by its key.
+    expect(drawn).toContain('Turn 1 · tidy the manifest')
+    expect(drawn).toContain(LONG)
+    expect(await pane.find({ key: `row:${LONG}` })).toBeDefined()
+    expect(await pane.find({ key: 'file:manifest.json' })).toBeDefined()
+    if (surface === 'terminal') {
+      // The terminal draws no hover card: none of their text, no hidden box,
+      // no card border, no hover scope.
+      expect(drawn).not.toContain('Refresh re-reads git status and the diff vs HEAD')
+      for (const piece of ['"0 staged"', '"2 unstaged"', '"16 lines changed"', '"2 edits"']) expect(drawn).not.toContain(piece)
+      expect(drawn).not.toContain('Press the path to peek')
+      expect(drawn).not.toContain('"display":"none"')
+      expect(drawn).not.toContain('"borderStyle":"round"')
+      expect(drawn).not.toContain('"scope"')
+      return
+    }
     // The header and its Refresh; one card per row: the press, the path, the
     // flags, who and the figures.
     // A card's text is pieces (nested Text): check the pieces.
     expect(drawn).toContain('Refresh re-reads git status and the diff vs HEAD')
     for (const piece of ['"0 staged"', '"2 unstaged"', '"0 untracked"', '"16 lines changed"', '"2 edits"', '" this session, the last in turn 1"']) expect(drawn).toContain(piece)
     expect(drawn).toContain('Press the path to peek at the first 4 diff lines')
-    expect(drawn).toContain('Turn 1 · tidy the manifest')
     // Styles: the prompt italic, + green and − red, the status word a tinted
     // chip, the path's file name bold, the `·` faint.
     expect(drawn).toContain('{"italic":true},"children":["tidy the manifest"]')
@@ -196,24 +219,15 @@ for (const surface of ['desktop', 'terminal'] as const) {
     expect(drawn).toContain('{"bold":true},"children":["manifest.json"]')
     expect(drawn).toContain('{"color":"#6f6d68"},"children":[" · "]')
     // Tones: Refresh and a row with the peek on are actions (blue), the
-    // header is info (faint): a bar on the desktop, the border in the terminal.
-    if (surface === 'desktop') {
-      expect(drawn).toContain('{"width":0.25,"backgroundColor":"#8db4f0"}')
-      expect(drawn).toContain('{"width":0.25,"backgroundColor":"#6f6d68"}')
-    } else {
-      expect(drawn).toContain('"borderStyle":"round","borderColor":"#8db4f0"')
-      expect(drawn).toContain('"borderStyle":"round","borderColor":"#6f6d68"')
-    }
+    // header is info (faint): a bar at the card's side.
+    expect(drawn).toContain('{"width":0.25,"backgroundColor":"#8db4f0"}')
+    expect(drawn).toContain('{"width":0.25,"backgroundColor":"#6f6d68"}')
     // One card per row, not one per figure: a lighter tree for the desktop.
     expect((drawn.match(/Press the path to peek/g) ?? []).length).toBe(2)
-    expect(drawn).toContain(LONG)
-    // Every hover scope is one the surface takes (64 characters at most); the
-    // long row keeps its key, and the path still presses by its key.
+    // Every hover scope is one the surface takes (64 characters at most).
     const scopes = [...drawn.matchAll(/"scope":"([^"]*)"/g)].map(m => m[1] ?? '')
     expect(scopes.length).toBeGreaterThan(0)
     for (const scope of scopes) expect(scope.length).toBeLessThanOrEqual(64)
-    expect(await pane.find({ key: `row:${LONG}` })).toBeDefined()
-    expect(await pane.find({ key: 'file:manifest.json' })).toBeDefined()
   })
 }
 
@@ -287,9 +301,15 @@ test('over the budget, the desktop drops the drill-down cards first and keeps th
   expect(d).toContain('Refresh re-reads git status and the diff vs HEAD')
   expect(d).toContain('file36.ts')
   expect(d).toContain('Turn 1 · work on area 1')
-  // The terminal keeps every card.
-  expect(t).toContain(' changed"')
-  expect(t).toContain('Refresh re-reads git status and the diff vs HEAD')
+  // Level 0 draws the rows' cards.
+  const all = JSON.stringify(listAt(0, 2, 18))
+  setLevel(0)
+  expect(all).toContain(' changed"')
+  expect(all).toContain('Refresh re-reads git status and the diff vs HEAD')
+  // The terminal draws none, and every row.
+  expect(t).not.toContain(' changed"')
+  expect(t).not.toContain('Refresh re-reads git status and the diff vs HEAD')
+  expect(t).toContain('file36.ts')
 })
 
 test('far over the budget, the desktop keeps only the last turn open, then cuts the list to 30 rows', async ($, on) => {
@@ -328,19 +348,22 @@ test('a single turn too long for the pane is cut to 30 rows, a line saying how m
   expect(JSON.stringify(term)).not.toContain('the pane is too full')
 })
 
-// Each level drawn straight from the list's view, plain element names standing
-// in for a surface's: what each level costs.
+// The list drawn straight from its view at a level, `turns` turns of `each`
+// files, plain element names standing in for a desktop's: the tree and the
+// cards that open downward. It sets the module's level: set it back after.
+function listAt(level: number, turns: number, each: number) {
+  const m = many(turns, each)
+  const list = Array.from({ length: turns }, (_, i) => ({ n: i + 1, id: `t${i + 1}`, text: `work on area ${i + 1}`, at: 1_700_000_000_000 + i + 1 }))
+  const rows = m.files.map((path, i) => ({ status: ' M', path, added: (i % 7) + 1, deleted: i % 3, isCommitted: false, changedAt: 1_700_000_000_000, touch: { who: 'claude' as const, turn: Math.floor(i / each) + 1, edits: 1, at: 1_700_000_000_000 } }))
+  setLevel(level)
+  const floating: any[] = []
+  const tree = changesPane({ Box: 'Box', Text: 'Text', Button: 'Button', Code: 'Code', isDesktop: true, surface: 'desktop', columns: 90, floating, settings: settingsOf(undefined), reading: { top: 'C:/code/app', branch: 'dev', against: 'HEAD', base: 'HEAD', rows, at: 1_700_000_600_000 }, turns: list, session: null, now: 1_700_000_600_000, selected: null, showGenerated: false, showOlder: false, peek: null, level, on: { refresh: () => undefined, select: () => undefined, toggleGenerated: () => undefined, toggleOlder: () => undefined } })
+  return [tree, floating]
+}
+
+// Each level drawn straight from the list's view: what each level costs.
 test('each level draws less: cards by tone, then one turn open, then 30 rows', () => {
-  const m = many(4, 30)
-  const turns = [1, 2, 3, 4].map(n => ({ n, id: `t${n}`, text: `work on area ${n}`, at: 1_700_000_000_000 + n }))
-  const rows = m.files.map((path, i) => ({ status: ' M', path, added: (i % 7) + 1, deleted: i % 3, isCommitted: false, changedAt: 1_700_000_000_000, touch: { who: 'claude' as const, turn: Math.floor(i / 30) + 1, edits: 1, at: 1_700_000_000_000 } }))
-  const count = (level: number) => {
-    setLevel(level)
-    const floating: any[] = []
-    const tree = changesPane({ Box: 'Box', Text: 'Text', Button: 'Button', Code: 'Code', isDesktop: true, surface: 'desktop', columns: 90, floating, settings: settingsOf(undefined), reading: { top: 'C:/code/app', branch: 'dev', against: 'HEAD', base: 'HEAD', rows, at: 1_700_000_600_000 }, turns, session: null, now: 1_700_000_600_000, selected: null, showGenerated: false, showOlder: false, peek: null, level, on: { refresh: () => undefined, select: () => undefined, toggleGenerated: () => undefined, toggleOlder: () => undefined } })
-    return countNodes([tree, floating])
-  }
-  const counts = [0, 1, 2, 3, 4].map(count)
+  const counts = [0, 1, 2, 3, 4].map(level => countNodes(listAt(level, 4, 30)))
   setLevel(0)
   console.log('changes-drill levels, 4 turns x 30 files:', counts.join(' / '))
   for (let i = 1; i < counts.length; i++) expect(counts[i] ?? 0).toBeLessThanOrEqual(counts[i - 1] ?? 0)

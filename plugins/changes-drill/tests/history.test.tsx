@@ -128,16 +128,26 @@ for (const surface of ['desktop', 'terminal'] as const) {
     // Current: the story.
     expect(drawn).toContain('You started this branch')
     expect(drawn).toContain('was merged into main')
-    // Hover cards: the head's Refresh, the picker, a story item's ▸, the Branches button.
-    expect(drawn).toContain('Refresh re-reads the branches and commits from git')
-    expect(drawn).toContain('Switches Current between Story and Files tree')
-    expect(drawn).toContain('▸ lists the 2 changed files')
-    expect(drawn).toContain("Opens the Branches pane, branch-drill's")
-    expect(drawn).toContain(': every branch as lanes or a subway map')
-    // A commit's card: its id bold, its subject italic; the head's Refresh an action.
-    expect(drawn).toContain(`{"bold":true},"children":["${MAIN_TIP.slice(0, 7)}"]`)
-    expect(drawn).toMatch(/\{"italic":true\},"children":\["[^"]*statusline-bar-height/)
-    expect(drawn).toContain(surface === 'desktop' ? '{"width":0.25,"backgroundColor":"#8db4f0"}' : '"borderStyle":"round","borderColor":"#8db4f0"')
+    if (surface === 'desktop') {
+      // Hover cards: the head's Refresh, the picker, a story item's ▸, the Branches button.
+      expect(drawn).toContain('Refresh re-reads the branches and commits from git')
+      expect(drawn).toContain('Switches Current between Story and Files tree')
+      expect(drawn).toContain('▸ lists the 2 changed files')
+      expect(drawn).toContain("Opens the Branches pane, branch-drill's")
+      expect(drawn).toContain(': every branch as lanes or a subway map')
+      // A commit's card: its id bold, its subject italic; the head's Refresh an action.
+      expect(drawn).toContain(`{"bold":true},"children":["${MAIN_TIP.slice(0, 7)}"]`)
+      expect(drawn).toMatch(/\{"italic":true\},"children":\["[^"]*statusline-bar-height/)
+      expect(drawn).toContain('{"width":0.25,"backgroundColor":"#8db4f0"}')
+    } else {
+      // The terminal draws no hover card: none of their text, no hidden box.
+      expect(drawn).not.toContain('Refresh re-reads the branches and commits from git')
+      expect(drawn).not.toContain('Switches Current between Story and Files tree')
+      expect(drawn).not.toContain('▸ lists the 2 changed files')
+      expect(drawn).not.toContain("Opens the Branches pane, branch-drill's")
+      expect(drawn).not.toContain('"display":"none"')
+      expect(drawn).not.toContain('"borderStyle":"round"')
+    }
     // Only reads: no git command that writes.
     for (const a of calls) expect(['commit', 'push', 'fetch', 'checkout', 'reset', 'add'].some(w => a.includes(w))).toBe(false)
     // Opening a story item reads its commit's files once, and lists what the merge took in.

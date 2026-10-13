@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { actOf, BUDGET, CHAR_BUDGET, cardParts, charEm, countNodes, endCall, endStatus, firstLine, fit, foldFinished, groupsOf, idleNote, isOverdue, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
+import { actOf, BUDGET, CHAR_BUDGET, cardParts, charEm, countNodes, endCall, endStatus, firstLine, fit, foldFinished, groupsOf, idleNote, isOverdue, NO_CARDS, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
 import type { AgentRun } from '../types'
 
 type $ = Parameters<TestBody>[0]
@@ -284,13 +284,23 @@ test("a crab's name tag is its title's first word, past a shared prefix, cut to 
   expect(shortName('Internationalization pass').endsWith('…')).toBe(true)
 })
 
-test('the pane draws hover cards: full paths, the estimate, the toggles, the waited-for tasks', { options: { language: 'en' } }, async ($, on) => {
+test('the pane draws hover cards on the desktop: full paths, the estimate, the toggles, the waited-for tasks; the terminal draws none', { options: { language: 'en' } }, async ($, on) => {
   engine(on)
   await $.tool.call({ tool: 'mcp__savvy-progress__progress', tool_use_id: 'p1', title: 'Ship it', phase: 'delegate', tasks: [{ title: 'Survey READMEs', tier: 'light' }, { title: 'Fix them', tier: 'careful', after: [1] }] } as never)
   await spawn($, 't1', 'Survey READMEs')
   await $.tool.call({ tool: 'Read', agentId: 'a1', file_path: '/x/deep/README.md' } as never)
   for (const surface of ['terminal', 'desktop'] as const) {
-    const json = JSON.stringify(await (await $.ui.mount({ plugin: 'savvy-progress', surface, component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never)).drawn())
+    const drawn = await (await $.ui.mount({ plugin: 'savvy-progress', surface, component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never)).drawn()
+    const json = JSON.stringify(drawn)
+    if (surface === 'terminal') {
+      // No card at all, so no host lights up for one; the rows still draw.
+      expect(textOf(drawn)).toMatch(/Survey READMEs/)
+      expect(json).not.toContain('"position":"absolute"')
+      expect(json).not.toContain('Folds the pane to one strip of crabs')
+      expect(json).not.toContain('Cost ≈: tokens × the price table, per model')
+      expect(json).not.toContain('"hover":{"backgroundColor":"#ffffff10"}')
+      continue
+    }
     // A card line is pieces: the path's folder dim and its file bold, labels dim and values plain.
     expect(json).toContain('{"bold":false,"italic":false,"color":"#9c9a94"},"children":["/x/deep/"]')
     expect(json).toContain('{"bold":true,"italic":false},"children":["README.md"]')
@@ -300,8 +310,8 @@ test('the pane draws hover cards: full paths, the estimate, the toggles, the wai
     expect(json).toContain('Cost ≈: tokens × the price table, per model')
     expect(json).toContain('"●"," 1. Survey READMEs"')
     expect(json).toContain('tip:compact')
-    // The compact toggle's card is an action: a blue bar on the desktop, a blue border in the terminal.
-    expect(json).toMatch(surface === 'desktop' ? /"width":0.25,"backgroundColor":"#8db4f0"/ : /"borderColor":"#8db4f0"/)
+    // The compact toggle's card is an action: a blue bar.
+    expect(json).toMatch(/"width":0.25,"backgroundColor":"#8db4f0"/)
   }
 })
 
@@ -341,7 +351,7 @@ test('Finished keeps its newest 20 agents, 10 or none when tight; Show is honore
   expect(at(4, false)).toEqual([[], 30])
 })
 
-test('the desktop climbs the levels until the tree fits; the terminal stays at 0', () => {
+test('the desktop climbs the levels until the tree fits; the terminal draws the one with no cards', () => {
   // A tree of `n` elements: a Box holding n - 1 Texts.
   const tree = (n: number) => ({ type: 'Box', props: {}, children: Array.from({ length: n - 1 }, () => ({ type: 'Text', props: {}, children: ['x'] })) })
   const sizes = [3000, 2000, 1500, 1200, 400]
@@ -350,7 +360,10 @@ test('the desktop climbs the levels until the tree fits; the terminal stays at 0
     return [drawn.level, countNodes(drawn)]
   }
   expect(levelOf('desktop')).toEqual([4, 400])
-  expect(levelOf('terminal')).toEqual([0, 3000])
+  // Whatever its size: no cards, and Finished not folded.
+  expect(levelOf('terminal')).toEqual([NO_CARDS, sizes[NO_CARDS]])
+  // Under the budget the desktop keeps every card.
+  expect(fit('desktop', 4, level => ({ ...tree(10), level })).level).toBe(0)
 })
 
 // Agents that each read a file and finished, a second apart.
@@ -384,7 +397,7 @@ test('older finished agents fold under one line, and its press shows them', { op
   }
 })
 
-test('over the budget the desktop drops info cards first, keeping the action ones; the terminal keeps them all', { options: { language: 'en' } }, async ($, on) => {
+test('over the budget the desktop drops info cards first, keeping the action ones; the terminal draws none', { options: { language: 'en' } }, async ($, on) => {
   const clock = engine(on)
   await finishMany($, clock, 60)
   const panes = await Promise.all((['terminal', 'desktop'] as const).map(surface => mountPane($, surface)))
@@ -401,7 +414,11 @@ test('over the budget the desktop drops info cards first, keeping the action one
   expect(json).not.toMatch(/"width":0.25,"backgroundColor":"#8db4f0"/)
   // An agent's host no longer lights up for a card it doesn't have.
   expect(json).not.toContain('"hover":{"backgroundColor":"#ffffff10"}')
-  const terminal = JSON.stringify(await panes[0]!.drawn())
-  expect(terminal).toMatch(/"borderColor":"#6f6d68"/)
-  expect(terminal).toContain('"hover":{"backgroundColor":"#ffffff10"}')
+  // The terminal has no budget and draws no cards: no card's border, no host lit, nothing folded to fit.
+  const terminalTree = await panes[0]!.drawn()
+  const terminal = JSON.stringify(terminalTree)
+  expect(terminal).not.toContain('"position":"absolute"')
+  expect(terminal).not.toMatch(/"borderColor":"#6f6d68"/)
+  expect(terminal).not.toContain('"hover":{"backgroundColor":"#ffffff10"}')
+  expect(textOf(terminalTree)).not.toMatch(/folded to fit/)
 })

@@ -46,6 +46,8 @@ const STARTUPS_KEPT = 30
 export const BUDGET = 1000
 // Characters of the serialized tree, an inline SVG's source included.
 export const CHAR_BUDGET = 200_000
+// The level with no cards: the terminal's (see fit).
+export const NO_CARDS = 2
 export const TOP_LEVEL = 5
 // The items an open drill section lists at levels 3 and 4, at most; the
 // heaviest and by-tool rows at level 4.
@@ -65,8 +67,10 @@ export function countNodes(tree: unknown): number {
   return nodes
 }
 // Draws at level 0, then 1, 2, ... until the tree fits or `top` is reached.
-// Only the desktop (and VS Code) has the limit: the terminal keeps level 0.
+// Only the desktop (and VS Code) has the limit. The terminal draws no hover
+// cards at all, its folds left out: level NO_CARDS.
 export function fit<T>(surface: string, top: number, draw: (level: number) => T): T {
+  if (surface === 'terminal') return draw(NO_CARDS)
   if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
   let tree = draw(0)
   for (let level = 1; level <= top && (countNodes(tree) > BUDGET || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)

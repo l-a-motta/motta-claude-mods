@@ -1,6 +1,6 @@
 {
   "name": "branch-drill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Branches pane on top of changes-drill: Me (your branch against main, or where your work sits: files, branch, GitHub, main) and All (every branch as GitKraken-style lanes, text art in the terminal, or a subway map), each with its own picker; hovering a commit or a term shows a card, a branch lights up together, and clicking a commit opens its files. Read from local git when the pane opens, at a turn's end when a branch moved, and on its Refresh; never with the pane closed. Read-only: no model calls, nothing added to the context, no network. Opened by the Changes pane's Branches button, /branch-drill, or $.branchDrill.open() from another mod.",
   "author": {
     "name": "l-a-motta"
