@@ -1,7 +1,7 @@
 // The bars, drawn as motta-statusline draws its own (a mod imports only its
 // own files, so they are copied here): on the desktop an image of blocks of
-// small squares, elsewhere braille cells, a cell's dots rising from its
-// bottom row. A bar is a list of blocks, each lit 0 to 10: a 0-100 figure
+// small squares, elsewhere braille cells, a cell's dots filling its left
+// column from the bottom up, then its right. A bar is a list of blocks, each lit 0 to 10: a 0-100 figure
 // fills them left to right (barBlocks), a series lights one block per value
 // (seriesBlocks).
 
@@ -24,8 +24,8 @@ export function seriesBlocks(values: number[]): number[] {
 }
 
 // The desktop's bar: a block per entry of `lit`, SQ_COLS squares wide and
-// SQ_ROWS tall on a track of its own, its squares lit from its bottom row
-// up, left then right. `color` is one for every block or one per block.
+// SQ_ROWS tall on a track of its own, its squares lit a column at a time,
+// the left from its bottom up, then the right. `color` is one for every block or one per block.
 // With `ramp` 'squares' each square is a step brighter than the one lit
 // before it across the bar (RAMP_FROM), the newest at full; with 'blocks'
 // each block is a step brighter than the one before it, for a series oldest
@@ -46,8 +46,8 @@ export function squaresSvg(lit: number[], color: string | string[], share: numbe
     const fill = svgColor(Array.isArray(color) ? (color[block] ?? 'subtle') : color)
     for (let i = 0; i < Math.min(10, lit[block] ?? 0); i++) {
       order++
-      const col = i % SQ_COLS
-      const row = SQ_ROWS - 1 - Math.floor(i / SQ_COLS)
+      const col = Math.floor(i / SQ_ROWS)
+      const row = SQ_ROWS - 1 - (i % SQ_ROWS)
       const step = ramp === 'squares' ? order / total : ramp === 'blocks' ? (block + 1) / n : 1
       const opacity = (RAMP_FROM + (1 - RAMP_FROM) * step).toFixed(3)
       squares.push(`<rect x="${blockX(block) + col * SQ_PITCH}" y="${1 + row * SQ_PITCH}" width="2" height="2" fill="${fill}" opacity="${opacity}"/>`)
@@ -97,8 +97,8 @@ export function blockDots(lit: number[]): number[] {
   return lit.map(l => (l <= 0 ? 0 : Math.max(1, Math.round((Math.min(10, l) * DOT_BITS.length) / 10))))
 }
 
-// A bar of braille cells: a cell's dots fill from the bottom row up in its
-// color, an empty cell is a subtle track of its bottom two dots, and a `|`
+// A bar of braille cells: a cell's dots fill a column at a time in its
+// color, the left from the bottom up and then the right, an empty cell is a subtle track of its bottom two dots, and a `|`
 // tick (the theme's text color) stands before cell `mark`, or after the last
 // when `mark` is the cell count. Braille, not blocks or box-drawing: a
 // desktop draws text in a proportional font, where block glyphs come out
@@ -125,16 +125,17 @@ export function meter(Text: any, dots: number[], color: string | string[], mark:
   ))
 }
 
-// A braille cell's dots in the order they fill: the bottom row left then
-// right, then each row above.
-const DOT_BITS = [0x40, 0x80, 0x04, 0x20, 0x02, 0x10, 0x01, 0x08]
+// A braille cell's dots in the order they fill: the left column from the
+// bottom up, then the right, so a cell half full or more stands full height.
+const DOT_BITS = [0x40, 0x04, 0x02, 0x01, 0x80, 0x20, 0x10, 0x08]
 
 // The braille character with a cell's first `n` dots raised.
 export function braille(n: number) {
   return String.fromCharCode(0x2800 + DOT_BITS.slice(0, n).reduce((bits, bit) => bits | bit, 0))
 }
 
-export const TRACK = braille(2)
+// An empty cell's track: its bottom row, both dots.
+export const TRACK = String.fromCharCode(0x2800 + 0x40 + 0x80)
 
 // A 0-100 figure across `width` pixels: the status line's bar made longer,
 // as many of its blocks (each SQ_COLS by SQ_ROWS squares on its own track) as

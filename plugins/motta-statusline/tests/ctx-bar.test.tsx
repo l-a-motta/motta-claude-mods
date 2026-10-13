@@ -28,11 +28,12 @@ describe('ctxLevel', () => {
 })
 
 describe('braille', () => {
-  test('raises dots from the bottom row up, left then right', () => {
+  test('raises the left column from the bottom up, then the right', () => {
     expect(braille(0)).toBe('⠀')
     expect(braille(1)).toBe('⡀')
-    expect(braille(2)).toBe('⣀')
-    expect(braille(3)).toBe('⣄')
+    expect(braille(2)).toBe('⡄')
+    expect(braille(4)).toBe('⡇')
+    expect(braille(5)).toBe('⣇')
     expect(braille(8)).toBe('⣿')
   })
 })
@@ -133,7 +134,7 @@ test('draws the context as braille cells with its compact tick, the share and th
     ['#967104', '⣿'],
     ['#b98c05', '⣿'],
     ['#dca606', '⣿'],
-    ['#ffc107', '⣦'],
+    ['#ffc107', '⣇'],
     ['subtle', '⣀⣀⣀⣀'],
     ['text', '|'],
     ['subtle', '⣀⣀'],
@@ -154,6 +155,12 @@ describe('squaresSvg', () => {
     expect(shades[0]).toBe(0.465)
     expect(shades.every((o, i) => i === 0 || o > (shades[i - 1] ?? 1))).toBe(true)
     expect(shades[35]).toBe(1)
+    // A block lights its left column from the bottom up, then its right.
+    const lit = [...(squaresSvg(6, 'success', null).split('<g fill=')[1] ?? '').matchAll(/<rect x="([\d.]+)" y="([\d.]+)"/g)].map(m => [Number(m[1]), Number(m[2])])
+    expect(new Set(lit.slice(0, 5).map(([x]) => x)).size).toBe(1)
+    expect(lit.slice(0, 5).every(([, y], i) => i === 0 || y < (lit[i - 1]?.[1] ?? 0))).toBe(true)
+    expect(lit[5]?.[0]).toBeGreaterThan(lit[0]?.[0] ?? 0)
+    expect(lit[5]?.[1]).toBe(lit[0]?.[1])
     // Every point has its square: the 36 lit and 64 empty ones in the track gray.
     expect(svg.match(/<rect x=/g)).toHaveLength(100)
     expect(svg).toContain('fill="#e5b84b"')

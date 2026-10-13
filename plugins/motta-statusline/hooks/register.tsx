@@ -28,8 +28,8 @@
 // `cache`, is what is pressed). usage-drill toasts
 // when a limit turns orange or red, by these same colors.
 //
-// Each bar is ten braille cells of ten points, a cell's dots rising from its
-// bottom row as its points come, the lit cells fading in from the left as
+// Each bar is ten braille cells of ten points, a cell's dots filling its left
+// column from the bottom up, then its right, as its points come, the lit cells fading in from the left as
 // the desktop's squares do. ctx is the context window, its dots green
 // under 30%, yellow to 50%, orange to 70% and red past it, with a tick where
 // auto-compact fires (from the local /context breakdown, no request sent),
@@ -1212,8 +1212,8 @@ async function readSlot($: EngineInterface): Promise<Slot> {
 // The desktop's bar: ten blocks of ten small squares, SQ_COLS wide and
 // SQ_ROWS tall, each block a tenth of the bar, one square a point: every
 // square is drawn, an empty one in the track's gray, a lit one in the color,
-// lit block by block from the left and each block from its bottom row up,
-// left then right, each a step brighter than the one lit before it
+// lit block by block from the left and each block a column at a time, the
+// left from its bottom up, then the right, each a step brighter than the one lit before it
 // (RAMP_FROM). A tick stands exactly where `share` (0-1)
 // falls, measured along the blocks' tracks, the gaps left out. The squares
 // snap to whole pixels (crispEdges): a bar placed after proportional text
@@ -1227,8 +1227,8 @@ export function squaresSvg(points: number, color: string, share: number | null):
   // Square `i` (0-99): its block, then its column and its row from the bottom.
   const square = (i: number, extra = '') => {
     const block = Math.floor(i / 10)
-    const col = i % SQ_COLS
-    const row = SQ_ROWS - 1 - Math.floor((i % 10) / SQ_COLS)
+    const col = Math.floor((i % 10) / SQ_ROWS)
+    const row = SQ_ROWS - 1 - ((i % 10) % SQ_ROWS)
     return `<rect x="${blockX(block) + col * SQ_PITCH}" y="${1 + row * SQ_PITCH_Y}" width="${SQ_SQUARE_W}" height="${SQ_SQUARE_H}"${extra}/>`
   }
   const empty: string[] = []
@@ -1307,7 +1307,8 @@ function rateSegment(Text: any, r: Rate) {
 }
 
 // A bar of braille cells, CELL_POINTS points to a cell: a cell's dots fill
-// from the bottom row up in `color` as its points come, an empty cell is a
+// a column at a time in `color` as its points come, the left from the bottom
+// up and then the right, an empty cell is a
 // subtle track of its bottom two dots, and a `|` tick (the theme's text
 // color: white on a dark theme) stands before cell `mark`, or after the last
 // when `mark` is the cell count. Braille, not blocks or box-drawing: a desktop
@@ -1374,16 +1375,17 @@ async function readScheme($: EngineInterface): Promise<Scheme> {
 }
 
 const CELL_POINTS = 10
-// A braille cell's dots in the order they fill: the bottom row left then
-// right, then each row above.
-const DOT_BITS = [0x40, 0x80, 0x04, 0x20, 0x02, 0x10, 0x01, 0x08]
+// A braille cell's dots in the order they fill: the left column from the
+// bottom up, then the right, so a cell half full or more stands full height.
+const DOT_BITS = [0x40, 0x04, 0x02, 0x01, 0x80, 0x20, 0x10, 0x08]
 
 // The braille character with a cell's first `n` dots raised.
 export function braille(n: number) {
   return String.fromCharCode(0x2800 + DOT_BITS.slice(0, n).reduce((bits, bit) => bits | bit, 0))
 }
 
-const TRACK = braille(2)
+// An empty cell's track: its bottom row, both dots.
+const TRACK = String.fromCharCode(0x2800 + 0x40 + 0x80)
 
 // The dots each cell of a 0-100 bar holds, `cellPoints` points to a cell:
 // its points spread over its 8 dots, and at least one for any point.
