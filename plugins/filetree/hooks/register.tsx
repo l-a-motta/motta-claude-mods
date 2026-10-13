@@ -1559,9 +1559,11 @@ export const register: Register = (on, options) => {
       }
     }
     // A thin line across the pane between its sections.
+    // Longer than any row and clipped by its one-line box: a truncating wrap would end
+    // it in an ellipsis.
     const rule = (
       <Box height={1} overflow="hidden">
-        <Text color={theme.muted} dimColor wrap="truncate-end">
+        <Text color={theme.muted} dimColor>
           {'─'.repeat(width * 2)}
         </Text>
       </Box>
@@ -1637,7 +1639,7 @@ export const register: Register = (on, options) => {
     // Rows above and below the tree: name, path, buttons and search between three
     // rules, the settings and the key when open; below, a rule, the branch and the
     // two labeled lines, and the outside list with its own rule.
-    const fixed = 11 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
+    const fixed = 10 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1753,9 +1755,9 @@ export const register: Register = (on, options) => {
       )
     }
 
-    // The root's name on its own line, the folders above it dim on the next, each one
-    // a button that moves the tree there, pinned. A long path keeps its first two and
-    // as many of its last as fit, with … between.
+    // The root as a breadcrumb on one line beside the follow badge: the folders above
+    // it dim, each a button that moves the tree there, pinned, and the root itself in
+    // the accent. A long path keeps its first two and as many of its last as fit.
     const crumbParts = t.root.split('/')
     const trail: { name: string; path: string }[] = []
     for (let i = 0; i < crumbParts.length; i++) {
@@ -1765,7 +1767,7 @@ export const register: Register = (on, options) => {
       trail.push({ name: path === home ? '~' : i === 0 ? crumbParts[0] || '/' : (crumbParts[i] ?? ''), path })
     }
     const here = trail.pop() ?? { name: t.root, path: t.root }
-    const pathRoom = width - 4
+    const pathRoom = width - here.name.length - 22
     const pathCost = (list: typeof trail) => list.reduce((n, c) => n + c.name.length + 3, 0)
     let pathHead = trail
     let pathTail: typeof trail = []
@@ -1820,7 +1822,9 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
-          <Box flexShrink={1} overflow="hidden">
+          <Box flexDirection="row" flexShrink={1} overflow="hidden">
+            {pathLine}
+            {pathLine.length > 0 && sep}
             <Text bold color={theme.accent} wrap="truncate-end">
               {here.name}
             </Text>
@@ -1829,9 +1833,6 @@ export const register: Register = (on, options) => {
           <Text color={follow ? TONES.commit?.solid : FAR_TONES.change?.solid}>●</Text>
           <Button key="pin" plain label={follow ? 'following cwd' : 'pinned'} onPress={pin} />
           <Text> </Text>
-        </Box>
-        <Box flexDirection="row" overflow="hidden">
-          {pathLine}
         </Box>
         {rule}
         <Box flexDirection="row" gap={1}>
