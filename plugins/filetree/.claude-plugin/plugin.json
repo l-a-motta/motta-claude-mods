@@ -62,6 +62,17 @@
       "title": "Open with",
       "description": "What a double-click or Enter does with a file. preview (default): show it in the pane (left goes back, ↗ opens the default app). app (or empty): the default app. Anything else is a command run instead: {path} is the file and {dir} its folder; without {path} the path goes last. Words split on spaces, quotes keep a word whole, and no shell runs it. It should start the viewer and return; on Linux it runs detached.",
       "default": "preview"
+    },
+    "startOpen": {
+      "type": "string",
+      "title": "Open on start",
+      "description": "Whether the tree opens by itself when a session starts. desktop (default): in the desktop app only; in the CLI, /filetree opens it. always: in both. never: only /filetree opens it.",
+      "default": "desktop",
+      "options": [
+        "desktop",
+        "always",
+        "never"
+      ]
     }
   },
   "license": "MIT"
