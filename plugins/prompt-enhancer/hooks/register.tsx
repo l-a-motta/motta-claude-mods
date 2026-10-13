@@ -423,18 +423,22 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // The band: the chip alone. A desktop draws a Button as a native button of
-  // its plain label, so the ✦'s color is a Text beside it.
+  // The band: the chip alone, drawn as motta-statusline draws its lines. A
+  // desktop draws a Button as a native button of its plain label, so the ✦'s
+  // color is a Text beside it, and the word is dim, full strength under the
+  // pointer; the button pads its label about 0.75 cell each side, which a
+  // negative margin takes back. Half a cell apart on the desktop.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || !showChip) return next(e)
     const below = await next(e)
 
     const { Box, Text, Button } = $.ui.resolve(e)
     const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
+    const button = <Button key="enhance" plain dimColor label="enhance" onPress={() => void chip($)} />
     const ours = (
-      <Box flexDirection="row" justifyContent="flex-end" gap={1} paddingX={1}>
+      <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5} paddingX={1}>
         <Text color="suggestion">✦</Text>
-        {hasBox ? <Button key="enhance" plain label="enhance" onPress={() => void chip($)} /> : <Text dimColor>{'/enhance <your prompt>'}</Text>}
+        {!hasBox ? <Text dimColor>{'/enhance <your prompt>'}</Text> : e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button}
       </Box>
     )
     return withChip(Box, below, ours, 'prompt-enhancer', true)

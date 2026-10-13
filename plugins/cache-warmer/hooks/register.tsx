@@ -1,8 +1,9 @@
 // cache-warmer: keeps the prompt cache warm while you are away.
 //
-//   above the prompt, under ✦ enhance:   [ 🔥 42m ↻2 ]
+//   above the prompt, under ✦ enhance:   cache 🔥 42m ↻2
 //
-// One button: 🔥 while keep-warm is on, ❄ while it is off, then how long the
+// One chip: the word `cache` (pressed, it turns keep-warm on or off), then
+// 🔥 while keep-warm is on, ❄ while it is off, then how long the
 // main conversation's prompt cache stays warm: the cache's TTL from the last
 // request that read or wrote it, a main-session step or any mod's fork, since
 // each read restarts the TTL. `cold` once it ran out, after a model switch, a
@@ -126,18 +127,23 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // The chip, in the band's chip column: the one button, its label plain
-  // text, as a desktop draws a Button as a native button of its label.
+  // The chip, in the band's chip column, drawn as motta-statusline draws
+  // its lines: the pressable word dim, full strength under the pointer (a
+  // desktop draws a Button as a native button of its plain label, padded
+  // about 0.75 cell each side, which a negative margin takes back), and the
+  // state beside it at full strength, half a cell apart on the desktop.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     await startTicking($)
     const below = await next(e)
-    const { Box, Button } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const warmth = warmthOf(await read($, hit), await $.clock.now(), settings.leadMs)
     const label = chipLabel(await read($, isOn), warmth, await read($, pings), await read($, isPinging))
+    const button = <Button key="keep-warm" plain dimColor label="cache" onPress={() => void toggle($)} />
     const chip = (
-      <Box flexDirection="row" justifyContent="flex-end" paddingX={1}>
-        <Button key="keep-warm" plain label={label} onPress={() => void toggle($)} />
+      <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5} paddingX={1}>
+        {e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button}
+        <Text>{label}</Text>
       </Box>
     )
     return withChip(Box, below, chip, 'cache-warmer', false)

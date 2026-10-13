@@ -64,7 +64,9 @@
 //   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
-//   tree takes the band.
+//   tree takes the band. The chips are seated one to a line, at its right
+//   end and centered on it (chipsOf), so each lines up with its line; the
+//   lines then leave the right inset to the chips' own.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -288,38 +290,26 @@ export const register: Register = (on, options) => {
     const table = $.ui.resolve(e)
     const { Box, Text, Link, Button } = table
     const Svg = e.surface === 'desktop' && 'Svg' in table ? table.Svg : null
-    const ours = (
-      <Box flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
-        {lines($, { Box, Text, Link, Button }, data, await $.clock.now(), Svg)}
+    const now = await $.clock.now()
+    // The chips sit at the lines' right ends, inset by their own padding.
+    const ours = (chips: RenderChildren[]) => (
+      <Box flexDirection="column" paddingLeft={1} paddingRight={chips.length > 0 ? 0 : 1} flexGrow={1} flexShrink={1}>
+        {lines($, { Box, Text, Link, Button }, data, now, Svg, chips)}
       </Box>
     )
-    if (share === 'beside') {
-      return (
-        <Box flexDirection="row" alignItems="flex-start">
-          {ours}
-          {below}
-        </Box>
-      )
-    }
+    if (share === 'beside') return ours(chipsOf(below))
     if (share === 'under') {
       // A card holds the chips when their hooks ran beneath it: they go back
       // to the right of the lines, and the card under them.
       const { beside, rest } = liftBeside(below)
       return (
         <Box flexDirection="column">
-          {beside === undefined ? (
-            ours
-          ) : (
-            <Box flexDirection="row" alignItems="flex-start">
-              {ours}
-              {beside}
-            </Box>
-          )}
+          {ours(beside === undefined ? [] : chipsOf(beside))}
           {rest}
         </Box>
       )
     }
-    return ours
+    return ours([])
   })
 
   // The hint line under the prompt stays up while a turn runs. The engine's own
@@ -358,6 +348,15 @@ export function bandShare(node: unknown): 'free' | 'beside' | 'under' | 'taken' 
 }
 
 type Node = { type?: unknown; props?: { key?: unknown }; children?: RenderChildren[] }
+
+// The chips of a `band-beside:` column, in order: a column a chip's mod
+// nested inside another's (withChip) gives its own chips in its place.
+export function chipsOf(node: RenderChildren, depth = 0): RenderChildren[] {
+  const el = node as Node | null
+  const key = el?.type === 'Box' ? el.props?.key : undefined
+  if (depth > 8 || typeof key !== 'string' || !key.startsWith('band-beside:')) return node === null || node === undefined ? [] : [node]
+  return (el?.children ?? []).flatMap(child => chipsOf(child, depth + 1))
+}
 
 // The first `band-beside:` Box inside a card's tree, taken out of it, and the
 // tree without it; `beside` undefined when it holds none.
@@ -763,7 +762,7 @@ type Ui = { Box: any; Text: any; Link: any; Button: any }
 // view against origin's default), the file counts (the Changes pane), the
 // last commit once pushed (its page), the percentages (the Context and Usage
 // panes) and the last slot (cycles what it shows).
-function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null) {
+function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null, chips: RenderChildren[] = []) {
   const { Box, Text, Link, Button } = ui
   const onDesktop = Svg !== null
   // Spacing comes from the layout alone, never from spaces in the text: a
@@ -861,10 +860,21 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   }
   line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
 
-  return [
-    <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line1}</Box>,
-    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={space.outer} marginTop={onDesktop ? DESKTOP_LINE_GAP : 0}>{line2}</Box>,
-  ]
+  // A line with a chip holds its segments in a growing box, the chip at its
+  // right end, centered on the line; chips past the lines get a row of their own.
+  const row = (key: string, segs: unknown[], chip: RenderChildren | undefined, marginTop: number) =>
+    chip === undefined ? (
+      <Box key={key} flexDirection="row" flexWrap="wrap" columnGap={space.outer} marginTop={marginTop} paddingRight={chips.length > 0 ? 1 : 0}>{segs}</Box>
+    ) : (
+      <Box key={key} flexDirection="row" alignItems="center" columnGap={space.outer} marginTop={marginTop}>
+        <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} columnGap={space.outer}>{segs}</Box>
+        {chip}
+      </Box>
+    )
+  const lineGap = onDesktop ? DESKTOP_LINE_GAP : 0
+  const rows = [row('line1', line1, chips[0], 0), row('line2', line2, chips[1], lineGap)]
+  if (chips.length > 2) rows.push(<Box key="chips" flexDirection="row" justifyContent="flex-end" marginTop={lineGap}>{chips.slice(2)}</Box>)
+  return rows
 }
 
 // The gaps, in character cells: between a segment's items (`inner`) and

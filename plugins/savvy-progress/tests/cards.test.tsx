@@ -185,7 +185,7 @@ test('the band calls the roll: totals of the agents at work together', async ($,
   await $.tool.call({ tool: 'Read', agentId: 'a1', file_path: '/x/a.md' } as never)
   for (const surface of ['terminal', 'desktop'] as const) {
     const drawn = await (await $.ui.mount({ plugin: 'savvy-progress', surface, component: 'AbovePrompt', props: BAND } as never)).drawn()
-    expect(textOf(drawn)).toMatch(/2 running · 1 tool · /)
+    expect(textOf(drawn)).toMatch(/2running1tool\d+s\$0\.00✕$/)
   }
 })
 

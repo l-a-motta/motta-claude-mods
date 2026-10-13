@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { bandShare, liftBeside } from '../hooks/register.tsx'
+import { bandShare, chipsOf, liftBeside } from '../hooks/register.tsx'
 import { answerSession, BAND_PROPS } from './session.tsx'
 
 describe('bandShare', () => {
@@ -23,15 +23,19 @@ async function desktopBand($: Parameters<TestBody>[0]) {
 
 type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
 
-test("draws prompt-enhancer's chip at the right of its lines on the desktop", async ($, on) => {
+// The chips a line ends with, by key.
+const chipKeys = (root: Node) => root.children?.map(row => (row.children?.length === 2 ? row.children[1]?.props?.key : undefined))
+
+test("seats the chips one to a line, at its right end, on the desktop", async ($, on) => {
   answerSession(on, null, 'chip')
   const band = await desktopBand($)
   expect(await band.find({ key: 'folder' })).toBeDefined()
   expect(await band.find({ key: 'enhance' })).toBeDefined()
 
   const root = (await band.drawn()) as Node
-  expect(root.props?.flexDirection).toBe('row')
-  expect(root.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+  expect(root.props?.flexDirection).toBe('column')
+  expect(root.children?.map(c => c.props?.key)).toEqual(['line1', 'line2'])
+  expect(chipKeys(root)).toEqual(['enhance-chip', 'cache-chip'])
 })
 
 test("draws prompt-enhancer's card under its lines", async ($, on) => {
@@ -49,10 +53,20 @@ test("lifts the chips a card holds back to the right of its lines, the card unde
   answerSession(on, null, 'card-with-chips')
   const root = (await (await desktopBand($)).drawn()) as Node
   const [top, card] = root.children ?? []
-  expect(top?.props?.flexDirection).toBe('row')
-  expect(top?.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
+  expect(top?.children?.map(c => c.props?.key)).toEqual(['line1', 'line2'])
+  expect(JSON.stringify(top?.children?.[0])).toContain('"enhance"')
   expect(card?.props?.key).toBe('band-under:savvy-progress')
   expect(card?.children?.map(c => c.props?.key)).toEqual(['savvy-card'])
+})
+
+describe('chipsOf', () => {
+  test('flattens nested chip columns into their chips, in order', () => {
+    const a = { type: 'Box', props: { key: 'a' } }
+    const b = { type: 'Box', props: { key: 'b' } }
+    const column = { type: 'Box', props: { key: 'band-beside:x' }, children: [a, { type: 'Box', props: { key: 'band-beside:y' }, children: [b] }] }
+    expect(chipsOf(column as never)).toEqual([a, b])
+    expect(chipsOf(a as never)).toEqual([a])
+  })
 })
 
 describe('liftBeside', () => {

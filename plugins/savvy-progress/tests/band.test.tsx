@@ -26,6 +26,22 @@ function engine(on: On, beneath: () => unknown = () => ({ type: 'engine', ref: 1
 const band = ($: $, surface: 'terminal' | 'desktop' = 'terminal', props: Partial<typeof BAND_PROPS> = {}) =>
   $.ui.mount({ plugin: 'savvy-progress', surface, component: 'AbovePrompt', props: { ...BAND_PROPS, ...props } } as never)
 
+// The band's words in order, a space between each Text and Button: the roll
+// call draws each figure and its word apart.
+const words = async (drawing: { drawn: () => Promise<unknown> }): Promise<string> => {
+  const out: string[] = []
+  const walk = (node: unknown) => {
+    if (typeof node === 'string' || typeof node === 'number') return void out.push(String(node))
+    if (!node || typeof node !== 'object') return
+    const n = node as { type?: string; props?: { label?: string }; children?: unknown[] }
+    if (n.type === 'Button') return void out.push(n.props?.label ?? '')
+    if (n.type === 'Text' && (n.children ?? []).every(c => typeof c === 'string' || typeof c === 'number')) return void out.push((n.children ?? []).join(''))
+    for (const c of n.children ?? []) walk(c)
+  }
+  walk(await drawing.drawn())
+  return out.join(' ').replace(/\s+/g, ' ')
+}
+
 const isLeft = async ($: $, props: Partial<typeof BAND_PROPS> = {}) =>
   ((await (await band($, 'terminal', props)).drawn()) as Node).type === 'engine'
 
@@ -88,11 +104,11 @@ test('agents working together share one roll call, which leaves once they are al
   await spawn($, 't2', 'Count tests')
   let drawing = await band($)
   expect(((await drawing.drawn()) as Node).props?.key).toBe('band-under:savvy-progress')
-  expect(await drawing.find({ type: 'Text', text: /^2 running · / } as never)).toBeDefined()
+  expect(await words(drawing)).toMatch(/^agents [▣ ]+ 2 running /)
 
   await finish($, 'a1')
   drawing = await band($)
-  expect(await drawing.find({ type: 'Text', text: /^1 running · / } as never)).toBeDefined()
+  expect(await words(drawing)).toMatch(/ 1 running /)
 
   await finish($, 'a2')
   expect(await isLeft($)).toBe(true)
@@ -113,14 +129,14 @@ test("with an agent's transcript open, the band names that agent alone, done or 
   await spawn($, 't1', 'Map the repo')
   await spawn($, 't2', 'Count tests')
   const drawing = await band($, 'terminal', { view: { agentId: 'a2' } })
-  expect(await drawing.find({ type: 'Text', text: /^Count tests · 1 running · / } as never)).toBeDefined()
-  expect(await drawing.find({ type: 'Text', text: /Map the repo/ } as never)).toBeUndefined()
+  expect(await words(drawing)).toMatch(/ Count tests 1 running /)
+  expect(await words(drawing)).not.toMatch(/Map the repo/)
 
   await $.tool.call({ tool: 'mcp__savvy-progress__step', agentId: 'a2', done: 1, total: 4 } as never)
-  expect(await (await band($, 'terminal', { view: { agentId: 'a2' } })).find({ type: 'Text', text: /^Count tests · 1\/4 · / } as never)).toBeDefined()
+  expect(await words(await band($, 'terminal', { view: { agentId: 'a2' } }))).toMatch(/ Count tests 1\/4 steps 1 running /)
 
   await finish($, 'a2')
-  expect(await (await band($, 'terminal', { view: { agentId: 'a2' } })).find({ type: 'Text', text: /^Count tests · 1\/4 · Done · / } as never)).toBeDefined()
+  expect(await words(await band($, 'terminal', { view: { agentId: 'a2' } }))).toMatch(/ Count tests 1\/4 steps done /)
 })
 
 test('the ✕ hides the bar until the next batch', async ($, on) => {
@@ -133,7 +149,7 @@ test('the ✕ hides the bar until the next batch', async ($, on) => {
   await finish($, 'a1')
   await clock.advance(1_000)
   await spawn($, 't2', 'Next one')
-  expect(await (await band($)).find({ type: 'Text', text: /^Next one · / } as never)).toBeDefined()
+  expect(await words(await band($))).toMatch(/ Next one 1 running /)
 })
 
 test('under a status line beneath, the card goes under its lines, on each surface', async ($, on) => {
