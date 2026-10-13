@@ -1,9 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CLEAN_RULES, cleanPrompt, excerpt, expandPrompt, formatUsage, missingTokens, protectedTokens } from '../hooks/register.tsx'
+import { BUDGET, CLEAN_RULES, cleanPrompt, countNodes, enhancerPane, excerpt, expandPrompt, fit, formatUsage, missingTokens, protectedTokens, TOP_LEVEL } from '../hooks/register.tsx'
+import type { PaneView } from '../hooks/register.tsx'
 import { BAND, CLEANED, command, DRAFT, EXPANDED, PANE, START, world } from './world.tsx'
 
 type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
+
+// A drawn tree as text: a card line's pieces are nested Text, so each Text
+// joins its children into one line, and the lines go one per row.
+const textOf = (n: unknown): string =>
+  typeof n === 'string' || typeof n === 'number' ? String(n) : Array.isArray(n) ? n.map(textOf).join('') : n !== null && typeof n === 'object' ? ((n as Node).type === 'Text' ? textOf((n as Node).children ?? []) : ((n as Node).children ?? []).map(textOf).join('\n')) : ''
 
 describe('protectedTokens', () => {
   test('finds @mentions, /commands and code, not emails or path segments', () => {
@@ -189,6 +195,7 @@ test('a failed call shows why, and Retry runs the same option again', async ($, 
   await band.press({ key: 'enhance' })
   await pane.press({ key: 'clean' })
   expect(await pane.find({ text: /Could not enhance: the API answered 529 \(overloaded\)/ })).toBeDefined()
+  expect(textOf(await pane.drawn())).toContain('On haiku · a new model call')
   await pane.press({ key: 'retry-failed' })
   expect(seen.completed.map(c => c.model)).toEqual(['haiku', 'haiku'])
   expect(await pane.find({ text: CLEANED })).toBeDefined()
@@ -203,6 +210,73 @@ test('the result names a mention it dropped', async ($, on) => {
   await pane.press({ key: 'clean' })
   expect(await pane.find({ text: /Changed or dropped: @tests\/checkout\.spec\.ts/ })).toBeDefined()
 })
+
+for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+  test(`each button and the result carry a hover card, none on a phone (${surface})`, async ($, on) => {
+    world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    const pane = await $.ui.mount({ ...PANE, surface })
+    const drawn = async () => textOf(await pane.drawn())
+    const has = surface !== 'mobile'
+
+    await band.press({ key: 'enhance' })
+    expect(await pane.find({ key: 'tip:clean' })).toBeDefined()
+    expect(await pane.find({ key: 'clean' })).toBeDefined()
+    expect((await drawn()).includes('haiku · effort low · no conversation')).toBe(has)
+    expect((await drawn()).includes('Session model: a fork of this conversation')).toBe(has)
+    expect((await drawn()).includes('Your draft stays in the prompt box')).toBe(has)
+    // The hotkey is a chip; the tone is a bar on a desktop, the border in a terminal.
+    const raw = JSON.stringify(await pane.drawn())
+    expect(raw.includes('" c "') && raw.includes('"backgroundColor":"#ffffff1f"')).toBe(has)
+    expect(raw.includes('"width":0.25,"backgroundColor":"#8db4f0"')).toBe(surface === 'desktop')
+    expect(raw.includes('"borderColor":"#ef8a80"')).toBe(surface === 'terminal')
+
+    await pane.press({ key: 'clean' })
+    const after = await drawn()
+    expect(after.includes('Replaces the prompt box text with this')).toBe(has)
+    expect(after.includes('Clears your draft from the prompt box first')).toBe(has)
+    expect(after.includes('Runs Cleaned up again on the draft')).toBe(has)
+    expect(after.includes('1,200 tokens in · 300 out')).toBe(has)
+    expect(after.includes('1,000 cached (83%) · 200 uncached')).toBe(has)
+    expect(after.includes('Draft from the prompt box')).toBe(has)
+    expect(after.includes('1 of 1 not kept verbatim (✗)')).toBe(has)
+    expect(after.includes('✗ @tests/checkout.spec.ts')).toBe(has)
+  })
+}
+
+test('a named Expanded model and the warning list show in their cards', { options: { model: 'sonnet', effort: 'high' } }, async ($, on) => {
+  world(on, { replies: ['Run pnpm test.'] })
+  await $.session.start(START)
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.command.run(command('see @a.ts and run /review with `pnpm test`'))
+  const choosing = textOf(await pane.drawn())
+  expect(choosing).toContain('sonnet · effort high')
+  expect(choosing).toContain('Sent the last 12 messages as an excerpt')
+  expect(choosing).toContain('Up to 10k chars, 1.2k per message')
+  expect(choosing).toContain('Nothing is sent')
+  await pane.press({ key: 'expand' })
+  const after = textOf(await pane.drawn())
+  expect(after).toContain('✗ @a.ts · ✗ /review · ✓ `pnpm test`')
+  expect(after).toContain('Draft from /enhance')
+  expect(after).toContain('Leaves the prompt box as is')
+})
+
+// A dock has room below its last row, so the choice's cards open into it;
+// an inline frame fits the tree, so they open upward over the draft.
+for (const placement of ['dock', 'inline'] as const) {
+  test(`the choice's cards open ${placement === 'dock' ? 'downward' : 'upward'} in ${placement === 'dock' ? 'a dock' : 'an inline pane'}`, async ($, on) => {
+    world(on)
+    await $.session.start(START)
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, placement } })
+    await $.command.run(command(DRAFT))
+    const drawn = JSON.stringify(await pane.drawn())
+    expect(textOf(await pane.drawn())).toContain('Cleans up the draft, one model call  c ')
+    // One row clear of the button row, either way.
+    expect(drawn.includes('"bottom":2')).toBe(placement === 'inline')
+    expect(drawn.includes('"top":2')).toBe(placement === 'dock')
+  })
+}
 
 test('the chip shows during a turn, and stays out of a survey', async ($, on) => {
   world(on)
@@ -264,3 +338,58 @@ for (const hasStatusLine of [false, true]) {
     if (hasStatusLine) expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
   })
 }
+
+// The element budget. This pane is small (under 200 elements), so it never
+// reaches BUDGET itself: the ladder is shown with a lower budget, drawing the
+// result straight from enhancerPane with a plain table.
+describe('the element budget', () => {
+  const table = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const view = (surface: 'desktop' | 'terminal'): PaneView => ({
+    surface,
+    columns: 60,
+    now: 'result',
+    current: { original: DRAFT, via: 'box', kind: 'clean' },
+    hasBox: true,
+    label: 'haiku',
+    failed: null,
+    text: 'Fix the checkout test.',
+    spent: { input: 1200, output: 300, cached: 1000 },
+    fromBox: true,
+  })
+
+  test('info cards go first, then every card; the terminal keeps them all', async $ => {
+    const draw = (surface: 'desktop' | 'terminal') => (level: number) => enhancerPane($, table, view(surface), level)
+    const counts = [0, 1, 2].map(level => countNodes(draw('desktop')(level)))
+    expect(counts[0]).toBeGreaterThan(counts[1])
+    expect(counts[1]).toBeGreaterThan(counts[2])
+    // Between level 1 and level 0: the result's and the header's info cards
+    // go, the buttons' cards stay.
+    const one = JSON.stringify(fit('desktop', TOP_LEVEL, draw('desktop'), counts[1]))
+    expect(one).not.toContain('not kept verbatim')
+    expect(one).not.toContain('Draft from the prompt box')
+    expect(one).not.toContain('"scope":"usage"')
+    expect(one).toContain('Replaces the prompt box text with this')
+    expect(one).toContain('Drops this result and closes the pane')
+    // Under level 1: no card, and no host lit for one.
+    const two = JSON.stringify(fit('desktop', TOP_LEVEL, draw('desktop'), counts[2]))
+    expect(two).not.toContain('Replaces the prompt box text with this')
+    expect(two).not.toContain('#ffffff10')
+    expect(two).toContain('Changed or dropped: ')
+    // The terminal has no limit.
+    const terminal = JSON.stringify(fit('terminal', TOP_LEVEL, draw('terminal'), 1))
+    expect(terminal).toContain('not kept verbatim')
+    expect(terminal).toContain('Replaces the prompt box text with this')
+  })
+
+  test('the mounted desktop pane stays under the budget with every card', async ($, on) => {
+    world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await band.press({ key: 'enhance' })
+    await pane.press({ key: 'clean' })
+    const drawn = await pane.drawn()
+    expect(countNodes(drawn)).toBeLessThanOrEqual(BUDGET)
+    expect(textOf(drawn)).toContain('1 of 1 not kept verbatim (✗)')
+  })
+})
