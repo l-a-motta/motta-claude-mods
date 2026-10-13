@@ -60,7 +60,7 @@ const PILL_L = '\u{e0b6}'
 const PILL_R = '\u{e0b4}'
 const OUTSIDE_VERB: Record<string, string> = { read: 'read', change: 'changed' }
 const ACTIVITY_CYCLE = ['reads and writes', 'writes', 'reads', 'none']
-const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'shows reads + writes', writes: 'shows writes only', reads: 'shows reads only', none: 'shows no activity' }
+const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'reads + writes', writes: 'writes only', reads: 'reads only', none: 'none' }
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
 const THEME_POLL_MS = 2000
 const FONT_SCRIPT =
@@ -337,7 +337,7 @@ async function reset($: EngineInterface, root: string, focus = false): Promise<v
   searchIndex = null
   sizeEpoch += 1
   sizeQueue = []
-  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, overrides: prev.overrides }))
+  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, showSettings: prev.showSettings, overrides: prev.overrides }))
   const title = `Files: ${root.split('/').pop() || root}`
   if (focus) await $.ui.open({ id: PANE, title, focus: true })
   else if (!noDock) await $.ui.open({ id: PANE, title })
@@ -1451,7 +1451,6 @@ export const register: Register = (on, options) => {
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
     // The list, its header and a rule above it.
     const stripRows = strip.length ? strip.length + 2 + (away.length > strip.length ? 1 : 0) : 0
-    const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
     // Git marks are tags: the letter (and a folder's count) on a fill of its own color.
     // What Claude did is a pill beside the name: rounded ends where a Nerd Font draws
     // them, else a faint fill hugging the word. Git marks are a dot and the letter.
@@ -1484,7 +1483,7 @@ export const register: Register = (on, options) => {
       const verb = isBright ? (t.flashVerbs[n.id] ?? '') : ''
       const iconColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : n.kind === 'dir' ? theme.accent : theme.muted))
       const nameColor = isIgnored ? VSCODE.ignored : (gitColor ?? (n.hidden ? theme.muted : theme.fg || undefined))
-      const loc = t.diff[n.id]
+      const loc = n.kind === 'dir' ? undefined : t.diff[n.id]
       const meta = verb
         ? ''
         : t.showSize
@@ -1635,9 +1634,10 @@ export const register: Register = (on, options) => {
       },
     ]
     const keyRows = 2 + keySections.reduce((n, s) => n + 1 + Math.ceil(s.items.length / keyCols), 0)
-    // Rows above and below the tree: breadcrumb, buttons, setting chips, search, the
-    // branch, the key when open, and the two labeled footer lines.
-    const fixed = 4 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.showKey ? keyRows : 0) + 3 + stripRows
+    // Rows above and below the tree: name, path, buttons and search between three
+    // rules, the settings and the key when open; below, a rule, the branch and the
+    // two labeled lines, and the outside list with its own rule.
+    const fixed = 11 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1726,14 +1726,12 @@ export const register: Register = (on, options) => {
           )}
           <Box flexGrow={1} />
           <Box flexDirection="row" flexShrink={0}>
-            {totals[0] > 0 && <Text color={VSCODE.linesAdded}>{` +${totals[0]}`}</Text>}
-            {totals[1] > 0 && <Text color={VSCODE.linesRemoved}>{` -${totals[1]}`}</Text>}
             {rootCounts.map(c => (
               <Text color={c.c} backgroundColor={c.bg}>
                 {c.t}
               </Text>
             ))}
-            {rootCounts.length === 0 && totals[0] === 0 && totals[1] === 0 && <Text color={theme.muted}> clean</Text>}
+            {rootCounts.length === 0 && <Text color={theme.muted}> clean</Text>}
           </Box>
         </Box>
       )
@@ -1755,8 +1753,9 @@ export const register: Register = (on, options) => {
       )
     }
 
-    // The root as a breadcrumb: every folder above it moves the tree there, pinned.
-    // As many as fit beside the follow badge are drawn, the nearest kept.
+    // The root's name on its own line, the folders above it dim on the next, each one
+    // a button that moves the tree there, pinned. A long path keeps its first two and
+    // as many of its last as fit, with … between.
     const crumbParts = t.root.split('/')
     const trail: { name: string; path: string }[] = []
     for (let i = 0; i < crumbParts.length; i++) {
@@ -1766,15 +1765,35 @@ export const register: Register = (on, options) => {
       trail.push({ name: path === home ? '~' : i === 0 ? crumbParts[0] || '/' : (crumbParts[i] ?? ''), path })
     }
     const here = trail.pop() ?? { name: t.root, path: t.root }
-    const above: typeof trail = []
-    let crumbRoom = width - here.name.length - 18
-    for (let i = trail.length - 1; i >= 0; i--) {
-      const c = trail[i]
-      if (!c || c.name.length + 3 > crumbRoom) break
-      crumbRoom -= c.name.length + 3
-      above.unshift(c)
+    const pathRoom = width - 4
+    const pathCost = (list: typeof trail) => list.reduce((n, c) => n + c.name.length + 3, 0)
+    let pathHead = trail
+    let pathTail: typeof trail = []
+    if (pathCost(trail) > pathRoom) {
+      pathHead = trail.slice(0, Math.min(2, trail.length))
+      for (let i = trail.length - 1; i >= pathHead.length; i--) {
+        const c = trail[i]
+        if (!c || pathCost(pathHead) + pathCost(pathTail) + c.name.length + 7 > pathRoom) break
+        pathTail.unshift(c)
+      }
     }
-    const cut = above.length < trail.length
+    const elided = pathHead.length + pathTail.length < trail.length
+    const crumb = (c: { name: string; path: string }) => (
+      <Button
+        key={`crumb:${c.path}`}
+        plain
+        dimColor
+        label={c.name}
+        onPress={() =>
+          void (async () => {
+            follow = false
+            await reset($, c.path)
+          })()
+        }
+      />
+    )
+    const sep = <Text color={theme.muted}>{' › '}</Text>
+    const pathLine = [...pathHead.map(crumb), ...(elided ? [<Text color={theme.muted}>…</Text>] : []), ...pathTail.map(crumb)].flatMap((el, i) => (i ? [sep, el] : [el]))
     const pin = () =>
       void (async () => {
         if (follow) {
@@ -1789,39 +1808,33 @@ export const register: Register = (on, options) => {
     const openChoices = ['preview', 'app', ...(base.open.trim() && !['preview', 'app'].includes(base.open.trim()) ? [base.open] : [])]
     const openLabel = opens === 'preview' ? 'preview' : !opens || opens === 'app' ? 'default app' : opens.split(/\s+/)[0]
     const activityNow = ACTIVITY_CYCLE.find(a => a.includes('reads') === showReads && a.includes('writes') === showWrites) ?? 'none'
+    const settingRow = (label: string, control: ReturnType<typeof crumb>) => (
+      <Box flexDirection="row">
+        <Box width={17} flexShrink={0}>
+          <Text color={theme.muted}>{label}</Text>
+        </Box>
+        {control}
+      </Box>
+    )
 
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
-          <Box flexDirection="row" flexShrink={1} overflow="hidden">
-            {cut && <Text color={theme.muted}>{'… › '}</Text>}
-            {above.flatMap(c => [
-              <Button
-                key={`crumb:${c.path}`}
-                plain
-                dimColor
-                label={c.name}
-                onPress={() =>
-                  void (async () => {
-                    follow = false
-                    await reset($, c.path)
-                  })()
-                }
-              />,
-              <Text color={theme.muted}>{' › '}</Text>,
-            ])}
-            <Text bold color={theme.accent} wrap="truncate-start">
+          <Box flexShrink={1} overflow="hidden">
+            <Text bold color={theme.accent} wrap="truncate-end">
               {here.name}
             </Text>
           </Box>
           <Box flexGrow={1} />
-          <Button key="pin" plain onPress={pin}>
-            <Text color={follow ? TONES.commit?.solid : FAR_TONES.change?.solid}>● </Text>
-            {follow ? 'following cwd' : 'pinned'}
-          </Button>
+          <Text color={follow ? TONES.commit?.solid : FAR_TONES.change?.solid}>●</Text>
+          <Button key="pin" plain label={follow ? 'following cwd' : 'pinned'} onPress={pin} />
           <Text> </Text>
         </Box>
-        <Box flexDirection="row" flexWrap="wrap" gap={1}>
+        <Box flexDirection="row" overflow="hidden">
+          {pathLine}
+        </Box>
+        {rule}
+        <Box flexDirection="row" gap={1}>
           <Button
             key="up"
             plain
@@ -1873,38 +1886,37 @@ export const register: Register = (on, options) => {
           />
           <Button key="size" plain dimColor={!t.showSize} label={`${unicode ? 'Σ' : '\u{f02ca}'} sizes ${t.showSize ? 'on' : 'off'}`} onPress={() => void patch($, cur => ({ showSize: !cur.showSize }))} />
           <Button key="collapse" plain dimColor label={unicode ? '⊟' : '\u{eac5}'} onPress={() => void patch($, cur => ({ expanded: [], nodes: dropBelow(cur.nodes, cur.nodes.filter(x => x.parent === cur.root && x.kind === 'dir').map(x => x.id)) }))} />
-          <Button key="key" plain dimColor={!t.showKey} label={`? key ${t.showKey ? 'on' : 'off'}`} onPress={() => void patch($, cur => ({ showKey: !cur.showKey }))} />
-        </Box>
-        <Box flexDirection="row" flexWrap="wrap" gap={1}>
-          <Button key="chip-follow" label={followClaude ? 'scrolls to Claude' : 'stays where you scroll'} onPress={() => void override($, { followClaude: !followClaude })} />
+          <Button key="key" plain dimColor={!t.showKey} label="? key" onPress={() => void patch($, cur => ({ showKey: !cur.showKey }))} />
+          <Box flexGrow={1} />
           <Button
-            key="chip-activity"
-            label={ACTIVITY_CHIP[activityNow] ?? activityNow}
-            onPress={() => void override($, { activity: ACTIVITY_CYCLE[(ACTIVITY_CYCLE.indexOf(activityNow) + 1) % ACTIVITY_CYCLE.length] ?? 'reads and writes' })}
-          />
-          <Button
-            key="chip-open"
-            label={`opens: ${openLabel}`}
-            onPress={() => void override($, { open: openChoices[(Math.max(0, openChoices.indexOf(opens || 'app')) + 1) % openChoices.length] ?? 'preview' })}
+            key="settings"
+            plain
+            dimColor={!t.showSettings}
+            label={`${unicode ? '⚙' : '\u{f013}'} settings ${t.showSettings ? '▾' : '▸'}`}
+            onPress={() => void patch($, cur => ({ showSettings: !cur.showSettings }))}
           />
         </Box>
-        {branchRow()}
-        {!t.top && <Text color={theme.muted}>{unicode ? '± ' : '\u{e702} '}no git repo · git status starts after git init</Text>}
-        <Box flexDirection="row">
-          <Box flexGrow={1}>
-            <Input
-              key="q"
-              label="/ "
-              placeholder="search"
-              submitLabel="jump"
-              autoFocus
-              value={t.query}
-              onInput={(v: string) => void search($, v)}
-              onSubmit={(v: string) => void jump($, v)}
-            />
+        {t.showSettings && (
+          <Box flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
+            {settingRow('Follow Claude', <Button key="chip-follow" label={followClaude ? 'scrolls to it' : 'stays put'} onPress={() => void override($, { followClaude: !followClaude })} />)}
+            {settingRow(
+              'Claude activity',
+              <Button
+                key="chip-activity"
+                label={ACTIVITY_CHIP[activityNow] ?? activityNow}
+                onPress={() => void override($, { activity: ACTIVITY_CYCLE[(ACTIVITY_CYCLE.indexOf(activityNow) + 1) % ACTIVITY_CYCLE.length] ?? 'reads and writes' })}
+              />,
+            )}
+            {settingRow(
+              'Double-click',
+              <Button
+                key="chip-open"
+                label={openLabel}
+                onPress={() => void override($, { open: openChoices[(Math.max(0, openChoices.indexOf(opens || 'app')) + 1) % openChoices.length] ?? 'preview' })}
+              />,
+            )}
           </Box>
-          {t.query ? <Button key="clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void search($, '')} /> : null}
-        </Box>
+        )}
         {t.showKey && (
           <Box flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
             {keySections.map(s => (
@@ -1926,6 +1938,23 @@ export const register: Register = (on, options) => {
             ))}
           </Box>
         )}
+        {rule}
+        <Box flexDirection="row">
+          <Box flexGrow={1}>
+            <Input
+              key="q"
+              label="/ "
+              placeholder="search"
+              submitLabel="jump"
+              autoFocus
+              value={t.query}
+              onInput={(v: string) => void search($, v)}
+              onSubmit={(v: string) => void jump($, v)}
+            />
+          </Box>
+          {t.query ? <Button key="clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void search($, '')} /> : null}
+        </Box>
+        {rule}
         <Client
           key="rows"
           module="./rows.tsx"
@@ -1953,6 +1982,8 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         {rule}
+        {branchRow()}
+        {!t.top && <Text color={theme.muted}>{unicode ? '± ' : '\u{e702} '}no git repo · git status starts after git init</Text>}
         {/* Always drawn, so what each line is for shows before it holds anything. */}
         <Box flexDirection="row">
           <Text color={theme.muted}>sent with your prompts </Text>
