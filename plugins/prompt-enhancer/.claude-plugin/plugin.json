@@ -1,6 +1,6 @@
 {
   "name": "prompt-enhancer",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that opens an Enhance pane and rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it; the band holds the chip alone.",
   "author": {
     "name": "l-a-motta"
