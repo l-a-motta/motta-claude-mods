@@ -7,15 +7,6 @@ import type { TestBody } from 'claude-code/testing'
 
 export const START = { cwd: 'C:/repo', surface: 'terminal' as const, isInteractive: true }
 
-export const BAND = {
-  hasSurvey: false,
-  isWorking: false,
-  maxRows: 40,
-  bodyColumns: 100,
-  scroll: { offset: 0, bodyRows: 39 },
-  view: {},
-}
-
 // The Enhance pane, mounted as a surface draws it.
 export const PANE = {
   plugin: 'prompt-enhancer',
@@ -51,23 +42,10 @@ export const MESSAGES = [
 const USAGE = { input_tokens: 200, output_tokens: 300, cache_read_input_tokens: 1_000, cache_creation_input_tokens: 0 }
 
 type Setup = {
-  box?: string
   hasComposer?: boolean
   canFork?: boolean
   // Each model call takes the next one: a reply's text, or `fail` for a 529.
   replies?: string[]
-  // A plugin beneath drawing in the band: motta-statusline's lines, as it
-  // draws them on the desktop, unkeyed.
-  hasStatusLine?: boolean
-  // A card beneath that shares the band (`band-under:`), as savvy-progress's bar.
-  hasCard?: boolean
-  // cache-warmer's chip column beneath, alone or at the right of the status
-  // line's lines.
-  hasWarmChip?: boolean
-  // The status line's lines as it draws them now: keyed `band-lines:`, each
-  // line ending in a chip slot, cache-warmer's chip in the first when
-  // hasWarmChip.
-  hasSlots?: boolean
 }
 
 export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
@@ -91,60 +69,8 @@ export function world(on: Parameters<TestBody>[1], setup: Setup = {}) {
   }
 
   const clock = mock.clock(on)
-  // The engine's own band, empty: the opaque reference it hands back.
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    if (setup.hasCard) {
-      return (
-        <Box key="band-under:savvy-progress" flexDirection="column">
-          <Text>Subagents 2/2</Text>
-        </Box>
-      )
-    }
-    const warm = (
-      <Box key="band-beside:cache-warmer" flexDirection="column" alignItems="flex-end">
-        <Box flexDirection="row">
-          <Text>🔥 42m</Text>
-        </Box>
-      </Box>
-    )
-    const lines = (
-      <Box flexDirection="column" paddingX={1} flexGrow={1}>
-        <Text>📁 motta-claude-mods 🌿 main</Text>
-        <Text>CTX 36% 360k/1M</Text>
-      </Box>
-    )
-    if (setup.hasSlots) {
-      return (
-        <Box key="band-lines:motta-statusline" flexDirection="column" paddingX={1}>
-          <Box key="line1" flexDirection="row" flexWrap="wrap">
-            <Text>📁 motta-claude-mods 🌿 main</Text>
-            <Box key="band-slot:1" flexDirection="row" flexGrow={1} justifyContent="flex-end">
-              {setup.hasWarmChip ? [<Box key="warm-chip" flexDirection="row"><Text>🔥 42m</Text></Box>] : []}
-            </Box>
-          </Box>
-          <Box key="line2" flexDirection="row" flexWrap="wrap">
-            <Text>CTX 36% 360k/1M</Text>
-            <Box key="band-slot:2" flexDirection="row" flexGrow={1} justifyContent="flex-end" />
-          </Box>
-        </Box>
-      )
-    }
-    if (setup.hasWarmChip && setup.hasStatusLine) {
-      return (
-        <Box flexDirection="row">
-          {lines}
-          {warm}
-        </Box>
-      )
-    }
-    if (setup.hasWarmChip) return warm
-    if (!setup.hasStatusLine) return { type: 'engine', ref: 1 } as never
-    return lines
-  })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
-  on('prompt.read', () => ({ value: { text: hasComposer ? (setup.box ?? '') : '', cursor: 0 } }))
   on('prompt.fill', ($, e) => {
     if (!hasComposer) return { isFilled: false, refusal: 'no_composer' as const }
     seen.filled.push(e.text)

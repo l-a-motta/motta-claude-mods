@@ -1,7 +1,7 @@
 {
   "name": "prompt-enhancer",
-  "version": "0.5.0",
-  "description": "A ✦ enhance chip above the prompt, or /enhance <text>, that opens an Enhance pane and rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it; the band holds the chip alone.",
+  "version": "0.6.0",
+  "description": "/enhance <text> opens an Enhance pane that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it.",
   "author": {
     "name": "l-a-motta"
   },
@@ -34,12 +34,6 @@
         "xhigh",
         "max"
       ]
-    },
-    "chip": {
-      "type": "boolean",
-      "title": "Show the chip",
-      "description": "The ✦ enhance chip above the prompt. Off: /enhance only.",
-      "default": true
     }
   }
 }

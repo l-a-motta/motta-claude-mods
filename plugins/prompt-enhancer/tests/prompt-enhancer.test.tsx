@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { BUDGET, CLEAN_RULES, cleanPrompt, countNodes, enhancerPane, excerpt, expandPrompt, fit, formatUsage, missingTokens, protectedTokens, TOP_LEVEL } from '../hooks/register.tsx'
+import { BUDGET, CLEAN_RULES, cleanPrompt, countNodes, enhancerPane, excerpt, expandPrompt, fit, formatUsage, missingTokens, NO_CARDS, protectedTokens, TOP_LEVEL } from '../hooks/register.tsx'
 import type { PaneView } from '../hooks/register.tsx'
-import { BAND, CLEANED, command, DRAFT, EXPANDED, PANE, START, world } from './world.tsx'
+import { CLEANED, command, DRAFT, EXPANDED, PANE, START, world } from './world.tsx'
 
-type Node = { type?: string; props?: { key?: string; flexDirection?: string }; children?: Node[] }
+type Node = { type?: string; children?: Node[] }
 
 // A drawn tree as text: a card line's pieces are nested Text, so each Text
 // joins its children into one line, and the lines go one per row.
@@ -61,13 +61,13 @@ test('Expanded asks for the shortest prompt and carries the conversation', () =>
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`the chip opens the pane with both ways, and Cleaned up is one cheap call with no conversation (${surface})`, async ($, on) => {
-    const seen = world(on, { box: DRAFT, replies: [CLEANED] })
+  test(`/enhance opens the pane with both ways, and Cleaned up is one cheap call with no conversation (${surface})`, async ($, on) => {
+    const seen = world(on, { replies: [CLEANED] })
     await $.session.start(START)
-    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
     const pane = await $.ui.mount({ ...PANE, surface })
 
-    await band.press({ key: 'enhance' })
+    const ran = await $.command.run(command(DRAFT))
+    expect(ran.text).toBe('✦ Pick Cleaned up or Expanded in the Enhance pane.')
     expect(seen.opened).toEqual(['prompt-enhancer'])
     expect(await pane.find({ text: DRAFT })).toBeDefined()
     expect(await pane.find({ key: 'clean' })).toBeDefined()
@@ -81,9 +81,6 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.find({ text: CLEANED })).toBeDefined()
     expect(await pane.find({ text: 'Before' })).toBeDefined()
     expect(await pane.find({ text: /✦ Cleaned up/, type: 'Text' })).toBeDefined()
-    // The band keeps the chip alone the whole time.
-    expect(await band.find({ key: 'enhance' })).toBeDefined()
-    expect(await band.find({ key: 'use' })).toBeUndefined()
 
     await pane.press({ key: 'use' })
     expect(seen.filled.at(-1)).toBe(CLEANED)
@@ -91,12 +88,11 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 
   test(`Expanded is one call on the conversation's fork (${surface})`, async ($, on) => {
-    const seen = world(on, { box: DRAFT, replies: [EXPANDED] })
+    const seen = world(on, { replies: [EXPANDED] })
     await $.session.start(START)
-    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface, component: 'AbovePrompt', props: BAND })
     const pane = await $.ui.mount({ ...PANE, surface })
 
-    await band.press({ key: 'enhance' })
+    await $.command.run(command(DRAFT))
     await pane.press({ key: 'expand' })
     expect(seen.completed).toEqual([])
     expect(seen.forked).toHaveLength(1)
@@ -116,40 +112,33 @@ test('the cheap model is an option', { options: { cleanModel: 'claude-haiku-5-5'
   expect(seen.completed.map(c => c.model)).toEqual(['claude-haiku-5-5'])
 })
 
-test('Copy copies, Send sends and clears the box, Cancel closes the pane', async ($, on) => {
-  const seen = world(on, { box: DRAFT, replies: [CLEANED] })
+test('Copy copies, Send sends and leaves the box alone, Cancel closes the pane', async ($, on) => {
+  const seen = world(on, { replies: [CLEANED] })
   await $.session.start(START)
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
-  await band.press({ key: 'enhance' })
+  await $.command.run(command(DRAFT))
   await pane.press({ key: 'cancel' })
   expect(seen.closed).toEqual(['prompt-enhancer'])
   expect(await pane.find({ key: 'clean' })).toBeUndefined()
 
-  await band.press({ key: 'enhance' })
+  await $.command.run(command(DRAFT))
   await pane.press({ key: 'clean' })
   await pane.press({ key: 'copy' })
   expect(seen.copied).toEqual([CLEANED])
   await pane.press({ key: 'send' })
-  expect(seen.filled.at(-1)).toBe('')
+  expect(seen.filled).toEqual([])
   expect(seen.submitted).toEqual([CLEANED])
   expect(seen.closed).toEqual(['prompt-enhancer', 'prompt-enhancer'])
 })
 
 // The engine's own `no_composer` cannot be raised from a test: a hook's
 // refusal reaches the plugin without its cause, which the mod reads as
-// unknown, so the chip stays. /enhance works either way.
-test('an empty box, or a refusal of unknown cause, keeps the chip; /enhance still works', async ($, on) => {
+// unknown, so Use it stays and says the box did not take the text.
+test('where the box refuses the text, Use it says so and Send stays', async ($, on) => {
   const seen = world(on, { hasComposer: false, replies: [CLEANED] })
   await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
-
-  await band.press({ key: 'enhance' })
-  expect(seen.toasts.at(-1)).toBe('Write a prompt in the box first, then press ✦ enhance.')
-  expect(await band.find({ key: 'enhance' })).toBeDefined()
-  expect(seen.opened).toEqual([])
 
   const ran = await $.command.run(command(DRAFT))
   expect(ran.text).toContain('Pick Cleaned up or Expanded in the Enhance pane')
@@ -159,10 +148,11 @@ test('an empty box, or a refusal of unknown cause, keeps the chip; /enhance stil
   expect(await pane.find({ key: 'send' })).toBeDefined()
 })
 
-test('/enhance with nothing after it says how to use it', async ($, on) => {
-  world(on)
+test('/enhance with nothing after it says how to use it and opens nothing', async ($, on) => {
+  const seen = world(on)
   await $.session.start(START)
-  expect((await $.command.run(command('  '))).text).toContain('/enhance fix the flaky checkout test')
+  expect((await $.command.run(command('  '))).text).toBe('Put your prompt after the command: /enhance fix the flaky checkout test.')
+  expect(seen.opened).toEqual([])
 })
 
 test('a named Expanded model gets the conversation as an excerpt', { options: { model: 'sonnet', effort: 'low' } }, async ($, on) => {
@@ -186,60 +176,62 @@ test('with no conversation to fork yet, Expanded falls back to Sonnet', async ($
   expect(seen.completed[0]?.prompt).not.toContain('<conversation>')
 })
 
-test('a failed call shows why, and Retry runs the same option again', async ($, on) => {
-  const seen = world(on, { box: DRAFT, replies: ['fail', CLEANED] })
-  await $.session.start(START)
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a failed call shows why, and Retry runs the same option again (${surface})`, async ($, on) => {
+    const seen = world(on, { replies: ['fail', CLEANED] })
+    await $.session.start(START)
+    const pane = await $.ui.mount({ ...PANE, surface })
 
-  await band.press({ key: 'enhance' })
-  await pane.press({ key: 'clean' })
-  expect(await pane.find({ text: /Could not enhance: the API answered 529 \(overloaded\)/ })).toBeDefined()
-  expect(textOf(await pane.drawn())).toContain('On haiku · a new model call')
-  await pane.press({ key: 'retry-failed' })
-  expect(seen.completed.map(c => c.model)).toEqual(['haiku', 'haiku'])
-  expect(await pane.find({ text: CLEANED })).toBeDefined()
-})
+    await $.command.run(command(DRAFT))
+    await pane.press({ key: 'clean' })
+    expect(await pane.find({ text: /Could not enhance: the API answered 529 \(overloaded\)/ })).toBeDefined()
+    // Retry's card: on the desktop only, the terminal draws none.
+    expect(textOf(await pane.drawn()).includes('On haiku · a new model call')).toBe(surface === 'desktop')
+    await pane.press({ key: 'retry-failed' })
+    expect(seen.completed.map(c => c.model)).toEqual(['haiku', 'haiku'])
+    expect(await pane.find({ text: CLEANED })).toBeDefined()
+  })
+}
 
 test('the result names a mention it dropped', async ($, on) => {
-  world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
+  world(on, { replies: ['Fix the checkout test.'] })
   await $.session.start(START)
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await band.press({ key: 'enhance' })
+  await $.command.run(command(DRAFT))
   await pane.press({ key: 'clean' })
   expect(await pane.find({ text: /Changed or dropped: @tests\/checkout\.spec\.ts/ })).toBeDefined()
 })
 
 for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
-  test(`each button and the result carry a hover card, none on a phone (${surface})`, async ($, on) => {
-    world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
+  test(`each button and the result carry a hover card on the desktop, none in a terminal or on a phone (${surface})`, async ($, on) => {
+    world(on, { replies: ['Fix the checkout test.'] })
     await $.session.start(START)
-    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     const pane = await $.ui.mount({ ...PANE, surface })
     const drawn = async () => textOf(await pane.drawn())
-    const has = surface !== 'mobile'
+    const has = surface === 'desktop'
 
-    await band.press({ key: 'enhance' })
+    await $.command.run(command(DRAFT))
     expect(await pane.find({ key: 'tip:clean' })).toBeDefined()
     expect(await pane.find({ key: 'clean' })).toBeDefined()
     expect((await drawn()).includes('haiku · effort low · no conversation')).toBe(has)
     expect((await drawn()).includes('Session model: a fork of this conversation')).toBe(has)
-    expect((await drawn()).includes('Your draft stays in the prompt box')).toBe(has)
-    // The hotkey is a chip; the tone is a bar on a desktop, the border in a terminal.
+    expect((await drawn()).includes('Nothing is sent')).toBe(has)
+    // The hotkey is a chip; the tone is a bar. No card means no tone border,
+    // and in a dock no room kept under the last row for a card either.
     const raw = JSON.stringify(await pane.drawn())
     expect(raw.includes('" c "') && raw.includes('"backgroundColor":"#ffffff1f"')).toBe(has)
-    expect(raw.includes('"width":0.25,"backgroundColor":"#8db4f0"')).toBe(surface === 'desktop')
-    expect(raw.includes('"borderColor":"#ef8a80"')).toBe(surface === 'terminal')
+    expect(raw.includes('"width":0.25,"backgroundColor":"#8db4f0"')).toBe(has)
+    expect(raw.includes('"borderColor":"#ef8a80"')).toBe(false)
+    expect(raw.includes('"key":"tip-room"')).toBe(has)
 
     await pane.press({ key: 'clean' })
     const after = await drawn()
     expect(after.includes('Replaces the prompt box text with this')).toBe(has)
-    expect(after.includes('Clears your draft from the prompt box first')).toBe(has)
+    expect(after.includes('Leaves the prompt box as is')).toBe(has)
     expect(after.includes('Runs Cleaned up again on the draft')).toBe(has)
     expect(after.includes('1,200 tokens in · 300 out')).toBe(has)
     expect(after.includes('1,000 cached (83%) · 200 uncached')).toBe(has)
-    expect(after.includes('Draft from the prompt box')).toBe(has)
+    expect(after.includes('Draft from /enhance')).toBe(has)
     expect(after.includes('1 of 1 not kept verbatim (✗)')).toBe(has)
     expect(after.includes('✗ @tests/checkout.spec.ts')).toBe(has)
   })
@@ -248,7 +240,7 @@ for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
 test('a named Expanded model and the warning list show in their cards', { options: { model: 'sonnet', effort: 'high' } }, async ($, on) => {
   world(on, { replies: ['Run pnpm test.'] })
   await $.session.start(START)
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await $.command.run(command('see @a.ts and run /review with `pnpm test`'))
   const choosing = textOf(await pane.drawn())
   expect(choosing).toContain('sonnet · effort high')
@@ -263,80 +255,21 @@ test('a named Expanded model and the warning list show in their cards', { option
 })
 
 // A dock has room below its last row, so the choice's cards open into it;
-// an inline frame fits the tree, so they open upward over the draft.
+// an inline frame fits the tree, so they open upward over the draft. Cards
+// are the desktop's: the terminal draws none.
 for (const placement of ['dock', 'inline'] as const) {
   test(`the choice's cards open ${placement === 'dock' ? 'downward' : 'upward'} in ${placement === 'dock' ? 'a dock' : 'an inline pane'}`, async ($, on) => {
     world(on)
     await $.session.start(START)
-    const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, placement } })
+    const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, placement } })
     await $.command.run(command(DRAFT))
     const drawn = JSON.stringify(await pane.drawn())
     expect(textOf(await pane.drawn())).toContain('Cleans up the draft, one model call  c ')
-    // One row clear of the button row, either way.
-    expect(drawn.includes('"bottom":2')).toBe(placement === 'inline')
-    expect(drawn.includes('"top":2')).toBe(placement === 'dock')
-  })
-}
-
-test('the chip shows during a turn, and stays out of a survey', async ($, on) => {
-  world(on)
-  await $.session.start(START)
-  const working = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, isWorking: true } })
-  expect(await working.find({ key: 'enhance' })).toBeDefined()
-  const survey = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, hasSurvey: true } })
-  expect(await survey.find({ key: 'enhance' })).toBeUndefined()
-})
-
-test('above the status line on the desktop, the chip draws at the right of it, and nothing under it', async ($, on) => {
-  world(on, { box: DRAFT, hasStatusLine: true, replies: [CLEANED] })
-  await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
-
-  for (const step of ['idle', 'choosing', 'result']) {
-    if (step === 'choosing') await band.press({ key: 'enhance' })
-    if (step === 'result') await pane.press({ key: 'clean' })
-    expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
-    const drawn = (await band.drawn()) as Node
-    expect(drawn.props?.flexDirection).toBe('row')
-    expect(drawn.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
-  }
-})
-
-test('alone in the band, its tree carries the key motta-statusline reads, whatever the stage', async ($, on) => {
-  world(on, { box: DRAFT, replies: [CLEANED] })
-  await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
-  await band.press({ key: 'enhance' })
-  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
-  await pane.press({ key: 'clean' })
-  expect(((await band.drawn()) as Node).props?.key).toBe('band-beside:prompt-enhancer')
-})
-
-test('over a card that shares the band, the chip keeps it shared, so the status line stays', async ($, on) => {
-  world(on, { hasCard: true })
-  await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-  const drawn = (await band.drawn()) as Node
-  expect(drawn.props?.key).toBe('band-under:prompt-enhancer')
-  expect(await band.find({ text: 'Subagents 2/2' })).toBeDefined()
-  expect(drawn.children?.at(-1)?.props?.key).toBe('band-beside:prompt-enhancer')
-})
-
-for (const hasStatusLine of [false, true]) {
-  test(`over cache-warmer's chip, the chip goes on top of it in one column (status line: ${hasStatusLine})`, async ($, on) => {
-    world(on, { hasWarmChip: true, hasStatusLine })
-    await $.session.start({ ...START, surface: 'desktop' as const })
-    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-    const drawn = (await band.drawn()) as Node
-    const column = hasStatusLine ? drawn.children?.at(-1) : drawn
-    expect(column?.props?.key).toBe('band-beside:prompt-enhancer')
-    expect(JSON.stringify(column?.children?.[0])).toContain('enhance')
-    expect(JSON.stringify(column?.children?.[1])).toContain('🔥 42m')
-    expect(column?.children).toHaveLength(2)
-    if (hasStatusLine) expect(await band.find({ text: '📁 motta-claude-mods 🌿 main' })).toBeDefined()
+    // One row clear of the button row (a desktop button is 2 tall), either way.
+    expect(drawn.includes('"bottom":3')).toBe(placement === 'inline')
+    expect(drawn.includes('"top":3')).toBe(placement === 'dock')
+    // Only a dock keeps room under the last row for them.
+    expect(drawn.includes('"key":"tip-room"')).toBe(placement === 'dock')
   })
 }
 
@@ -349,16 +282,15 @@ describe('the element budget', () => {
     surface,
     columns: 60,
     now: 'result',
-    current: { original: DRAFT, via: 'box', kind: 'clean' },
+    current: { original: DRAFT, kind: 'clean' },
     hasBox: true,
     label: 'haiku',
     failed: null,
     text: 'Fix the checkout test.',
     spent: { input: 1200, output: 300, cached: 1000 },
-    fromBox: true,
   })
 
-  test('info cards go first, then every card; the terminal keeps them all', async $ => {
+  test('info cards go first, then every card; the terminal draws none', async $ => {
     const draw = (surface: 'desktop' | 'terminal') => (level: number) => enhancerPane($, table, view(surface), level)
     const counts = [0, 1, 2].map(level => countNodes(draw('desktop')(level)))
     expect(counts[0]).toBeGreaterThan(counts[1])
@@ -367,7 +299,7 @@ describe('the element budget', () => {
     // go, the buttons' cards stay.
     const one = JSON.stringify(fit('desktop', TOP_LEVEL, draw('desktop'), counts[1]))
     expect(one).not.toContain('not kept verbatim')
-    expect(one).not.toContain('Draft from the prompt box')
+    expect(one).not.toContain('Draft from /enhance')
     expect(one).not.toContain('"scope":"usage"')
     expect(one).toContain('Replaces the prompt box text with this')
     expect(one).toContain('Drops this result and closes the pane')
@@ -376,41 +308,22 @@ describe('the element budget', () => {
     expect(two).not.toContain('Replaces the prompt box text with this')
     expect(two).not.toContain('#ffffff10')
     expect(two).toContain('Changed or dropped: ')
-    // The terminal has no limit.
-    const terminal = JSON.stringify(fit('terminal', TOP_LEVEL, draw('terminal'), 1))
-    expect(terminal).toContain('not kept verbatim')
-    expect(terminal).toContain('Replaces the prompt box text with this')
+    // The terminal draws no card at all, however far under the budget.
+    const terminal = fit('terminal', TOP_LEVEL, draw('terminal'))
+    expect(countNodes(terminal)).toBe(countNodes(draw('terminal')(NO_CARDS)))
+    expect(JSON.stringify(terminal)).not.toContain('not kept verbatim')
+    expect(JSON.stringify(terminal)).not.toContain('Replaces the prompt box text with this')
+    expect(JSON.stringify(terminal)).toContain('Changed or dropped: ')
   })
 
   test('the mounted desktop pane stays under the budget with every card', async ($, on) => {
-    world(on, { box: DRAFT, replies: ['Fix the checkout test.'] })
+    world(on, { replies: ['Fix the checkout test.'] })
     await $.session.start(START)
-    const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    await band.press({ key: 'enhance' })
+    await $.command.run(command(DRAFT))
     await pane.press({ key: 'clean' })
     const drawn = await pane.drawn()
     expect(countNodes(drawn)).toBeLessThanOrEqual(BUDGET)
     expect(textOf(drawn)).toContain('1 of 1 not kept verbatim (✗)')
   })
-})
-
-test("over the status line's slots, the chip takes line 1's and moves cache-warmer's to line 2", async ($, on) => {
-  world(on, { hasWarmChip: true, hasSlots: true })
-  await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-  const drawn = (await band.drawn()) as Node
-  expect(drawn.props?.key).toBe('band-lines:motta-statusline')
-  const slot = (i: number) => JSON.stringify(drawn.children?.[i]?.children?.at(-1))
-  expect(slot(0)).toContain('enhance')
-  expect(slot(0)).not.toContain('🔥')
-  expect(slot(1)).toContain('🔥 42m')
-})
-
-test('a narrow band presses the ✦ alone', async ($, on) => {
-  world(on, { box: DRAFT })
-  await $.session.start({ ...START, surface: 'desktop' as const })
-  const band = await $.ui.mount({ plugin: 'prompt-enhancer', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 50 } })
-  expect((await band.find({ key: 'enhance' }))?.props.label).toBe('✦')
-  expect(await band.find({ type: 'Text', text: '✦' })).toBeUndefined()
 })

@@ -1,6 +1,4 @@
-// prompt-enhancer: rewrites the draft in your prompt box, one of two ways.
-//
-//   above the prompt, at the right of the status line:   ✦ enhance
+// prompt-enhancer: rewrites a draft prompt, one of two ways.
 //
 //   the Enhance pane:
 //   ✦ Expanded · session model · in 14.2k (13.9k cached) · out 210
@@ -10,9 +8,9 @@
 //   Fix the flaky test in @tests/checkout.spec.ts ...
 //   [ Use it ] [ Send ] [ Copy ]                       retry  discard
 //
-// Press the chip above the prompt, or run /enhance <text>: the Enhance pane
-// opens with the draft, and you pick one way; only that one is written, in
-// one model call:
+// It is opened by /enhance <text> only; nothing is drawn above the prompt.
+// The Enhance pane opens with the draft, and you pick one way; only that one
+// is written, in one model call:
 // - Cleaned up: a cheap model (the `cleanModel` option, haiku by default),
 //   no conversation, fixes typos, fillers ("uh", "ah"), other voice-to-text
 //   artifacts and punctuation, and leaves every other word, the wording, the
@@ -30,24 +28,16 @@
 // Sonnet with no conversation. Any other value (haiku, sonnet, opus, a full
 // id) runs $.model.complete with the last messages sent as an excerpt.
 //
-// The chip reads the box with $.prompt.read and "Use it" writes it with
-// $.prompt.fill. A surface that draws its own composer refuses with
-// `no_composer`: from then on the chip shows as a hint for /enhance, and the
-// card offers Send and Copy without "Use it".
+// "Use it" writes the prompt box with $.prompt.fill. A surface that draws
+// its own composer refuses with `no_composer`: from then on the card offers
+// Send and Copy without "Use it".
 //
 // Cancel drops the result: a completion is aborted; a fork cannot be, so its
 // late answer is ignored.
 //
-// The band holds the chip alone, during a turn too, so the status line
-// keeps its rows; the choice, the call and the result live in the pane. The
-// band is shared, and the hooks on it run in an order no mod picks, so the
-// chip goes in the band's chip column (withChip), keyed `band-beside:`:
-// beneath motta-statusline, the status line draws it at the right of its
-// lines; above it, this hook does the same with what the plugins beneath
-// drew; cache-warmer's chip stacks under it.
-// Under a survey nothing is drawn, so its number keys are the only ones.
-// Use it, Send, Cancel, Discard and Dismiss close the pane; closing it
-// yourself cancels the job.
+// The choice, the call and the result live in the pane. Use it, Send,
+// Cancel, Discard and Dismiss close the pane; closing it yourself cancels
+// the job.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -65,8 +55,6 @@ const EXCERPT_MESSAGES = 12
 const EXCERPT_MESSAGE_CHARS = 1_200
 const EXCERPT_CHARS = 10_000
 const PANE = 'prompt-enhancer'
-// Below this many cells the band draws compact, as motta-statusline's lines do.
-const COMPACT_BELOW = 80
 const PANE_TITLE = 'Enhance'
 // The hover cards' colors, as changes-drill draws them.
 const CARD = '#34332f'
@@ -119,7 +107,6 @@ function tokenPieces(draft: string, text: string): Piece[] {
     .split(' · ')
     .flatMap((entry, i): Piece[] => [...(i > 0 ? [SEP] : []), entry.startsWith('✗') ? { t: entry, s: 'bad' } : entry.startsWith('✓') ? { t: entry, s: 'good' } : entry])
 }
-const NO_BOX_TIP = 'This app does not let mods read your prompt box. Run /enhance followed by your prompt instead.'
 
 const phase = atom({ plugin: 'prompt-enhancer', key: 'phase' } as const, 'idle' as Phase)
 const job = atom({ plugin: 'prompt-enhancer', key: 'job' } as const, null as Job | null)
@@ -297,10 +284,10 @@ async function closePane($: EngineInterface) {
 }
 
 // The draft is in hand: offer the two ways, in the pane.
-async function offer($: EngineInterface, original: string, via: Job['via']) {
+async function offer($: EngineInterface, original: string) {
   ticket++
   await reset($)
-  await update($, job, () => ({ original, via, kind: null }))
+  await update($, job, () => ({ original, kind: null }))
   await update($, phase, () => 'choosing')
   await openPane($)
 }
@@ -347,22 +334,6 @@ async function cancel($: EngineInterface, isClosing = false) {
   if (!isClosing) await closePane($)
 }
 
-// The chip: offer what the box holds. An empty read is either an empty box or
-// a surface that binds none; one empty fill tells them apart, once.
-async function chip($: EngineInterface) {
-  const { text } = await $.prompt.read()
-  if (text.trim() !== '') {
-    await update($, boxAccess, () => 'yes')
-    return offer($, text, 'box')
-  }
-  if ((await read($, boxAccess)) === 'unknown') {
-    const probe = await $.prompt.fill({ text: '', mode: 'append' })
-    if (probe.refusal === 'no_composer') await update($, boxAccess, () => 'no')
-    else if (probe.isFilled) await update($, boxAccess, () => 'yes')
-  }
-  $.ui.toast((await read($, boxAccess)) === 'no' ? NO_BOX_TIP : 'Write a prompt in the box first, then press ✦ enhance.')
-}
-
 async function useIt($: EngineInterface, text: string) {
   const r = await $.prompt.fill({ text, mode: 'replace' })
   if (r.isFilled) {
@@ -380,11 +351,8 @@ async function useIt($: EngineInterface, text: string) {
 }
 
 async function send($: EngineInterface, text: string) {
-  const current = await read($, job)
   ticket++
   await reset($)
-  // The draft the chip read is still in the box: clear it.
-  if (current?.via === 'box' && (await read($, boxAccess)) === 'yes') await $.prompt.fill({ text: '', mode: 'replace' })
   await closePane($)
   void $.prompt.submit({ text })
 }
@@ -392,99 +360,6 @@ async function send($: EngineInterface, text: string) {
 async function copy($: EngineInterface, text: string, surface: RenderSurface) {
   const r = await $.ui.copy({ text, surface })
   $.ui.toast(r.isCopied ? 'Prompt copied.' : `Could not copy (${r.reason}).`)
-}
-
-// The band's chips. The hooks on the band run in an order no mod picks, so
-// each chip mod finds its place in whatever the plugins beneath drew:
-// - motta-statusline's lines (`band-lines:`) end each line with a slot
-//   (`band-slot:`), a growing box that holds its chip at the line's right end
-//   and wraps with the line on a narrow band. The chips are dealt out again,
-//   one to a line in order (this one first when `isFirst`), the extras with
-//   the last line's.
-// - else a chip column (`band-beside:`), the root of their tree or inside it,
-//   rebuilt keyed for this mod with the chip first or last.
-// - with neither, the chip starts a column, beside their tree; a tree that
-//   shares the band from under the status line (`band-under:`) keeps sharing it.
-// A chip carries no inset of its own: the column, or the lines, give it the
-// band's one cell. prompt-enhancer and cache-warmer hold the same function.
-export function withChip(Box: any, below: unknown, chip: unknown, mod: string, isFirst: boolean) {
-  const column = (inner: unknown[]) => (
-    <Box key={`band-beside:${mod}`} flexDirection="column" alignItems="flex-end" paddingX={1}>
-      {isFirst ? [chip, ...inner] : [...inner, chip]}
-    </Box>
-  )
-  if (isFree(below)) return column([])
-  const seated = swapKeyed(below, 'band-lines:', lines => seatChip(lines, chip, isFirst))
-  if (seated !== undefined) return seated
-  const swapped = swapKeyed(below, 'band-beside:', beside => column(chipsOf(beside)))
-  if (swapped !== undefined) return swapped
-  const belowKey = (below as { props?: { key?: unknown } }).props?.key
-  const isUnder = typeof belowKey === 'string' && belowKey.startsWith('band-under:')
-  return (
-    <Box {...(isUnder ? { key: `band-under:${mod}` } : {})} flexDirection="row" alignItems="flex-start">
-      <Box flexDirection="column" flexGrow={1}>
-        {below}
-      </Box>
-      {column([])}
-    </Box>
-  )
-}
-
-type Node = { type?: unknown; props?: { key?: unknown }; children?: unknown[] }
-
-const keyOf = (node: unknown): string => {
-  const el = node as Node | null
-  return el !== null && typeof el === 'object' && el.type === 'Box' && typeof el.props?.key === 'string' ? el.props.key : ''
-}
-
-// The tree with its outermost Box whose key starts with `prefix` swapped for
-// `swap`'s, or undefined when it holds none.
-function swapKeyed(node: unknown, prefix: string, swap: (found: Node) => unknown, depth = 0): unknown {
-  if (node === null || typeof node !== 'object' || depth > 8) return undefined
-  const el = node as Node
-  if (el.type !== 'Box') return undefined
-  if (keyOf(el).startsWith(prefix)) return swap(el)
-  const children = el.children ?? []
-  for (let i = 0; i < children.length; i++) {
-    const swapped = swapKeyed(children[i], prefix, swap, depth + 1)
-    if (swapped !== undefined) return { ...el, children: children.map((c, j) => (j === i ? swapped : c)) }
-  }
-  return undefined
-}
-
-// The chips of a chip column, a column nested in it giving its own in its place.
-function chipsOf(node: unknown, depth = 0): unknown[] {
-  if (depth > 8 || !keyOf(node).startsWith('band-beside:')) return node === null || node === undefined ? [] : [node]
-  return ((node as Node).children ?? []).flatMap(c => chipsOf(c, depth + 1))
-}
-
-// The status line's lines with the chips dealt out again over their slots.
-function seatChip(lines: Node, chip: unknown, isFirst: boolean): unknown {
-  const slots: Node[] = []
-  const find = (node: unknown, depth: number) => {
-    if (depth > 4 || node === null || typeof node !== 'object') return
-    if (keyOf(node).startsWith('band-slot:')) return void slots.push(node as Node)
-    for (const c of (node as Node).children ?? []) find(c, depth + 1)
-  }
-  find(lines, 0)
-  if (slots.length === 0) return { ...lines, children: [...(lines.children ?? []), chip] }
-  const held = slots.flatMap(s => s.children ?? [])
-  const chips = isFirst ? [chip, ...held] : [...held, chip]
-  const dealt = new Map(slots.map((s, i) => [s, i === slots.length - 1 ? chips.slice(i) : chips.slice(i, i + 1)]))
-  const deal = (node: unknown, depth: number): unknown => {
-    if (depth > 4 || node === null || typeof node !== 'object') return node
-    const el = node as Node
-    const mine = dealt.get(el)
-    if (mine !== undefined) return { ...el, children: mine }
-    return el.children === undefined ? el : { ...el, children: el.children.map(c => deal(c, depth + 1)) }
-  }
-  return deal(lines, 0)
-}
-
-// What `next(e)` hands back when no plugin beneath drew in the band.
-function isFree(node: unknown): boolean {
-  if (node === null || node === undefined || node === false || node === '') return true
-  return typeof node === 'object' && (node as { type?: unknown }).type === 'engine'
 }
 
 // What the pane draws from, read by its hook.
@@ -499,7 +374,6 @@ export type PaneView = {
   failed: string | null
   text: string
   spent: Usage | null
-  fromBox: boolean
 }
 
 // The desktop app stops drawing a pane past about 1,100 elements (1,006 drew,
@@ -509,6 +383,8 @@ export type PaneView = {
 export const BUDGET = 1000
 // Characters of the serialized tree, an inline SVG's source included.
 export const CHAR_BUDGET = 200_000
+// The level with no cards: the terminal's (see fit).
+export const NO_CARDS = 2
 export const TOP_LEVEL = 2
 // Elements in a tree, counted as the live measure counted them.
 export function countNodes(tree: unknown): number {
@@ -524,9 +400,10 @@ export function countNodes(tree: unknown): number {
   return nodes
 }
 // Draws at level 0, then 1, 2, ... until the tree fits `budget` or `top` is
-// reached. Only the desktop (and VS Code) has the limit: the terminal keeps
-// level 0.
+// reached. Only the desktop (and VS Code) has the limit. The terminal draws
+// no hover cards at all, its folds left out: level NO_CARDS.
 export function fit<T>(surface: string, top: number, draw: (level: number) => T, budget = BUDGET): T {
+  if (surface === 'terminal') return draw(NO_CARDS)
   if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
   let tree = draw(0)
   for (let level = 1; level <= top && (countNodes(tree) > budget || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)
@@ -536,7 +413,7 @@ export function fit<T>(surface: string, top: number, draw: (level: number) => T,
 // The pane past idle, at a level of the ladder.
 export function enhancerPane($: EngineInterface, elements: any, v: PaneView, level: number) {
   const { Box, Text, Button } = elements
-  const { now, current, hasBox, label, failed, text, spent, fromBox } = v
+  const { now, current, hasBox, label, failed, text, spent } = v
   // Whether a card of `tone` is drawn at this level: none on a phone, which
   // has no hover.
   const shows = (tone: Tone) => v.surface !== 'mobile' && (level <= 0 || (level === 1 && tone !== 'info'))
@@ -568,7 +445,7 @@ export function enhancerPane($: EngineInterface, elements: any, v: PaneView, lev
   // A pane is only as tall as its tree on the desktop: room under the last
   // row, or a card opening into it is cut off into a scroll.
   const room = isDown && shows('action') ? <Box key="tip-room" height={7} flexShrink={0} /> : null
-  const keeps = current.via === 'box' ? 'Your draft stays in the prompt box' : 'Nothing is sent'
+  const keeps = 'Nothing is sent'
   const expandTip: Line[] =
     settings.model === 'session'
       ? [
@@ -685,7 +562,7 @@ export function enhancerPane($: EngineInterface, elements: any, v: PaneView, lev
         )}
         <Box key="tip:send">
           <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
-          {tip(['Sends this as your next prompt', fromBox ? 'Clears your draft from the prompt box first' : 'Leaves the prompt box as is', 'Closes the pane'], 'left', 'warn')}
+          {tip(['Sends this as your next prompt', 'Leaves the prompt box as is', 'Closes the pane'], 'left', 'warn')}
         </Box>
         <Box key="tip:copy">
           <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
@@ -717,7 +594,7 @@ export function enhancerPane($: EngineInterface, elements: any, v: PaneView, lev
                     [n(spent.input), dim(' tokens in'), SEP, n(spent.output), dim(' out')],
                     [n(spent.cached), { t: ' cached', s: 'good' }, dim(` (${spent.input > 0 ? Math.round((100 * spent.cached) / spent.input) : 0}%)`), SEP, n(spent.input - spent.cached), dim(' uncached')],
                   ] as Line[]),
-              current.via === 'box' ? 'Draft from the prompt box' : 'Draft from /enhance',
+              'Draft from /enhance',
             ],
             'info',
             term,
@@ -735,7 +612,6 @@ export const register: Register = (on, options) => {
     cleanModel: String(options.cleanModel ?? 'haiku').trim() || 'haiku',
     effort: EFFORTS.includes(effort as ModelEffort) ? (effort as ModelEffort) : undefined,
   }
-  const showChip = options.chip !== false
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -753,9 +629,9 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'enhance' }, async ($, e) => {
     const text = e.args.trim()
-    if (text === '') return { text: 'Put your prompt after the command: /enhance fix the flaky checkout test. Or write it in the box and press ✦ enhance above it.' }
-    if ((await read($, phase)) === 'working') return { text: 'An enhance is already running. Cancel it above the prompt first.' }
-    await offer($, text, 'command')
+    if (text === '') return { text: 'Put your prompt after the command: /enhance fix the flaky checkout test.' }
+    if ((await read($, phase)) === 'working') return { text: 'An enhance is already running. Cancel it in the Enhance pane first.' }
+    await offer($, text)
     return { text: '✦ Pick Cleaned up or Expanded in the Enhance pane.' }
   })
 
@@ -763,34 +639,6 @@ export const register: Register = (on, options) => {
   on('ui.close', { id: 'prompt-enhancer' }, async ($, e, next) => {
     if (e.origin.kind === 'person' && (await read($, phase)) !== 'idle') await cancel($, true)
     return next(e)
-  })
-
-  // The band: the chip alone, drawn as motta-statusline draws its lines. A
-  // desktop draws a Button as a native button of its plain label, so the ✦'s
-  // color is a Text beside it, and the word is dim, full strength under the
-  // pointer; the button pads its label about 0.75 cell each side, which a
-  // negative margin takes back. Half a cell apart on the desktop.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || !showChip) return next(e)
-    const below = await next(e)
-
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
-    // Compact (under COMPACT_BELOW cells, motta-statusline's mark) the ✦ alone
-    // is pressed; a desktop button drops its color, so it draws plain.
-    const isCompact = e.props.bodyColumns > 0 && e.props.bodyColumns < COMPACT_BELOW
-    const button = isCompact ? (
-      <Button key="enhance" plain label="✦" onPress={() => void chip($)} />
-    ) : (
-      <Button key="enhance" plain dimColor label="enhance" onPress={() => void chip($)} />
-    )
-    const pressable = e.surface === 'desktop' ? <Box marginX={-0.75}>{button}</Box> : button
-    const ours = (
-      <Box flexDirection="row" justifyContent="flex-end" alignItems="center" columnGap={e.surface === 'terminal' ? 1 : 0.5}>
-        {!hasBox ? [<Text color="suggestion">✦</Text>, <Text dimColor>{isCompact ? '/enhance' : '/enhance <your prompt>'}</Text>] : isCompact ? pressable : [<Text color="suggestion">✦</Text>, pressable]}
-      </Box>
-    )
-    return withChip(Box, below, ours, 'prompt-enhancer', true)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -802,7 +650,7 @@ export const register: Register = (on, options) => {
     const label = await read($, modelLabel)
 
     if (now === 'idle' || current === null) {
-      return <Text dimColor>Press ✦ enhance above the prompt, or run /enhance followed by your prompt.</Text>
+      return <Text dimColor>Run /enhance followed by your prompt.</Text>
     }
     const view: PaneView = {
       surface: e.surface,
@@ -815,7 +663,6 @@ export const register: Register = (on, options) => {
       failed: await read($, failure),
       text: await read($, result),
       spent: await read($, usage),
-      fromBox: current.via === 'box' && (await read($, boxAccess)) === 'yes',
     }
     // At the richest level that fits the desktop's element budget.
     return fit(e.surface, TOP_LEVEL, level => enhancerPane($, elements, view, level))
