@@ -1,11 +1,239 @@
 {
   "name": "context-drill",
-  "version": "0.1.0",
-  "description": "A Context pane that drills into what fills the window: each /context category, where auto-compact fires (with Compact now), then the memory files, MCP tools by server, agents and skills behind it. Opened by /context-drill, or by $.contextDrill.open() from another mod (motta-statusline's ctx).",
+  "version": "0.2.0",
+  "description": "A Context pane that drills into what fills the window, read when it opens, after each turn while it is shown and on Refresh (a local estimate, no request sent): the /context categories as a stacked bar with the auto-compact tick and what grew since you opened it, the fill per turn against the auto-compact point, turns left before it fires, cache health, the heaviest messages and tokens by tool, then the memory files, MCP tools by server, agents and skills, and the startup cost against your average; a footer compacts with a focus you pick. Every part is a setting. Opened by /context-drill, or by $.contextDrill.open() from another mod (motta-statusline's ctx).",
   "author": {
     "name": "l-a-motta"
   },
   "repository": "https://github.com/l-a-motta/motta-claude-mods",
   "license": "MIT",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "barWidth": {
+      "type": "string",
+      "title": "Bar width",
+      "description": "The stacked category bar's width: the pane's whole width, or blocks of ten squares (braille cells in a terminal).",
+      "default": "fit",
+      "options": [
+        "fit",
+        "10",
+        "20",
+        "40"
+      ]
+    },
+    "categories": {
+      "type": "string",
+      "title": "Categories",
+      "description": "The /context rows: one stacked bar with a legend, a list, the 100-square grid, or hidden.",
+      "default": "stacked",
+      "options": [
+        "stacked",
+        "list",
+        "grid",
+        "off"
+      ]
+    },
+    "categoryOrder": {
+      "type": "string",
+      "title": "Category order",
+      "description": "The engine's own order, or largest first.",
+      "default": "engine",
+      "options": [
+        "engine",
+        "size"
+      ]
+    },
+    "categoryHide": {
+      "type": "string",
+      "title": "Hide small categories",
+      "description": "Fold categories under this share of the window into one line.",
+      "default": "0",
+      "options": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "thresholdToast": {
+      "type": "string",
+      "title": "Threshold toast",
+      "description": "A toast, once, when the fill turns orange (50%) or red (70%) on the status line's ctx scale, from the figures the engine pushes after each turn.",
+      "default": "once",
+      "options": [
+        "once",
+        "off"
+      ]
+    },
+    "history": {
+      "type": "string",
+      "title": "Fill history",
+      "description": "The fill after each turn as a line, over the last 24 or 12 turns, as of the last read.",
+      "default": "24",
+      "options": [
+        "24",
+        "12",
+        "off"
+      ]
+    },
+    "historyGrowth": {
+      "type": "string",
+      "title": "History growth",
+      "description": "The average growth per turn and the last turn's under the line.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "forecast": {
+      "type": "string",
+      "title": "Compact forecast",
+      "description": "Turns left before auto-compact, at the session's average growth or the last five turns'.",
+      "default": "average",
+      "options": [
+        "average",
+        "recent",
+        "off"
+      ]
+    },
+    "since": {
+      "type": "string",
+      "title": "Since",
+      "description": "Each category's growth since the pane opened, or since the last compaction.",
+      "default": "open",
+      "options": [
+        "open",
+        "compact",
+        "off"
+      ]
+    },
+    "cache": {
+      "type": "string",
+      "title": "Cache health",
+      "description": "The last request's input split into cache read, cache written and fresh: a bar, a line, or hidden.",
+      "default": "bar",
+      "options": [
+        "bar",
+        "text",
+        "off"
+      ]
+    },
+    "heaviest": {
+      "type": "string",
+      "title": "Heaviest messages",
+      "description": "The largest messages and tool results in the transcript, estimated locally.",
+      "default": "5",
+      "options": [
+        "5",
+        "3",
+        "off"
+      ]
+    },
+    "heaviestKind": {
+      "type": "string",
+      "title": "Heaviest: which",
+      "description": "Every message, or tool results alone.",
+      "default": "all",
+      "options": [
+        "all",
+        "tools"
+      ]
+    },
+    "byTool": {
+      "type": "string",
+      "title": "Tokens by tool",
+      "description": "Tool results summed per tool, the largest first.",
+      "default": "4",
+      "options": [
+        "4",
+        "3",
+        "off"
+      ]
+    },
+    "byToolCalls": {
+      "type": "string",
+      "title": "By tool: calls",
+      "description": "The number of calls beside each tool.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "sectionsFolded": {
+      "type": "string",
+      "title": "Folded sections",
+      "description": "The drill sections folded when the pane opens: MCP tools, none or all.",
+      "default": "mcp",
+      "options": [
+        "mcp",
+        "none",
+        "all"
+      ]
+    },
+    "sectionsMax": {
+      "type": "string",
+      "title": "Section items",
+      "description": "How many items an open section lists.",
+      "default": "all",
+      "options": [
+        "all",
+        "3",
+        "5"
+      ]
+    },
+    "paths": {
+      "type": "string",
+      "title": "Memory file paths",
+      "description": "Full paths, from the home folder (~), or the file name.",
+      "default": "full",
+      "options": [
+        "full",
+        "home",
+        "name"
+      ]
+    },
+    "compactActions": {
+      "type": "string",
+      "title": "Compact actions",
+      "description": "The footer: a focus picker (presets and your own) with Compact now, or Compact now alone.",
+      "default": "presets",
+      "options": [
+        "presets",
+        "now"
+      ]
+    },
+    "baseline": {
+      "type": "string",
+      "title": "Startup baseline",
+      "description": "What the context costs before your first message, against your average in this project or across all; kept in the plugin store.",
+      "default": "project",
+      "options": [
+        "project",
+        "all",
+        "off"
+      ]
+    },
+    "numbers": {
+      "type": "string",
+      "title": "Numbers",
+      "description": "12.3k, 12,345, or the share of the window.",
+      "default": "k",
+      "options": [
+        "k",
+        "comma",
+        "percent"
+      ]
+    },
+    "refresh": {
+      "type": "string",
+      "title": "Refresh",
+      "description": "Read again after each turn while the pane is shown (the local estimate, no request sent), or only on Refresh. Nothing is read while the pane is closed.",
+      "default": "turn",
+      "options": [
+        "turn",
+        "manual"
+      ]
+    }
+  }
 }
