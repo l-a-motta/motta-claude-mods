@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { ago, barCells, branchOf, commitPlan, isGenerated, isSensitive, parseChanges, parseNameStatus, repoPath, statusLetter, withNumstat } from '../hooks/git.ts'
+import { ago, barCells, branchOf, isGenerated, isSensitive, parseChanges, parseNameStatus, repoPath, statusLetter, withNumstat } from '../hooks/git.ts'
 import { settingsOf, trimHunk } from '../hooks/register.tsx'
 
 const STATUS = '## feat/ui-tweaks...origin/feat/ui-tweaks [ahead 2]\n M manifest.json\n?? notes.md\n?? .env.local\n'
@@ -32,16 +32,6 @@ describe('judgements', () => {
     expect(isGenerated('src/build.ts')).toBe(false)
   })
 
-  test('a commit plan by unit: features with their tests, docs alone, lockfiles last, secrets left out', () => {
-    const plan = commitPlan(['plugins/changes-drill/hooks/git.ts', 'plugins/changes-drill/tests/open.test.tsx', 'README.md', 'package-lock.json', '.env.local'], 'conventional')
-    expect(plan).toEqual([
-      { title: 'feat(changes-drill)', paths: ['plugins/changes-drill/hooks/git.ts', 'plugins/changes-drill/tests/open.test.tsx'] },
-      { title: 'docs', paths: ['README.md'] },
-      { title: 'chore(deps)', paths: ['package-lock.json'] },
-    ])
-    expect(commitPlan(['plugins/x/a.ts'], 'plain')[0]?.title).toBe('x')
-  })
-
   test('bars scale to the largest file and keep a cell for each side', () => {
     expect(barCells(10, 0, 10, 5)).toEqual({ plus: 5, minus: 0, empty: 0 })
     expect(barCells(1, 1, 100, 5)).toEqual({ plus: 1, minus: 0, empty: 4 })
@@ -62,8 +52,8 @@ describe('judgements', () => {
   })
 
   test('settings fall back to the defaults the manifest gives', () => {
-    const s = settingsOf({ groupBy: 'nope', budgetLines: 300, scope: './plugins/x' })
-    expect([s.group, s.baseline, s.sort, s.bars, s.budgetLines, s.scope, s.churn, s.peek]).toEqual(['turn', 'HEAD', 'recent', 'blocks', 300, 'plugins/x', false, false])
+    const s = settingsOf({ groupBy: 'nope', peekLines: 7, scope: './plugins/x' })
+    expect([s.group, s.baseline, s.sort, s.bars, s.peekLines, s.scope, s.churn, s.peek, s.history]).toEqual(['turn', 'HEAD', 'recent', 'blocks', 7, 'plugins/x', false, false, true])
   })
 })
 
@@ -90,7 +80,7 @@ function repo(on: any, toasts?: string[]) {
 for (const surface of ['terminal', 'desktop'] as const) {
   // The noun's own path is tested from motta-statusline, whose module calls
   // it: the host refuses a noun call from a module whose scan lists none.
-  test(`/changes-drill opens the pane: files by turn, who changed them, the budget and a plan (${surface})`, async ($, on) => {
+  test(`/changes-drill opens the pane: files by turn, who changed them, and what to check (${surface})`, async ($, on) => {
     const opened: string[] = []
     repo(on)
     on('ui.open', (_$: any, e: any) => {
@@ -112,10 +102,10 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.find({ type: 'Text', text: '+3' })).toBeDefined()
     // notes.md's two lines come from the file itself, untracked.
     expect(await pane.find({ type: 'Text', text: '+2' })).toBeDefined()
-    expect(drawn).toContain('of 800 lines to review')
     expect(drawn).toContain('looks sensitive')
-    expect(drawn).toContain('chore')
-    expect(drawn).toContain('docs')
+    // No review budget and no commit plan any more.
+    expect(drawn).not.toContain('lines to review')
+    expect(drawn).not.toContain('Commit plan')
     // Read-only: no button stages, copies, opens or reverts.
     for (const key of ['stage:manifest.json', 'copy:manifest.json', 'open:manifest.json', 'revert:manifest.json', 'plan-stage:chore', 'plan-copy:chore']) expect(await pane.find({ key })).toBeUndefined()
     expect(await pane.find({ key: 'file:manifest.json' })).toBeUndefined()

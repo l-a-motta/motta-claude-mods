@@ -1,7 +1,7 @@
 {
   "name": "changes-drill",
   "version": "0.2.0",
-  "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch; with a review budget, a guard for sensitive or out-of-scope files, a hunk peek and a commit plan by unit. Read-only: it changes nothing in the repository. No model calls, no tokens and no network: local git only, read while the pane is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
+  "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch; with a guard for sensitive or out-of-scope files, a hunk peek, and a History section of the branches (you against main, every branch as lanes or a subway map, what happened). Read-only: it changes nothing in the repository. No model calls, no tokens and no network: local git only, read while the pane is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
   "author": {
     "name": "l-a-motta"
   },
@@ -14,42 +14,69 @@
       "title": "Group by",
       "description": "turn: by the turn that last changed each file, titled with its prompt. folder: by folder. author: Claude, subagents, Claude's shell, you. stage: staged, partly staged, unstaged, untracked. flat: one list.",
       "default": "turn",
-      "options": ["turn", "folder", "author", "stage", "flat"]
+      "options": [
+        "turn",
+        "folder",
+        "author",
+        "stage",
+        "flat"
+      ]
     },
     "baseline": {
       "type": "string",
       "title": "Compare against",
       "description": "HEAD: the work tree against the last commit. session start: what changed since the session began (a snapshot taken then, without touching the stash list). last turn: since the latest turn began. base branch: everything on the branch since it left origin's default branch (local refs only, nothing is fetched).",
       "default": "HEAD",
-      "options": ["HEAD", "session start", "last turn", "base branch"]
+      "options": [
+        "HEAD",
+        "session start",
+        "last turn",
+        "base branch"
+      ]
     },
     "sort": {
       "type": "string",
       "title": "Sort",
       "description": "Within each group: recent (last changed first), lines (most changed first), path, or status letter.",
       "default": "recent",
-      "options": ["recent", "lines", "path", "status"]
+      "options": [
+        "recent",
+        "lines",
+        "path",
+        "status"
+      ]
     },
     "bars": {
       "type": "string",
       "title": "Line bars",
       "description": "A bar per file of its lines added (green) and deleted (red), scaled to the largest file: blocks (five squares), proportional (a ten-cell line), or off.",
       "default": "blocks",
-      "options": ["blocks", "proportional", "off"]
+      "options": [
+        "blocks",
+        "proportional",
+        "off"
+      ]
     },
     "density": {
       "type": "string",
       "title": "Density",
       "description": "compact: one line per file. comfortable: a blank line between files.",
       "default": "compact",
-      "options": ["compact", "comfortable"]
+      "options": [
+        "compact",
+        "comfortable"
+      ]
     },
     "refresh": {
       "type": "string",
       "title": "Refresh",
       "description": "When the pane reads git again while it is up: each turn (at its end), each edit (shortly after each Edit or Write), or manual (only on open and Refresh; turn alerts are off too).",
       "default": "each turn",
-      "options": ["each turn", "each edit", "manual"]
+      "options": [
+        "each turn",
+        "each edit",
+        "manual"
+      ]
     },
     "showAge": {
       "type": "boolean",
@@ -99,18 +126,6 @@
       "description": "Fold lockfiles, build output, minified files and snapshots into one line you can unfold.",
       "default": false
     },
-    "budget": {
-      "type": "boolean",
-      "title": "Review budget",
-      "description": "A meter of the lines to review (generated files left out) and a toast once when the diff passes the budget.",
-      "default": true
-    },
-    "budgetLines": {
-      "type": "number",
-      "title": "Budget",
-      "description": "Lines to review before the budget meter turns red.",
-      "default": 800
-    },
     "turnToast": {
       "type": "boolean",
       "title": "Turn summary toast",
@@ -129,18 +144,17 @@
       "description": "How many lines of the diff a peek shows.",
       "default": 4
     },
-    "commitPlan": {
+    "history": {
       "type": "boolean",
-      "title": "Commit plan",
-      "description": "The changes split into commits by unit (feat(changes-drill), docs, chore(deps)), shown as a suggestion.",
+      "title": "History",
+      "description": "A History section under the list: Me (your branch against main, or where your work sits), All (every branch as lanes or a subway map) and Current (what happened, or the changed files as a tree), each with its own picker. Read from local git when the pane opens, at a turn's end when a branch moved, and on its Refresh; never with the pane closed.",
       "default": true
     },
-    "commitStyle": {
-      "type": "string",
-      "title": "Commit titles",
-      "description": "conventional: feat(scope), docs, test, chore(deps). plain: the unit's name.",
-      "default": "conventional",
-      "options": ["conventional", "plain"]
+    "historyDepth": {
+      "type": "number",
+      "title": "History depth",
+      "description": "How many commits the History section reads, newest first.",
+      "default": 40
     }
   }
 }

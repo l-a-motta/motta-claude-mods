@@ -1,6 +1,6 @@
-// The Changes pane: a header with the totals and the baseline, the review
-// budget, the rows grouped as the settings say, the pressed row's peek, and
-// the commit plan. Pure drawing over what register.tsx read.
+// The Changes pane: a header with the totals and the baseline, the rows
+// grouped as the settings say, and the pressed row's peek. Pure drawing over
+// what register.tsx read.
 //
 // Every row is columns: the status letter, the path taking the room left,
 // then a right-hand cluster of fixed widths (pills, bar, +, −, age), so the
@@ -9,7 +9,7 @@
 // presses are Refresh, Show/Fold and, with the peek on, a path.
 
 import type { ChangesDrillSnapshot, ChangesDrillTurn } from '../types'
-import { ago, barCells, commitPlan, isGenerated, isSensitive, isSource, isStaged, isTest, isUnstaged, scopeOf, statusColor, statusLetter } from './git.ts'
+import { ago, barCells, isGenerated, isSensitive, isSource, isStaged, isTest, isUnstaged, scopeOf, statusColor, statusLetter } from './git.ts'
 import type { Reading, Row, Settings } from './register.tsx'
 
 export type View = {
@@ -50,12 +50,11 @@ const HOVER = '#ffffff0d'
 const TRACK = '#ffffff1f'
 
 // Widths in cells of the right-hand columns.
-const W = { letter: 1.5, plus: 4.5, minus: 4.5, age: 3.5 }
+const W = { letter: 1.5, who: 7, bar: 6, plus: 4.5, minus: 4.5, age: 3.5 }
 
 const trim = (path: string) => path.replace(/\/$/, '')
 const name = (path: string) => trim(path).slice(trim(path).lastIndexOf('/') + 1) + (path.endsWith('/') ? '/' : '')
 const dir = (path: string) => (trim(path).includes('/') ? trim(path).slice(0, trim(path).lastIndexOf('/') + 1) : './')
-const lines = (rows: readonly Row[]) => rows.reduce((n, r) => n + (r.added ?? 0) + (r.deleted ?? 0), 0)
 const sum = (rows: readonly Row[], k: 'added' | 'deleted') => rows.reduce((n, r) => n + (r[k] ?? 0), 0)
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -125,26 +124,6 @@ function pill(view: View, key: string, word: string, tone: keyof typeof PILLS) {
   )
 }
 
-// A line across the pane's width, filled to `share` (0 to 1) in `color`.
-function meter(view: View, key: string, share: number, color: string) {
-  const { Box, Text, isDesktop } = view
-  const pct = Math.round(Math.max(0, Math.min(1, share)) * 100)
-  if (isDesktop)
-    return (
-      <Box key={key} width="100%" height={0.25} backgroundColor={TRACK} flexDirection="row">
-        {pct > 0 && <Box width={`${pct}%`} height={0.25} backgroundColor={color} />}
-      </Box>
-    )
-  const cells = 40
-  const filled = Math.round((pct / 100) * cells)
-  return (
-    <Text key={key}>
-      {filled > 0 && <Text color={color}>{'━'.repeat(filled)}</Text>}
-      {filled < cells && <Text dimColor>{'─'.repeat(cells - filled)}</Text>}
-    </Text>
-  )
-}
-
 export function changesPane(view: View) {
   const { Box, Text, Button, settings: s, reading: r, on, isDesktop } = view
   if (r === undefined) return <Text dimColor>Reading the changes…</Text>
@@ -160,7 +139,6 @@ export function changesPane(view: View) {
 
   const generated = s.fold ? r.rows.filter(row => isGenerated(row.path)) : []
   const shown = s.fold && !view.showGenerated ? r.rows.filter(row => !isGenerated(row.path)) : r.rows
-  const reviewable = r.rows.filter(row => !isGenerated(row.path))
   const max = Math.max(1, ...shown.map(row => (row.added ?? 0) + (row.deleted ?? 0)))
   const testedScopes = new Set(r.rows.filter(row => isTest(row.path)).map(row => scopeOf(row.path)))
   const since = r.against === 'session start' && view.session ? ` (${ago(view.now - view.session.at)} ago)` : ''
@@ -192,20 +170,6 @@ export function changesPane(view: View) {
 
   const out: any[] = [header]
 
-  if (s.budget) {
-    const used = lines(reviewable)
-    const over = used > s.budgetLines
-    const color = over ? 'error' : used > s.budgetLines * 0.8 ? 'warning' : 'success'
-    out.push(
-      <Box key="budget" flexDirection="column" rowGap={isDesktop ? 0.5 : 0} marginTop={isDesktop ? 0.5 : 0} paddingX={pad}>
-        {meter(view, 'budget-bar', used / s.budgetLines, color)}
-        <Text color={over ? 'error' : undefined} dimColor={!over}>
-          {`${used} of ${s.budgetLines} lines to review${over ? ' · over budget, consider a commit or a split' : ''}`}
-        </Text>
-      </Box>,
-    )
-  }
-
   if (s.guard) {
     const secrets = r.rows.filter(row => row.status === '??' && isSensitive(row.path))
     if (secrets.length)
@@ -230,14 +194,14 @@ export function changesPane(view: View) {
     const body: any[] = []
     if (title)
       body.push(
-        <Box key={`group:${title}`} flexDirection="row" justifyContent="space-between" columnGap={2} paddingX={pad}>
-          <Box flexShrink={1}>
-            <Text dimColor wrap="truncate-end">
-              {title}
-            </Text>
+        <Box key={`group:${title}`} flexDirection="row" justifyContent="space-between" columnGap={1} paddingX={pad}>
+          <Box flexShrink={1} minWidth={0}>
+            <Text wrap="truncate-end">{title}</Text>
           </Box>
-          <Box flexShrink={0}>
-            <Text dimColor>{`+${sum(g.rows, 'added')} −${sum(g.rows, 'deleted')}`}</Text>
+          <Box flexDirection="row" columnGap={1} flexShrink={0}>
+            {cell(view, 'plus', W.plus, sum(g.rows, 'added') ? <Text dimColor>{`+${sum(g.rows, 'added')}`}</Text> : null)}
+            {cell(view, 'minus', W.minus, sum(g.rows, 'deleted') ? <Text dimColor>{`−${sum(g.rows, 'deleted')}`}</Text> : null)}
+            {s.age && cell(view, 'age', W.age, null)}
           </Box>
         </Box>,
       )
@@ -271,34 +235,6 @@ export function changesPane(view: View) {
       </Box>,
     )
 
-  if (s.plan) {
-    const plan = commitPlan(
-      r.rows.filter(row => !row.isCommitted).map(row => row.path),
-      s.planStyle,
-    )
-    if (plan.length) {
-      const rows: any[] = [
-        <Box key="plan-head" paddingX={pad}>
-          <Text dimColor>Commit plan, by unit</Text>
-        </Box>,
-      ]
-      for (const commit of plan)
-        rows.push(
-          <Box key={`plan:${commit.title}`} flexDirection="row" columnGap={1} paddingX={pad}>
-            <Text dimColor>◆</Text>
-            <Text>{commit.title}</Text>
-            <Text dimColor>{plural(commit.paths.length, 'file')}</Text>
-          </Box>,
-        )
-      out.push(
-        <Box key="plan" flexDirection="column" marginTop={1} rowGap={isDesktop ? 0.25 : 0}>
-          {isDesktop && <Box key="plan-rule" width="100%" height={0.06} backgroundColor={TRACK} marginBottom={0.5} />}
-          {rows}
-        </Box>,
-      )
-    }
-  }
-
   return (
     <Box flexDirection="column" paddingY={isDesktop ? 0.5 : 0}>
       {out}
@@ -313,7 +249,13 @@ function fileRow(view: View, row: Row, max: number, byFolder: boolean, testedSco
   const right: any[] = []
   if (s.author && !row.isCommitted) {
     const who = row.touch?.who
-    right.push(who === 'claude' ? pill(view, 'who', 'Claude', 'claude') : who === 'agent' ? pill(view, 'who', 'agent', 'agent') : who === 'shell' ? pill(view, 'who', 'shell', 'shell') : pill(view, 'who', 'you', 'you'))
+    const tag = who === 'claude' ? pill(view, 'who', 'Claude', 'claude') : who === 'agent' ? pill(view, 'who', 'agent', 'agent') : who === 'shell' ? pill(view, 'who', 'shell', 'shell') : pill(view, 'who', 'you', 'you')
+    // A column of its own width, so the bars start at one x whatever the word.
+    right.push(
+      <Box key="who" width={W.who} flexShrink={0} flexDirection="row" justifyContent="flex-end">
+        {tag}
+      </Box>,
+    )
   }
   if (s.churn && row.touch && row.touch.edits >= s.churnEdits) right.push(pill(view, 'churn', `↻ ×${row.touch.edits}`, 'warn'))
   if (s.guard && isSensitive(row.path)) right.push(pill(view, 'sensitive', 'sensitive', 'danger'))
@@ -324,8 +266,19 @@ function fileRow(view: View, row: Row, max: number, byFolder: boolean, testedSco
     const cells = s.bars === 'blocks' ? 5 : 10
     const c = barCells(row.added, row.deleted, max, cells)
     const [full, empty] = s.bars === 'blocks' ? ['■', '□'] : ['━', '─']
+    if (isDesktop && s.bars === 'blocks') {
+      // Squares as boxes: a glyph's width varies with the font, a box's does not.
+      const tone = (i: number) => (i < c.plus ? 'success' : i < c.plus + c.minus ? 'error' : TRACK)
+      right.push(
+        <Box key="bar" flexShrink={0} width={W.bar} flexDirection="row" columnGap={0.3} alignItems="center">
+          {[0, 1, 2, 3, 4].map(i => (
+            <Box key={`sq${i}`} width={0.9} height={0.38} backgroundColor={tone(i)} />
+          ))}
+        </Box>,
+      )
+    } else
     right.push(
-      <Box key="bar" flexShrink={0} width={s.bars === 'blocks' ? 5.5 : 7}>
+      <Box key="bar" flexShrink={0} width={s.bars === 'blocks' ? W.bar : 7}>
         <Text>
           {c.plus > 0 && <Text color="success">{full.repeat(c.plus)}</Text>}
           {c.minus > 0 && <Text color="error">{full.repeat(c.minus)}</Text>}
@@ -349,10 +302,12 @@ function fileRow(view: View, row: Row, max: number, byFolder: boolean, testedSco
       <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
         {pressable ? (
           <Box marginLeft={isDesktop ? -0.75 : 0}>
-            <Button key={`file:${row.path}`} plain label={label} onPress={() => on.select(row.path)} />
+            <Button key={`file:${row.path}`} plain dimColor label={label} onPress={() => on.select(row.path)} />
           </Box>
         ) : (
-          <Text wrap="truncate-start">{label}</Text>
+          <Text dimColor wrap="truncate-start">
+            {label}
+          </Text>
         )}
       </Box>
       <Box flexDirection="row" columnGap={1} flexShrink={0} alignItems="center">
