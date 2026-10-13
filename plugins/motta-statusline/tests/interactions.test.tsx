@@ -68,7 +68,7 @@ test('marks a shell that a cd took below the root, and opens that folder', async
   await band.unmount()
 })
 
-test('cycles the last slot through rate, cost, session and runway', async ($, on) => {
+test('cycles the last slot through rate, cost, session, runway and cache', async ($, on) => {
   answerSession(on)
   const ui = await $.ui.mount({
     plugin: 'motta-statusline',
@@ -84,6 +84,8 @@ test('cycles the last slot through rate, cost, session and runway', async ($, on
   expect(await label()).toBe('session')
   await ui.press({ key: 'slot' })
   expect(await label()).toBe('compact')
+  await ui.press({ key: 'slot' })
+  expect(await label()).toBe('cache')
   await ui.press({ key: 'slot' })
   expect(await label()).toBe('out')
   await ui.unmount()

@@ -23,8 +23,9 @@
 // context-drill and usage-drill (a mod opens only its own panes, so each is
 // asked through the noun its mod adds to `$`; without that mod, a toast says
 // to install it), and the last slot cycles: output and rate, cost, the session's
-// turns and time, the turns left before auto-compact (its word, `out`,
-// `cost`, `session` or `compact`, is what is pressed). usage-drill toasts
+// turns and time, the turns left before auto-compact, how long the prompt
+// cache stays warm (its word, `out`, `cost`, `session`, `compact` or
+// `cache`, is what is pressed). usage-drill toasts
 // when a limit turns orange or red, by these same colors.
 //
 // Each bar is ten braille cells of ten points, a cell's dots rising from its
@@ -45,6 +46,15 @@
 // so far, and before its first token, past a second, `waiting ns`.
 // Subagents are left out, as they are from Out.
 //
+// `cache 42m` is how long the main conversation's prompt cache stays warm:
+// its TTL from the last request that read or wrote it (a main-session step or
+// any mod's fork, since each read restarts the TTL), yellow in its last five
+// minutes, `cold` once it ran out or after a model switch, a compaction or a
+// /clear, `--` before the first reply. Only a reading: nothing is sent to
+// keep it warm. The engine says the TTL only on a model switch; before that a
+// subscription (rate limits reported) is read as an hour and anything else as
+// five minutes, unless `cacheTtl` sets it.
+//
 // The PR segment is the current branch's PR as `gh pr view` reads it: CI
 // checks, conflicts or behind its base, review decision. It refreshes every
 // 30 s while checks run and every 2 min once they settle, at once after
@@ -61,7 +71,7 @@
 // - above: a colored band above the prompt. The engine gives that space to
 //   the spinner during a turn. The band is shared: this hook asks the plugins
 //   beneath it first. A tree whose root Box is keyed `band-beside:<mod>` (a
-//   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
+//   chip) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
 //   tree takes the band. The chips are dealt one to a line, into a slot that
@@ -77,7 +87,7 @@
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
 
-import type { EngineInterface, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
+import type { EngineInterface, ModelUsage, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
 // How often a streaming request's rate is redrawn, how long a request waits
@@ -114,8 +124,8 @@ export type Commit = { hash: string; at: number; subject: string }
 export type Where = { label: string; path: string; worktreeOf: string | null }
 
 // What the last slot of line 2 shows; pressing it moves to the next.
-export type Slot = 'rate' | 'cost' | 'session' | 'runway'
-const SLOTS: Slot[] = ['rate', 'cost', 'session', 'runway']
+export type Slot = 'rate' | 'cost' | 'session' | 'runway' | 'cache'
+const SLOTS: Slot[] = ['rate', 'cost', 'session', 'runway', 'cache']
 
 export type Pr = {
   number: number
@@ -154,7 +164,13 @@ type Data = {
   turns: number
   startedAt: number
   slot: Slot
+  cache: Cache | null
 }
+
+// The main conversation's prompt cache: when a request last read or wrote it
+// (null once it is known cold), the model it was made on (a switch forfeits
+// it) and how long it lives from then.
+export type Cache = { at: number | null; model: string; ttlMs: number }
 
 // The main session's rate: the last finished request's (`exact`), the one
 // streaming now (`live`), or how long it has waited for its first token.
@@ -183,9 +199,14 @@ let prAskedAt = 0
 let isAskingPr = false
 let placement: 'above' | 'below' = 'below'
 let slot: Slot = 'rate'
+let cache: Cache | null = null
+let cacheTtl: 'auto' | '5m' | '1h' = 'auto'
+// The TTL the engine said on a model switch, null before one.
+let engineTtl: '5m' | '1h' | null = null
 
 export const register: Register = (on, options) => {
   placement = options.placement === 'above' ? 'above' : 'below'
+  cacheTtl = options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto'
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -236,6 +257,7 @@ export const register: Register = (on, options) => {
       outTokens += tokens
       const exact = exactRate(tokens, step.firstAt, endAt ?? (await $.clock.now()))
       if (exact !== null) lastExact = exact
+      if (isCacheHit(result.usage)) await markCacheHit($)
       return result
     } finally {
       next.signal.removeEventListener('abort', onAbort)
@@ -260,6 +282,35 @@ export const register: Register = (on, options) => {
       await paint($)
     }
     return measured
+  }).catch(($, e, next) => next(e))
+
+  // Any fork re-sends the main thread's last request: one that read the
+  // cache restarted its TTL (prompt-enhancer's Expanded, for one).
+  on('model.fork', async ($, e, next) => {
+    const forked = await next(e)
+    const reply = 'value' in forked ? forked.value : null
+    if (reply?.isAnswered && isCacheHit(reply.usage)) await markCacheHit($)
+    return forked
+  }).catch(($, e, next) => next(e))
+
+  // The one place the engine says the TTL. A switch forfeits the cache.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    engineTtl = e.cache_ttl
+    await markCacheCold($)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A compaction rewrites the conversation and a /clear starts a new one:
+  // nothing of the old prefix is read again. A precompute installs nothing.
+  on('session.compact', async ($, e, next) => {
+    const compacted = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.messages !== undefined) await markCacheCold($)
+    return compacted
+  }).catch(($, e, next) => next(e))
+
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') await markCacheCold($)
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // A push or a `gh pr` command changes the PR: read it at once, and again
@@ -410,6 +461,9 @@ async function refreshAll($: EngineInterface, withGit = true) {
     if (breakdown) compactAt = breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
     if (data === null) slot = await readSlot($)
     const limits = limitsOf(usage.rateLimits)
+    const model = await $.session.model()
+    // A model switch the hook did not see still forfeits the cache.
+    if (cache !== null && cache.at !== null && cache.model !== model) cache = { ...cache, at: null, model }
     data = {
       where: withGit || data === null ? await readWhere($, await $.session.root().catch(() => cwd), repo?.root ?? null) : data.where,
       cwd,
@@ -419,7 +473,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
       base: withGit || data === null ? await readBase($) : data.base,
       pr: data?.pr ?? null,
       isPrStale: data?.isPrStale ?? false,
-      model: modelLabel(await $.session.model()),
+      model: modelLabel(model),
       effort: liveEffort ?? (await settingsEffort($)),
       ...contextFigures(ctx),
       compactAt,
@@ -430,6 +484,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
       turns: await $.session.turns().catch(() => data?.turns ?? 0),
       startedAt: usage.startedAt,
       slot,
+      cache,
     }
     if (withGit) await refreshGit($)
     else await paint($)
@@ -472,6 +527,43 @@ async function readUsage($: EngineInterface, withBreakdown: boolean) {
 
 async function paint($: EngineInterface) {
   $.ui.invalidate('ui.render')
+}
+
+// A request that read the cache, or wrote it, holds the prefix warm; one
+// with both zero cached nothing (caching off, a prompt under the minimum).
+export function isCacheHit(usage: Pick<ModelUsage, 'cache_read_input_tokens' | 'cache_creation_input_tokens'> | null | undefined) {
+  return usage != null && usage.cache_read_input_tokens + usage.cache_creation_input_tokens > 0
+}
+
+// The cache's TTL: as `cacheTtl` sets it; under `auto` as the engine said,
+// else an hour on a subscription (the one session that reports rate limits)
+// and five minutes on anything else.
+export function cacheTtlMs(setting: 'auto' | '5m' | '1h', said: '5m' | '1h' | null, isSubscription: boolean) {
+  const ttl = setting !== 'auto' ? setting : (said ?? (isSubscription ? '1h' : '5m'))
+  return ttl === '1h' ? 3_600_000 : 5 * 60_000
+}
+
+// What the cache slot reads at `now`: `--` before the first reply, `cold`,
+// or the time left (`<1m` in its last minute), `isLow` in its last five.
+export function cacheLeft(c: Cache | null, now: number): { label: string; isLow: boolean; isCold: boolean } {
+  if (c === null) return { label: '--', isLow: false, isCold: false }
+  const left = c.at === null ? 0 : c.at + c.ttlMs - now
+  if (left <= 0) return { label: 'cold', isLow: false, isCold: true }
+  return { label: left < 60_000 ? '<1m' : resetIn(left), isLow: left <= 5 * 60_000, isCold: false }
+}
+
+async function markCacheHit($: EngineInterface) {
+  const usage = await $.session.usage()
+  cache = { at: await $.clock.now(), model: await $.session.model(), ttlMs: cacheTtlMs(cacheTtl, engineTtl, usage.rateLimits.length > 0) }
+  if (data !== null) data = { ...data, cache }
+}
+
+// Known cold: read `cold` until a request reads or writes the cache again.
+async function markCacheCold($: EngineInterface) {
+  if (cache === null) return
+  cache = { ...cache, at: null, model: await $.session.model() }
+  if (data !== null) data = { ...data, cache }
+  await paint($)
 }
 
 // Redraws a streaming request's rate: the wait for its first token once it
@@ -929,8 +1021,8 @@ export function branchUrl(repoUrl: string, branch: string, base: string) {
 }
 
 // What the last slot shows: the output and its rate, the session's cost, its
-// turns and time, or the turns left before auto-compact. Its label is
-// underlined: pressing it moves to the next.
+// turns and time, the turns left before auto-compact, or how long the prompt
+// cache stays warm. Its label is underlined: pressing it moves to the next.
 function slotParts(Text: any, tight: (parts: unknown[]) => unknown, d: Data, now: number) {
   if (d.slot === 'cost') return [<Text>{d.costUsd === null ? '–' : `$${d.costUsd.toFixed(2)}`}</Text>]
   if (d.slot === 'session') {
@@ -940,13 +1032,17 @@ function slotParts(Text: any, tight: (parts: unknown[]) => unknown, d: Data, now
     const left = turnsToCompact(d)
     return [<Text>{d.compactAt === null ? 'off' : left === null ? '–' : `in ~${left} turns`}</Text>]
   }
+  if (d.slot === 'cache') {
+    const c = cacheLeft(d.cache, now)
+    return [<Text color={c.isCold ? 'subtle' : c.isLow ? 'warning' : undefined}>{c.label}</Text>]
+  }
   const parts: unknown[] = [<Text>{short(d.outTokens)}</Text>]
   if (d.rate) parts.push(tight(rateSegment(Text, d.rate)))
   return parts
 }
 
 // The word each slot is pressed by.
-const SLOT_LABELS: Record<Slot, string> = { rate: 'out', cost: 'cost', session: 'session', runway: 'compact' }
+const SLOT_LABELS: Record<Slot, string> = { rate: 'out', cost: 'cost', session: 'session', runway: 'compact', cache: 'cache' }
 
 // The branch's icon and color: its PR's state when it has one (a stale
 // reading keeps its look, drawn dim), else how the branch stands locally.
