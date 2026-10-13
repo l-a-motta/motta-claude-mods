@@ -1456,23 +1456,12 @@ export const register: Register = (on, options) => {
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
     // The list, its header and a rule above it.
     const stripRows = strip.length ? strip.length + 2 + (away.length > strip.length ? 1 : 0) : 0
-    // Git marks are tags: the letter (and a folder's count) on a fill of its own color.
     // What Claude did is a pill beside the name: rounded ends where a Nerd Font draws
-    // them, else a faint fill hugging the word. Git marks are the bold letter.
+    // them, else a faint fill hugging the word.
     const pill = (text: string, color: string): Seg[] =>
       unicode
         ? [{ t: ' ' }, { t: text, c: color, bg: tagFill(color, theme.bg, 0.86) }]
         : [{ t: ' ' }, { t: PILL_L, c: tagFill(color, theme.bg) }, { t: text, c: color, bg: tagFill(color, theme.bg) }, { t: PILL_R, c: tagFill(color, theme.bg) }]
-    const mark = (text: string, color: string): Seg[] => [{ t: ` ${text}`, c: color, b: true }]
-    const countSegs = (c: [number, number, number] | undefined): Seg[] => {
-      if (!c) return []
-      const out: Seg[] = []
-      if (c[0] > 0) out.push(...mark(`?:${c[0]}`, GIT_COLOR['?'] ?? theme.muted))
-      if (c[1] > 0) out.push(...mark(`M:${c[1]}`, GIT_COLOR.M ?? theme.muted))
-      if (c[2] > 0) out.push(...mark(`D:${c[2]}`, GIT_COLOR.D ?? theme.muted))
-      return out
-    }
-    const rootCounts = t.top ? countSegs(t.counts[t.root]) : []
 
     const rowSpec = (r: (typeof rows)[number]): RowSpec => {
       const n = r.node
@@ -1635,7 +1624,7 @@ export const register: Register = (on, options) => {
     // Rows above and below the tree: name, path, buttons and search between three
     // rules, the settings and the key when open; below, a rule, the branch and the
     // two labeled lines, and the outside list with its own rule.
-    const fixed = 10 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
+    const fixed = 11 + (t.showSettings ? 5 : 0) + (t.showKey ? keyRows : 0) + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1699,55 +1688,78 @@ export const register: Register = (on, options) => {
         ? { pos: max ? Math.round((from / max) * (specs.length - barSize)) : 0, size: barSize, thumb: theme.accent, track: theme.muted }
         : undefined
 
+    // The status lines at the bottom: an icon in a column of its own, then the value.
+    // The branch with its file counts, what goes with your prompts, the last git action.
+    const gitGlyph = unicode ? '±' : '\u{e702}'
+    const sentGlyph = '↳'
+    const statusLine = (icon: string, color: string | undefined, value: ReturnType<typeof Box>) => (
+      <Box flexDirection="row">
+        <Box width={3} flexShrink={0}>
+          <Text color={color}>{icon}</Text>
+        </Box>
+        {value}
+      </Box>
+    )
+    const hint = (text: string) => (
+      <Text color={theme.muted} italic>
+        {text}
+      </Text>
+    )
     const branchRow = () => {
-      if (!t.top || !t.branch) return null
+      if (!t.top) return statusLine(gitGlyph, theme.muted, <Text color={theme.muted}>no git repo · git status starts after git init</Text>)
+      if (!t.branch) return null
       const b = t.branch
       const isFlash = bright.has(BRANCH_ROW)
       const tone = t.flashTones[BRANCH_ROW] ?? 'push'
-      const label = b.head
-      return (
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Box flexDirection="row" flexShrink={0}>
-            <Text color={isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
-            <Text bold color={isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined}>
-              {label}
+      // The upstream only when it is not the branch's own name on its remote.
+      const named = b.upstream && b.upstream.slice(b.upstream.indexOf('/') + 1) !== b.head ? b.upstream : ''
+      const c = t.counts[t.root]
+      const tally = c ? ([['?', c[0]], ['M', c[1]], ['D', c[2]]] as [string, number][]).filter(([, n]) => n > 0) : []
+      return statusLine(
+        unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd,
+        isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent,
+        <Box flexDirection="row" flexGrow={1}>
+          <Box flexShrink={1} overflow="hidden">
+            <Text bold color={isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined} wrap="truncate-end">
+              {b.head}
             </Text>
-            {b.ahead > 0 && <Text color={TONES.push?.solid}>{` ↑${b.ahead}`}</Text>}
-            {b.behind > 0 && <Text color={TONES.pull?.solid}>{` ↓${b.behind}`}</Text>}
           </Box>
-          {b.upstream && (
+          {b.ahead > 0 && <Text color={TONES.push?.solid}>{` ↑${b.ahead}`}</Text>}
+          {b.behind > 0 && <Text color={TONES.pull?.solid}>{` ↓${b.behind}`}</Text>}
+          {named && (
             <Box flexShrink={1} overflow="hidden">
               <Text color={theme.muted} wrap="truncate-end">
-                {` ${b.upstream}`}
+                {` ${named}`}
               </Text>
             </Box>
           )}
           <Box flexGrow={1} />
-          <Box flexDirection="row" flexShrink={0}>
-            {rootCounts.map(c => (
-              <Text color={c.c} backgroundColor={c.bg}>
-                {c.t}
+          {tally.map(([letter, n]) => (
+            <Text>
+              <Text bold color={GIT_COLOR[letter]}>
+                {` ${letter}`}
               </Text>
-            ))}
-            {rootCounts.length === 0 && <Text color={theme.muted}> clean</Text>}
-          </Box>
-        </Box>
+              <Text color={theme.muted}>{` ${n} `}</Text>
+            </Text>
+          ))}
+          {tally.length === 0 && <Text color={theme.muted}>clean </Text>}
+        </Box>,
       )
     }
-
-    const chip = (a: Activity) => {
-      const tone = a.state === 'failed' ? 'failed' : a.tone
-      const color = TONES[tone]?.solid ?? theme.accent
-      const icon = unicode ? a.plain : a.nerd
-      const hash = a.state === 'done' && a.kind === 'git commit' ? a.detail.split(' ')[0] ?? '' : ''
-      return (
-        <Box flexDirection="row" marginLeft={1}>
-          <Text color={color}>{icon + ' '}</Text>
+    const gitRow = () => {
+      if (!latest) return statusLine(gitGlyph, theme.muted, hint('none yet'))
+      const a = latest
+      const color = TONES[a.state === 'failed' ? 'failed' : a.tone]?.solid ?? theme.accent
+      const hash = a.state === 'done' && a.kind === 'git commit' ? (a.detail.split(' ')[0] ?? '') : ''
+      return statusLine(
+        unicode ? a.plain : a.nerd,
+        color,
+        <Box flexDirection="row">
           <Text bold={a.state === 'running'} color={color}>
             {a.state === 'running' ? `${a.label}…` : a.label}
           </Text>
           {hash && <Text color={theme.muted}>{` ${hash}`}</Text>}
-        </Box>
+        </Box>,
       )
     }
 
@@ -1974,34 +1986,28 @@ export const register: Register = (on, options) => {
         )}
         {rule}
         {branchRow()}
-        {!t.top && <Text color={theme.muted}>{unicode ? '± ' : '\u{e702} '}no git repo · git status starts after git init</Text>}
         {/* Always drawn, so what each line is for shows before it holds anything. */}
-        <Box flexDirection="row">
-          <Text color={theme.muted}>sent with your prompts </Text>
-          {t.selected ? (
-            <Box flexShrink={1}>
-              <Text bold wrap="truncate-start">
-                {t.selected !== t.root && inside(t.root, t.selected) ? relative(t.root, t.selected) : shortPath(t.selected)}
-              </Text>
+        {statusLine(
+          sentGlyph,
+          theme.accent,
+          t.selected ? (
+            <Box flexDirection="row" flexGrow={1}>
+              <Box flexShrink={1}>
+                <Text bold wrap="truncate-start">
+                  {t.selected !== t.root && inside(t.root, t.selected) ? relative(t.root, t.selected) : shortPath(t.selected)}
+                </Text>
+              </Box>
+              <Box flexGrow={1} />
+              <Button key="unselect" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void patch($, () => ({ selected: '' }))} />
             </Box>
           ) : (
-            <Text color={theme.muted} italic>
-              nothing yet: click a file
-            </Text>
-          )}
-          <Box flexGrow={1} />
-          {t.selected ? <Button key="unselect" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void patch($, () => ({ selected: '' }))} /> : null}
-        </Box>
-        <Box flexDirection="row">
-          <Text color={theme.muted}>last git action</Text>
-          {latest ? (
-            chip(latest)
-          ) : (
-            <Text color={theme.muted} italic>
-              {' none yet'}
-            </Text>
-          )}
-        </Box>
+            hint('nothing yet: click a file')
+          ),
+        )}
+        {gitRow()}
+        <Text color={theme.muted} dimColor>
+          {`${sentGlyph} sent with your prompts · ${gitGlyph} last git action`}
+        </Text>
       </Box>
     )
   })

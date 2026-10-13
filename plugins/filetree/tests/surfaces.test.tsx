@@ -134,7 +134,9 @@ test('macOS Claude Code app: desktop pane draws, selects, opens with open', { ti
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   const shown = await texts(ui)
-  for (const word of ['README.md', 'notes.md', 'src', 'main', 'origin/main']) expect(shown).toContain(word)
+  for (const word of ['README.md', 'notes.md', 'src', 'main', '↳ sent with your prompts · ± last git action']) expect(shown).toContain(word)
+  // origin/main is main's own name on its remote, so the branch line leaves it out
+  expect(shown).not.toContain('origin/main')
   expect(NERD.test(shown)).toBe(false)
   await ui.post({ press: `${root}/README.md` }, { in: 'rows' })
   await clock.settle()
@@ -272,7 +274,7 @@ test('the pane says what is on: the pin badge, breadcrumb, setting chips and the
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   let shown = await texts(ui)
-  for (const word of ['nothing yet: click a file', ' none yet', '"pinned"', '"~"', '"proj"', 'hidden on', '"? key"', 'settings ▸']) expect(shown).toContain(word)
+  for (const word of ['nothing yet: click a file', 'none yet', '"pinned"', '"~"', '"proj"', 'hidden on', '"? key"', 'settings ▸']) expect(shown).toContain(word)
   expect(shown).not.toContain('What Claude just did')
   expect(shown).not.toContain('sizes')
   w.cwd = '/Users/k/other'
@@ -748,7 +750,7 @@ test('in the desktop app /filetree opens the pane without the terminal layout ch
   expect(opens.at(-1)).toMatchObject({ id: 'filetree', focus: true })
 })
 
-const sentWith = (name: string) => `"sent with your prompts "]},{"type":"Box","props":{"flexShrink":1},"children":[{"type":"Text","props":{"bold":true,"wrap":"truncate-start"},"children":[${JSON.stringify(name)}]`
+const sentWith = (name: string) => `"bold":true,"wrap":"truncate-start"},"children":[${JSON.stringify(name)}]`
 const outsideHeader = (tone: string) => shimmer('outside this folder', tone)
 const awayRow = (name: string, folder: string) => `"t":${JSON.stringify(name)}},{"t":${JSON.stringify('  ' + folder)}`
 const shimmer = (name: string, tone: string) => `"t":${JSON.stringify(name)},"sh":"${tone}"`
