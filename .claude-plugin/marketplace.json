@@ -15,12 +15,12 @@
     {
       "name": "context-drill",
       "source": "./plugins/context-drill",
-      "description": "A Context pane that drills into what fills the window: the /context categories, where auto-compact fires (with Compact now), and the memory files, MCP tools by server, agents and skills behind them. motta-statusline's ctx opens it; so does /context-drill."
+      "description": "A Context pane that drills into what fills the window, read when it opens, after each turn while it is shown and on Refresh (a local estimate, no request sent): the /context categories as a stacked bar with the auto-compact tick and what grew since you opened it, the fill per turn against the auto-compact point, turns left before it fires, cache health, the heaviest messages and tokens by tool, then the memory files, MCP tools by server, agents and skills, and the startup cost against your average; a footer compacts with a focus you pick. Every part is a setting. motta-statusline's ctx opens it; so does /context-drill."
     },
     {
       "name": "changes-drill",
       "source": "./plugins/changes-drill",
-      "description": "A Changes pane: each file changed against HEAD with its git status and lines added and deleted, fresh on open and after each turn. motta-statusline's files opens it; so does /changes-drill."
+      "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch, with a review budget, a guard for sensitive or out-of-scope files and a commit plan by unit. Read-only, no model calls, no network. motta-statusline's files opens it; so does /changes-drill."
     },
     {
       "name": "usage-drill",
