@@ -25,7 +25,7 @@ const result = (read: number): TurnStepResult => ({
   usage: { model: 'claude-opus-5-5', ...usage(read) },
 })
 
-type Beneath = 'nothing' | 'enhance' | 'statusline'
+type Beneath = 'nothing' | 'enhance' | 'statusline' | 'slots'
 
 // The engine beneath the mod: a subscription session (rate limits reported,
 // so an hour's TTL), steps that read the cache, forks counted, and in the
@@ -62,6 +62,25 @@ function answerSession(on: Parameters<TestBody>[1], beneath: Beneath = 'nothing'
       </Box>
     )
     if (beneath === 'enhance') return enhance
+    // The status line as it draws now, prompt-enhancer's chip in line 1's slot.
+    if (beneath === 'slots') {
+      return (
+        <Box key="band-lines:motta-statusline" flexDirection="column">
+          <Box key="line1" flexDirection="row">
+            <Text>📁 folder</Text>
+            <Box key="band-slot:1" flexDirection="row">
+              <Box key="enhance-chip" flexDirection="row">
+                <Text>✦ enhance</Text>
+              </Box>
+            </Box>
+          </Box>
+          <Box key="line2" flexDirection="row">
+            <Text>ctx</Text>
+            <Box key="band-slot:2" flexDirection="row" />
+          </Box>
+        </Box>
+      )
+    }
     return (
       <Box flexDirection="row">
         <Box flexDirection="column">
@@ -119,22 +138,22 @@ describe('warmth', () => {
 test('shows the countdown and pings once, 3 minutes before expiry, only while on', async ($, on) => {
   const { clock, forks } = answerSession(on)
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('❄ --')
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toBe('❄ --')
   await step($)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('❄ 1h00m')
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toBe('❄ 1h00m')
 
   // Off: the cache runs into its last minutes and nothing is sent.
   await clock.advance(58 * MIN)
   expect(forks).toHaveLength(0)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('❄ 2m')
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toBe('❄ 2m')
 
   await ui.press({ key: 'keep-warm' })
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('🔥 2m')
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toBe('🔥 2m')
   await clock.advance(15_000)
   expect(forks).toHaveLength(1)
   expect(forks[0]).toMatch(/exactly one word/)
   // The ping read the cache: an hour again, and one ping counted.
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('🔥 1h00m ↻1')
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toBe('🔥 1h00m ↻1')
 
   // Nothing more until the next lead.
   await clock.advance(50 * MIN)
@@ -153,7 +172,7 @@ test('never pings while a turn runs, nor a cache already cold', async ($, on) =>
   await clock.advance(58 * MIN)
   expect(forks).toHaveLength(0)
   await clock.advance(5 * MIN)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toMatch(/^. cold/u)
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. cold/u)
   expect(forks).toHaveLength(0)
   await ui.unmount()
 })
@@ -169,7 +188,7 @@ test('stops pinging past maxIdleHours', { options: { maxIdleHours: 1.5 } }, asyn
   await clock.advance(60 * MIN)
   expect(forks).toHaveLength(1)
   await clock.advance(10 * MIN)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toMatch(/^. cold/u)
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. cold/u)
   await ui.unmount()
 })
 
@@ -197,6 +216,19 @@ for (const beneath of ['nothing', 'enhance', 'statusline'] as const) {
   })
 }
 
+test("in the status line's slots, the chip takes line 2's, under ✦ enhance on line 1", async ($, on) => {
+  answerSession(on, 'slots')
+  const ui = await $.ui.mount(BAND)
+  type El = { props?: { key?: unknown }; children?: El[] }
+  const drawn = (await ui.drawn()) as El
+  expect(drawn.props?.key).toBe('band-lines:motta-statusline')
+  const slot = (i: number) => JSON.stringify(drawn.children?.[i]?.children?.at(-1))
+  expect(slot(0)).toContain('✦ enhance')
+  expect(slot(0)).not.toContain('keep-warm')
+  expect(slot(1)).toContain('keep-warm')
+  await ui.unmount()
+})
+
 test('a ping that finds the cache lapsed reads the TTL as 5 minutes', async ($, on) => {
   const { clock, forks, toasts } = answerSession(on, 'nothing', { ...usage(0), cache_creation_input_tokens: 50_000 })
   const ui = await $.ui.mount(BAND)
@@ -205,7 +237,7 @@ test('a ping that finds the cache lapsed reads the TTL as 5 minutes', async ($, 
   await clock.advance(57 * MIN)
   expect(forks).toHaveLength(1)
   expect(toasts.some(t => /5 minutes/.test(t))).toBe(true)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toMatch(/^. 5m/u)
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. 5m/u)
   await ui.unmount()
 })
 
@@ -224,8 +256,18 @@ test("a model switch leaves the cache cold and takes the engine's TTL", async ($
     estimated_cache_write_usd: 0.1,
     pricing: 'catalog',
   })
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toMatch(/^. cold/u)
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. cold/u)
   await step($)
-  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toMatch(/^. 5m/u)
+  expect((await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never))?.text).toMatch(/^. 5m/u)
+  await ui.unmount()
+})
+
+test('a narrow band presses the state alone, without the word', async ($, on) => {
+  answerSession(on)
+  const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 50 } })
+  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('❄ --')
+  expect(await ui.find({ type: 'Text', text: /^(❄|🔥) /u } as never)).toBeUndefined()
+  await ui.press({ key: 'keep-warm' })
+  expect((await ui.find({ key: 'keep-warm' }))?.props.label).toBe('🔥 --')
   await ui.unmount()
 })

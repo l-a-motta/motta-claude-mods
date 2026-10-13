@@ -64,7 +64,15 @@
 //   chip, such as prompt-enhancer's) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
-//   tree takes the band.
+//   tree takes the band. The chips are dealt one to a line, into a slot that
+//   ends the line (`band-slot:`), so each lines up with its line and wraps
+//   with it on a narrow band. The lines are keyed `band-lines:`, so a chip
+//   mod whose hook runs above this one finds the slots too (its withChip).
+//
+// Compact (a band or line under COMPACT_BELOW cells): the lines leave out
+// the repository a worktree belongs to, the last commit, the context's token
+// counts and the last slot (`out` and the rest), and the chips draw their
+// glyph alone; what is left keeps to fewer rows instead of wrapping into many.
 //
 // The host reads on(...) and $.noun.method(...) from source, so they are
 // spelled literally, and helpers that take $ are top-level functions.
@@ -288,38 +296,25 @@ export const register: Register = (on, options) => {
     const table = $.ui.resolve(e)
     const { Box, Text, Link, Button } = table
     const Svg = e.surface === 'desktop' && 'Svg' in table ? table.Svg : null
-    const ours = (
-      <Box flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
-        {lines($, { Box, Text, Link, Button }, data, await $.clock.now(), Svg)}
+    const now = await $.clock.now()
+    const ours = (chips: RenderChildren[]) => (
+      <Box key="band-lines:motta-statusline" flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
+        {lines($, { Box, Text, Link, Button }, data, now, Svg, chips, isCompact(e.props.bodyColumns || e.viewport?.columns))}
       </Box>
     )
-    if (share === 'beside') {
-      return (
-        <Box flexDirection="row" alignItems="flex-start">
-          {ours}
-          {below}
-        </Box>
-      )
-    }
+    if (share === 'beside') return ours(chipsOf(below))
     if (share === 'under') {
       // A card holds the chips when their hooks ran beneath it: they go back
       // to the right of the lines, and the card under them.
       const { beside, rest } = liftBeside(below)
       return (
         <Box flexDirection="column">
-          {beside === undefined ? (
-            ours
-          ) : (
-            <Box flexDirection="row" alignItems="flex-start">
-              {ours}
-              {beside}
-            </Box>
-          )}
+          {ours(beside === undefined ? [] : chipsOf(beside))}
           {rest}
         </Box>
       )
     }
-    return ours
+    return ours([])
   })
 
   // The hint line under the prompt stays up while a turn runs. The engine's own
@@ -331,11 +326,19 @@ export const register: Register = (on, options) => {
     const { Box, Text, Link, Button } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        {lines($, { Box, Text, Link, Button }, data, await $.clock.now())}
+        {lines($, { Box, Text, Link, Button }, data, await $.clock.now(), null, [], isCompact(e.viewport?.columns))}
         {hint}
       </Box>
     )
   })
+}
+
+// Below this many cells the lines draw compact; the chip mods read the same
+// width against the same mark.
+export const COMPACT_BELOW = 80
+
+export function isCompact(columns: number | undefined) {
+  return columns !== undefined && columns > 0 && columns < COMPACT_BELOW
 }
 
 // What `next(e)` hands back when no plugin beneath drew: the engine's own band
@@ -358,6 +361,15 @@ export function bandShare(node: unknown): 'free' | 'beside' | 'under' | 'taken' 
 }
 
 type Node = { type?: unknown; props?: { key?: unknown }; children?: RenderChildren[] }
+
+// The chips of a `band-beside:` column, in order: a column a chip's mod
+// nested inside another's (withChip) gives its own chips in its place.
+export function chipsOf(node: RenderChildren, depth = 0): RenderChildren[] {
+  const el = node as Node | null
+  const key = el?.type === 'Box' ? el.props?.key : undefined
+  if (depth > 8 || typeof key !== 'string' || !key.startsWith('band-beside:')) return node === null || node === undefined ? [] : [node]
+  return (el?.children ?? []).flatMap(child => chipsOf(child, depth + 1))
+}
 
 // The first `band-beside:` Box inside a card's tree, taken out of it, and the
 // tree without it; `beside` undefined when it holds none.
@@ -763,7 +775,7 @@ type Ui = { Box: any; Text: any; Link: any; Button: any }
 // view against origin's default), the file counts (the Changes pane), the
 // last commit once pushed (its page), the percentages (the Context and Usage
 // panes) and the last slot (cycles what it shows).
-function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null) {
+function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null, chips: RenderChildren[] = [], compact = false) {
   const { Box, Text, Link, Button } = ui
   const onDesktop = Svg !== null
   // Spacing comes from the layout alone, never from spaces in the text: a
@@ -818,7 +830,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       icon('folder', 'suggestion'),
       press('folder', w.label, () => void openFolder($, w.path)),
       ...(drift === null ? [] : [<Text color="suggestion">↳</Text>, press('cwd', drift, () => void openFolder($, d.cwd))]),
-      ...(w.worktreeOf ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
+      ...(w.worktreeOf && !compact ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
     ]),
   ]
   if (d.git) {
@@ -831,7 +843,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     const isChanged = g.staged + g.modified + g.untracked > 0
     const files = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale}>{isChanged ? 'changed' : 'clean'}</Text>
     line1.push(seg([press('changes', 'files', () => void openChanges($)), files, ...syncParts(Text, g, d.base)]))
-    if (d.commit) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
+    if (d.commit && !compact) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
   }
   if (d.pr && !onDesktop) line1.push(seg([tight(prSegment(Text, Link, d.pr, d.isPrStale))]))
 
@@ -844,7 +856,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       press('context', 'ctx', () => void openContext($)),
       bar(`context ${d.ctxPercent}%`, d.ctxPercent, ctxColor, compactShare(d.compactAt, d.ctxWindow), compactMark(d.compactAt, d.ctxWindow)),
       <Text color={ctxColor} bold>{d.ctxPercent}%</Text>,
-      <Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>,
+      ...(compact ? [] : [<Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>]),
     ]),
   ]
   for (const l of d.limits) {
@@ -859,12 +871,24 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     if (left) limit.push(<Text color="subtle">{left}</Text>)
     line2.push(seg(limit))
   }
-  line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
+  if (!compact) line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
 
-  return [
-    <Box key="line1" flexDirection="row" flexWrap="wrap" columnGap={space.outer}>{line1}</Box>,
-    <Box key="line2" flexDirection="row" flexWrap="wrap" columnGap={space.outer} marginTop={onDesktop ? DESKTOP_LINE_GAP : 0}>{line2}</Box>,
-  ]
+  // Each line ends with its chip slot (`band-slot:`): a box that grows into
+  // what the line's last row leaves, holding the chip at the line's right end.
+  // On a narrow band the slot wraps with the segments, so a chip takes no
+  // width from the line, and lands right-aligned on a row of its own. The
+  // first chip goes to line 1, the rest to line 2; a chip mod drawing above
+  // deals them out again (its withChip).
+  const slots = [chips.slice(0, 1), chips.slice(1)]
+  const row = (i: number, segs: unknown[], marginTop: number) => (
+    <Box key={`line${i + 1}`} flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={space.outer} marginTop={marginTop}>
+      {segs}
+      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={1} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
+        {slots[i]}
+      </Box>
+    </Box>
+  )
+  return [row(0, line1, 0), row(1, line2, onDesktop ? DESKTOP_LINE_GAP : 0)]
 }
 
 // The gaps, in character cells: between a segment's items (`inner`) and
