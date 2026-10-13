@@ -20,7 +20,7 @@
     {
       "name": "changes-drill",
       "source": "./plugins/changes-drill",
-      "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch, with a review budget, a guard for sensitive or out-of-scope files and a commit plan by unit. Read-only, no model calls, no network. motta-statusline's files opens it; so does /changes-drill."
+      "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch, with a guard for sensitive or out-of-scope files, and a History section: what happened, you against main, and every branch as lanes or a subway map, with hover cards and commits that open. Read-only, no model calls, no network. motta-statusline's files opens it; so does /changes-drill."
     },
     {
       "name": "usage-drill",

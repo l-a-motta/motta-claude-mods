@@ -2,8 +2,8 @@
 // not: which turn changed each file and who (Claude, a subagent, Claude's
 // shell, or you outside Claude), against a baseline of your choice (HEAD, the
 // session's start, the last turn, the base branch), with what to look at
-// (sensitive files, files outside a scope, source without a test, a diff past
-// a review budget) and a commit plan by unit. It only reads: nothing it draws
+// (sensitive files, files outside a scope, source without a test), and a
+// History section of the branches under it. It only reads: nothing it draws
 // stages, reverts or writes anything.
 //
 // It makes no model call, adds nothing to the model's context and makes no
@@ -18,9 +18,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { ChangesDrillOpened, ChangesDrillSnapshot, ChangesDrillTouch, ChangesDrillTurn } from '../types'
-import { branchOf, isGenerated, isSensitive, numstat, parseChanges, parseNameStatus, repoPath, withNumstat } from './git.ts'
+import { branchOf, isSensitive, numstat, parseChanges, parseNameStatus, repoPath, withNumstat } from './git.ts'
 import type { Change } from './git.ts'
 import { changesPane } from './pane.tsx'
+import { LOG_FORMAT, parseCounts, parseFiles, parseLog } from './history.ts'
+import { historySection } from './historyView.tsx'
+import type { HistoryReading, Picks } from './historyView.tsx'
 
 const PANE = 'changes-drill'
 
@@ -28,7 +31,7 @@ const turnsAtom = atom({ plugin: 'changes-drill', key: 'turns' } as const, [] as
 const touchesAtom = atom({ plugin: 'changes-drill', key: 'touches' } as const, {} as Record<string, ChangesDrillTouch>)
 const sessionAtom = atom({ plugin: 'changes-drill', key: 'session' } as const, null as ChangesDrillSnapshot | null)
 const turnAtom = atom({ plugin: 'changes-drill', key: 'turn' } as const, null as ChangesDrillSnapshot | null)
-const warnedAtom = atom({ plugin: 'changes-drill', key: 'warned' } as const, { budget: false, sensitive: [] as string[] })
+const warnedAtom = atom({ plugin: 'changes-drill', key: 'warned' } as const, { sensitive: [] as string[] })
 
 export type Settings = {
   group: 'turn' | 'folder' | 'author' | 'stage' | 'flat'
@@ -45,13 +48,11 @@ export type Settings = {
   scope: string
   tests: boolean
   fold: boolean
-  budget: boolean
-  budgetLines: number
   toast: boolean
   peek: boolean
   peekLines: number
-  plan: boolean
-  planStyle: 'conventional' | 'plain'
+  history: boolean
+  historyDepth: number
 }
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
@@ -77,13 +78,11 @@ export function settingsOf(options: Record<string, unknown> | undefined): Settin
     scope: typeof o.scope === 'string' ? o.scope.trim().replace(/\\/g, '/').replace(/^\.?\//, '') : '',
     tests: flag(o.testHint, false),
     fold: flag(o.foldGenerated, false),
-    budget: flag(o.budget, true),
-    budgetLines: count(o.budgetLines, 800, 10),
     toast: flag(o.turnToast, true),
     peek: flag(o.peek, false),
     peekLines: count(o.peekLines, 4, 1),
-    plan: flag(o.commitPlan, true),
-    planStyle: pick(o.commitStyle, ['conventional', 'plain'], 'conventional'),
+    history: flag(o.history, true),
+    historyDepth: Math.min(200, count(o.historyDepth, 40, 5)),
   }
 }
 
@@ -109,6 +108,18 @@ let showGenerated = false
 let peekCache: { key: string; lines: string[] } | null = null
 let editTimer: { cancel: () => void } | null = null
 const tops = new Map<string, string | null>()
+// The History section's own reading: undefined until the pane first draws
+// it, null outside a repository. Read on open, on its Refresh, and at a
+// turn's end when a ref moved; never with the pane closed.
+let history: HistoryReading | null | undefined
+let historyKicked = false
+let isHistoryReading = false
+let historyPrint = ''
+let picks: Picks = { me: 'tracks', all: 'lanes', cur: 'story' }
+let picksLoaded = false
+const openRows = new Set<string>()
+const commitFiles = new Map<string, [number, number, string][] | 'reading'>()
+const filePeeks = new Map<string, readonly string[] | 'reading'>()
 const mergeBases = new Map<string, { base: string; sha: string }>()
 
 export const register: Register = (on, options) => {
@@ -186,11 +197,12 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    if (e.agentId === undefined) await historyAtTurnEnd($)
     if (e.agentId !== undefined || settings.refresh === 'manual') return result
     const up = await isUp($)
     const turn = (await read($, turnsAtom)).at(-1)?.n ?? 0
     const touched = Object.values(await read($, touchesAtom)).some(t => t.turn === turn)
-    const alerts = settings.toast || settings.budget || settings.guard
+    const alerts = settings.toast || settings.guard
     if (!up && !(alerts && (touched || shellRan))) return result
     const before = reading
     await readChanges($)
@@ -202,13 +214,27 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Code } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button, Code } = ui
     // A reload (an edit, an option changed) drops the reading: read once.
     if (!isRead && !kicked) {
       kicked = true
       void refresh($)
     }
-    return changesPane({
+    if (settings.history && history === undefined && !historyKicked) {
+      historyKicked = true
+      void readHistory($).then(() => $.ui.invalidate('ui.render'))
+    }
+    if (!picksLoaded) {
+      picksLoaded = true
+      try {
+        const saved = (await $.store.get('historyPicks')) as Partial<Picks> | undefined
+        if (saved && typeof saved === 'object') picks = { me: saved.me === 'places' ? 'places' : 'tracks', all: saved.all === 'subway' ? 'subway' : 'lanes', cur: saved.cur === 'files' ? 'files' : 'story' }
+      } catch {
+        // no store: the defaults stand.
+      }
+    }
+    const list = changesPane({
       Box,
       Text,
       Button,
@@ -231,7 +257,168 @@ export const register: Register = (on, options) => {
         },
       },
     })
+    if (!settings.history) return list
+    return (
+      <Box flexDirection="column" width="100%">
+        {list}
+        {historySection({
+          Box,
+          Text,
+          Button,
+          Svg: 'Svg' in ui ? ui.Svg : undefined,
+          Select: 'Select' in ui ? ui.Select : undefined,
+          Code,
+          surface: e.surface,
+          columns: (e.props as { bodyColumns?: number }).bodyColumns ?? 0,
+          history,
+          isReading: isHistoryReading,
+          rows: isRead && reading ? reading.rows : [],
+          picks,
+          open: openRows,
+          files: commitFiles,
+          peeks: filePeeks,
+          now: await $.clock.now(),
+          on: {
+            refresh: () => void readHistory($).then(() => $.ui.invalidate('ui.render')),
+            pick: (section, value) => {
+              picks = { ...picks, [section]: value }
+              void $.store.set('historyPicks', picks)
+              $.ui.invalidate('ui.render')
+            },
+            toggle: (key, commit) => void toggleRow($, key, commit),
+            peek: path => void togglePeek($, path),
+          },
+        })}
+      </Box>
+    )
   })
+}
+
+// --- the History section ---------------------------------------------------
+
+// At a turn's end, while the pane is up: one cheap look at the refs, and a
+// full read only when one moved.
+async function historyAtTurnEnd($: EngineInterface) {
+  if (!settings.history || history === undefined || !(await isUp($))) return
+  const top = await topOf($)
+  if (!top) return
+  if ((await refsPrint($, top)) === historyPrint) return
+  await readHistory($)
+  $.ui.invalidate('ui.render')
+}
+
+// Every ref and what it points at, HEAD first: what moved since the last read.
+async function refsPrint($: EngineInterface, top: string) {
+  try {
+    const run = await git($, top, ['show-ref', '--head'])
+    return run.stdout
+  } catch {
+    return ''
+  }
+}
+
+// The base line: origin's default branch, else origin/main, a local main or
+// master. Local refs only; nothing is fetched.
+async function baseOf($: EngineInterface, top: string) {
+  const remote = await git($, top, ['rev-parse', '--abbrev-ref', 'origin/HEAD'])
+  const candidates = [remote.exitCode === 0 ? remote.stdout.trim() : '', 'origin/main', 'origin/master', 'main', 'master'].filter(Boolean)
+  for (const ref of candidates) {
+    const sha = await git($, top, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
+    if (sha.exitCode === 0 && sha.stdout.trim()) return { ref, sha: sha.stdout.trim() }
+  }
+  return null
+}
+
+async function readHistory($: EngineInterface) {
+  isHistoryReading = true
+  $.ui.invalidate('ui.render')
+  try {
+    const top = await topOf($)
+    if (!top) {
+      history = null
+      return
+    }
+    const [print, base, headRun, branchRun] = await Promise.all([refsPrint($, top), baseOf($, top), git($, top, ['rev-parse', '--verify', '--quiet', 'HEAD']), git($, top, ['rev-parse', '--abbrev-ref', 'HEAD'])])
+    const head = headRun.exitCode === 0 ? headRun.stdout.trim() || null : null
+    if (!head) {
+      history = null
+      historyPrint = print
+      return
+    }
+    const log = await git($, top, ['log', `-n${settings.historyDepth}`, '--topo-order', `--format=${LOG_FORMAT}`, 'HEAD', '--branches', '--remotes'])
+    const [counts, fork, behind, upstream] = await Promise.all([
+      base ? git($, top, ['rev-list', '--left-right', '--count', `HEAD...${base.ref}`]) : null,
+      base ? git($, top, ['merge-base', 'HEAD', base.ref]) : null,
+      base ? git($, top, ['log', '-n20', `--format=${LOG_FORMAT}`, `HEAD..${base.ref}`]) : null,
+      git($, top, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']),
+    ])
+    const ab = counts && counts.exitCode === 0 ? parseCounts(counts.stdout) : null
+    const up = upstream.exitCode === 0 ? upstream.stdout.trim() || null : null
+    const unpushed = up ? parseCounts((await git($, top, ['rev-list', '--left-right', '--count', `HEAD...${up}`])).stdout)?.[0] ?? null : null
+    history = {
+      commits: log.exitCode === 0 ? parseLog(log.stdout) : [],
+      head,
+      branch: branchRun.exitCode === 0 ? branchRun.stdout.trim() : 'HEAD',
+      base: base?.ref ?? null,
+      main: base?.sha ?? null,
+      fork: fork && fork.exitCode === 0 ? fork.stdout.trim() || null : null,
+      ahead: ab?.[0] ?? 0,
+      behind: ab?.[1] ?? 0,
+      behindList: behind && behind.exitCode === 0 ? parseLog(behind.stdout) : [],
+      upstream: up,
+      unpushed,
+      at: await $.clock.now(),
+    }
+    historyPrint = print
+    commitFiles.clear()
+  } catch {
+    // git missing or slow: the last reading stays.
+    if (history === undefined) history = null
+  } finally {
+    isHistoryReading = false
+  }
+}
+
+// A row opened or closed; a commit's files read on its first opening only.
+async function toggleRow($: EngineInterface, key: string, commit?: string) {
+  if (openRows.has(key)) openRows.delete(key)
+  else openRows.add(key)
+  $.ui.invalidate('ui.render')
+  if (!commit || !openRows.has(key) || commitFiles.has(commit)) return
+  const top = await topOf($)
+  if (!top) return
+  commitFiles.set(commit, 'reading')
+  try {
+    const run = await git($, top, ['diff-tree', '-r', '--numstat', '--no-commit-id', '--root', '-m', '--first-parent', commit])
+    commitFiles.set(commit, run.exitCode === 0 ? parseFiles(run.stdout) : [])
+  } catch {
+    commitFiles.set(commit, [])
+  }
+  $.ui.invalidate('ui.render')
+}
+
+// A changed file's first diff lines under its row in the files tree.
+async function togglePeek($: EngineInterface, path: string) {
+  const key = `f:${path}`
+  if (openRows.has(key)) {
+    openRows.delete(key)
+    $.ui.invalidate('ui.render')
+    return
+  }
+  openRows.add(key)
+  filePeeks.set(path, 'reading')
+  $.ui.invalidate('ui.render')
+  const r = reading
+  const row = r?.rows.find(x => x.path === path)
+  let lines: string[] = []
+  try {
+    if (r && row?.status === '??') lines = trimHunk(['@@ -0,0 +1 @@', ...(await $.fs.read(`${r.top}/${row.path}`)).split('\n').map(l => `+${l.replace(/\r$/, '')}`)], 6)
+    else if (r && row) lines = trimHunk((await git($, r.top, ['diff', '--no-color', '--no-ext-diff', '-U1', r.base, '--', row.path])).stdout.split('\n').map(l => l.replace(/\r$/, '')), 6)
+  } catch {
+    lines = []
+  }
+  filePeeks.set(path, lines)
+  $.ui.invalidate('ui.render')
 }
 
 // --- tracking --------------------------------------------------------------
@@ -485,11 +672,8 @@ async function attributeShell($: EngineInterface, before: Reading, after: Readin
   }
 }
 
-export const reviewable = (rows: readonly Row[], fold: boolean) => rows.filter(r => !(fold && isGenerated(r.path)))
-export const linesOf = (rows: readonly Row[]) => rows.reduce((n, r) => n + (r.added ?? 0) + (r.deleted ?? 0), 0)
-
-// The turn's toasts: what it changed, a diff that passed the budget (once,
-// until it falls back under), a sensitive file that is not ignored (once each).
+// The turn's toasts: what it changed, and a sensitive file that is not
+// ignored (once each).
 async function alert($: EngineInterface, turn: number) {
   const r = reading
   if (!r) return
@@ -501,12 +685,6 @@ async function alert($: EngineInterface, turn: number) {
     }
   }
   const warned = await read($, warnedAtom)
-  if (settings.budget) {
-    const lines = linesOf(reviewable(r.rows, true))
-    const over = lines > settings.budgetLines
-    if (over && !warned.budget) $.ui.toast(`The diff passed ${settings.budgetLines} lines (${lines} against ${r.against}): a good point to commit or split`)
-    if (over !== warned.budget) await update($, warnedAtom, w => ({ ...w, budget: over }))
-  }
   if (settings.guard) {
     const fresh = r.rows.filter(row => row.status === '??' && isSensitive(row.path) && !warned.sensitive.includes(row.path))
     for (const row of fresh.slice(0, 3)) $.ui.toast(`${row.path} looks sensitive and is not in .gitignore`)
@@ -522,6 +700,10 @@ async function isUp($: EngineInterface) {
 
 async function open($: EngineInterface): Promise<ChangesDrillOpened> {
   await readChanges($)
+  if (settings.history) {
+    historyKicked = true
+    await readHistory($)
+  }
   const opened = await $.ui.open({ id: PANE, title: 'Changes' })
   return opened.isPlaced ? { isPlaced: true } : { isPlaced: false, reason: opened.reason }
 }

@@ -40,7 +40,7 @@ declare module 'claude-code' {
       touches: Record<string, ChangesDrillTouch>
       session: ChangesDrillSnapshot | null
       turn: ChangesDrillSnapshot | null
-      warned: { budget: boolean; sensitive: string[] }
+      warned: { sensitive: string[] }
     }
   }
 }

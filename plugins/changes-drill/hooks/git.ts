@@ -1,6 +1,6 @@
 // What git says, read into plain values, and the pure judgements the pane
-// draws from them: which files look sensitive or generated, how a set of
-// paths splits into commits, and the bars a file's lines draw as.
+// draws from them: which files look sensitive or generated, and the bars a
+// file's lines draw as.
 
 // One changed file: git's two-letter status, the path from the repository's
 // root, and its lines added and deleted against the baseline (null for a
@@ -103,8 +103,6 @@ export function isTest(path: string) {
   return /(^|\/)(tests?|__tests__|spec)\//.test(path) || /\.(test|spec)\.[a-z]+$/.test(base(path)) || /^test_.+\.py$/.test(base(path))
 }
 
-export const isDoc = (path: string) => /\.(md|mdx|rst|txt|adoc)$/i.test(path) || /(^|\/)docs?\//.test(path)
-
 // A source file: what a test should come with.
 export const isSource = (path: string) => /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|rb|php|cs|swift|c|cc|cpp|h)$/.test(path) && !isTest(path) && !isGenerated(path) && !path.endsWith('.d.ts')
 
@@ -114,44 +112,6 @@ export function scopeOf(path: string) {
   const unit = /^(plugins|packages|apps|libs|services|crates|modules)\/([^/]+)\//.exec(path)
   if (unit) return unit[2] ?? ''
   return path.includes('/') ? (path.split('/')[0] ?? '') : ''
-}
-
-export type Commit = { title: string; paths: string[] }
-
-// The changed paths split into commits by unit: lockfiles and other generated
-// files on their own, a unit of only docs or only tests by that, any other a
-// feature with its docs and tests; root files by kind. Sensitive files are
-// left out. `conventional` titles read `feat(scope)`, `plain` ones the
-// scope's name.
-export function commitPlan(paths: readonly string[], style: 'conventional' | 'plain'): Commit[] {
-  const units = new Map<string, string[]>()
-  const generated: string[] = []
-  for (const path of paths) {
-    if (isSensitive(path)) continue
-    if (isGenerated(path)) {
-      generated.push(path)
-      continue
-    }
-    const scope = scopeOf(path)
-    units.set(scope, [...(units.get(scope) ?? []), path])
-  }
-  const plan: Commit[] = []
-  for (const [scope, list] of units) {
-    if (!scope) {
-      // Root files form no unit: docs, tests and the rest (config) apart.
-      const kinds = new Map<string, string[]>()
-      for (const path of list) {
-        const type = isDoc(path) ? 'docs' : isTest(path) ? 'test' : 'chore'
-        kinds.set(type, [...(kinds.get(type) ?? []), path])
-      }
-      for (const [type, paths] of kinds) plan.push({ title: style === 'conventional' || type !== 'chore' ? type : 'root files', paths })
-      continue
-    }
-    const type = list.every(isDoc) ? 'docs' : list.every(isTest) ? 'test' : 'feat'
-    plan.push({ title: style === 'conventional' ? `${type}(${scope})` : scope, paths: list })
-  }
-  if (generated.length) plan.push({ title: style === 'conventional' ? 'chore(deps)' : 'generated files', paths: generated })
-  return plan
 }
 
 // The cells of a file's bar: `plus` green, `minus` red, the rest empty, the
