@@ -68,6 +68,57 @@ const PANE = 'prompt-enhancer'
 // Below this many cells the band draws compact, as motta-statusline's lines do.
 const COMPACT_BELOW = 80
 const PANE_TITLE = 'Enhance'
+// The hover cards' colors, as changes-drill draws them.
+const CARD = '#34332f'
+const DIM = '#9c9a94'
+
+// Card text: a line is a string or a list of pieces; a piece is a string
+// (plain) or text with a style. The first line is bold.
+type Style = 'b' | 'd' | 'f' | 'i' | 'good' | 'bad' | 'warn' | 'accent' | 'key' | 'tag' | 'tag-good' | 'tag-bad' | 'tag-warn'
+type Piece = string | { t: string; s: Style }
+type Line = string | Piece[]
+type Tone = 'action' | 'info' | 'warn' | 'danger' | 'good'
+const FG = '#e9e7e2', FAINT = '#6f6d68', GOOD = '#7fc97f', BAD = '#ef8a80', WARN = '#e7c06b', ACCENT = '#8db4f0', CHIP = '#ffffff1f'
+const TONES: Record<Tone, string> = { action: ACCENT, info: FAINT, warn: WARN, danger: BAD, good: GOOD }
+const TINT: Record<string, [string, string]> = { 'tag-good': [GOOD, '#7fc97f26'], 'tag-bad': [BAD, '#ef8a8026'], 'tag-warn': [WARN, '#e7c06b26'], tag: [FG, CHIP], key: [FG, CHIP] }
+const SEP = { t: ' · ', s: 'f' } as const // a faint separator piece
+const dim = (t: string): Piece => ({ t, s: 'd' })
+const kbd = (t: string): Piece => ({ t, s: 'key' })
+
+// One line of a card: its pieces as nested Text, so it stays one line.
+function cardLine(Text: any, line: Line, i: number, wrap: string) {
+  const pieces: Piece[] = typeof line === 'string' ? [{ t: line, s: i === 0 ? 'b' : 'd' }] : line
+  return (
+    <Text key={`l${i}`} wrap={wrap} bold={i === 0} color={FG}>
+      {pieces.map((p, j) => {
+        if (typeof p === 'string') return p
+        const tint = TINT[p.s]
+        if (tint) return <Text key={j} color={tint[0]} backgroundColor={tint[1]} bold={p.s === 'key'}>{` ${p.t} `}</Text>
+        return <Text key={j} bold={p.s === 'b'} italic={p.s === 'i'} color={p.s === 'd' ? DIM : p.s === 'f' ? FAINT : p.s === 'good' ? GOOD : p.s === 'bad' ? BAD : p.s === 'warn' ? WARN : p.s === 'accent' ? ACCENT : undefined}>{p.t}</Text>
+      })}
+    </Text>
+  )
+}
+
+// A card's insides: on a desktop, its tone as a thin bar down the left edge
+// beside the lines; in a terminal the round border carries the tone.
+function cardBody(Box: any, Text: any, lines: Line[], tone: Tone, term: boolean) {
+  const drawn = lines.map((line, i) => cardLine(Text, line, i, 'wrap'))
+  if (term) return drawn
+  return [
+    <Box key="bar" width={0.25} backgroundColor={TONES[tone]} />,
+    <Box key="text" flexDirection="column" paddingX={0.75} flexShrink={1} minWidth={0}>
+      {drawn}
+    </Box>,
+  ]
+}
+
+// The warning card's token list: missing ones (✗) bad, kept ones (✓) good.
+function tokenPieces(draft: string, text: string): Piece[] {
+  return tokenList(draft, text)
+    .split(' · ')
+    .flatMap((entry, i): Piece[] => [...(i > 0 ? [SEP] : []), entry.startsWith('✗') ? { t: entry, s: 'bad' } : entry.startsWith('✓') ? { t: entry, s: 'good' } : entry])
+}
 const NO_BOX_TIP = 'This app does not let mods read your prompt box. Run /enhance followed by your prompt instead.'
 
 const phase = atom({ plugin: 'prompt-enhancer', key: 'phase' } as const, 'idle' as Phase)
@@ -178,7 +229,17 @@ export function formatUsage(u: Usage): string {
   return `in ${kilo(u.input)}${u.cached > 0 ? ` (${kilo(u.cached)} cached)` : ''} · out ${kilo(u.output)}`
 }
 
-function why(r: { reason: string; status?: number | null; error?: string }): string {
+// The protected tokens, each marked kept or missing, cut to about three lines
+// of a card.
+export function tokenList(draft: string, text: string): string {
+  const missing = missingTokens(draft, text)
+  const list = protectedTokens(draft)
+    .map(t => `${missing.includes(t) ? '✗' : '✓'} ${t}`)
+    .join(' · ')
+  return list.length > 130 ? `${list.slice(0, 129)}…` : list
+}
+
+function why(r:{ reason: string; status?: number | null; error?: string }): string {
   if (r.reason === 'api-error') return `the API answered ${r.status ?? 'nothing'} (${r.error ?? 'unknown'})`
   if (r.reason === 'empty-reply') return 'the model replied with no text'
   if (r.reason === 'aborted') return `no answer within ${TIMEOUT_MS / 1000} s`
@@ -426,6 +487,247 @@ function isFree(node: unknown): boolean {
   return typeof node === 'object' && (node as { type?: unknown }).type === 'engine'
 }
 
+// What the pane draws from, read by its hook.
+export type PaneView = {
+  surface: RenderSurface
+  placement?: string
+  columns: number
+  now: Phase
+  current: Job
+  hasBox: boolean
+  label: string
+  failed: string | null
+  text: string
+  spent: Usage | null
+  fromBox: boolean
+}
+
+// The desktop app stops drawing a pane past about 1,100 elements (1,006 drew,
+// 1,204 did not) or about 300,000 characters (257k drew, 355k did not). The pane draws at
+// the richest level that fits: 0 every card, 1 action and status cards only,
+// 2 no cards. It is small, so it has no folds of its own.
+export const BUDGET = 1000
+// Characters of the serialized tree, an inline SVG's source included.
+export const CHAR_BUDGET = 200_000
+export const TOP_LEVEL = 2
+// Elements in a tree, counted as the live measure counted them.
+export function countNodes(tree: unknown): number {
+  let nodes = 0
+  const walk = (n: any): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    nodes += 1
+    walk(n.children)
+    walk(n.props?.children)
+  }
+  walk(tree)
+  return nodes
+}
+// Draws at level 0, then 1, 2, ... until the tree fits `budget` or `top` is
+// reached. Only the desktop (and VS Code) has the limit: the terminal keeps
+// level 0.
+export function fit<T>(surface: string, top: number, draw: (level: number) => T, budget = BUDGET): T {
+  if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
+  let tree = draw(0)
+  for (let level = 1; level <= top && (countNodes(tree) > budget || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)
+  return tree
+}
+
+// The pane past idle, at a level of the ladder.
+export function enhancerPane($: EngineInterface, elements: any, v: PaneView, level: number) {
+  const { Box, Text, Button } = elements
+  const { now, current, hasBox, label, failed, text, spent, fromBox } = v
+  // Whether a card of `tone` is drawn at this level: none on a phone, which
+  // has no hover.
+  const shows = (tone: Tone) => v.surface !== 'mobile' && (level <= 0 || (level === 1 && tone !== 'info'))
+  const draft = (title: string, isDim: boolean) => (
+    <Box flexDirection="column">
+      <Text dimColor>{title}</Text>
+      <Text dimColor={isDim}>{current.original}</Text>
+    </Box>
+  )
+
+  // A hover card over its keyed host, from the host's left edge or, right of
+  // the spacer, its right edge. It opens upward over the text above the row,
+  // or, under a short tree in a dock (`isDown`), into the empty room below
+  // the last row, so a card taller than the tree is not cut at the top. A
+  // desktop button is taller than a cell, so the card clears 2. The first
+  // line says what pressing does; the rest, dim, drills in. No phone hover.
+  // One row clear of its host: a pointer leaving the host crosses that row,
+  // so the card closes instead of holding the pointer over what it covers.
+  const term = v.surface === 'terminal'
+  const host = term ? 1 : 2
+  const tip = (lines: Line[], side: 'left' | 'right', tone: Tone = 'info', isDown = false, rise = host) =>
+    !shows(tone) ? null : (
+      <Box position="absolute" {...(isDown ? { top: rise + 1 } : { bottom: rise + 1 })} {...(side === 'left' ? { left: 0 } : { right: 0 })} display="none" hover={{ display: 'flex' }} flexDirection={term ? 'column' : 'row'} backgroundColor={CARD} paddingX={term ? 0.75 : 0} paddingY={term ? 0 : 0.3} width={48} borderStyle={term ? 'round' : undefined} borderColor={term ? TONES[tone] : undefined}>
+        {cardBody(Box, Text, lines, tone, term)}
+      </Box>
+    )
+  const seconds: Piece[] = [dim('It gives up by itself after '), `${TIMEOUT_MS / 1000} s`]
+  const isDown = v.placement === 'dock'
+  // A pane is only as tall as its tree on the desktop: room under the last
+  // row, or a card opening into it is cut off into a scroll.
+  const room = isDown && shows('action') ? <Box key="tip-room" height={7} flexShrink={0} /> : null
+  const keeps = current.via === 'box' ? 'Your draft stays in the prompt box' : 'Nothing is sent'
+  const expandTip: Line[] =
+    settings.model === 'session'
+      ? [
+          ['Rewrites it as a short, clear prompt ', kbd('e')],
+          ['Session model', dim(': a fork of this conversation')],
+          'Reads the transcript from the prompt cache',
+          [dim('Before the first reply: '), FALLBACK_MODEL, dim(', no context')],
+          'Task first, success checks, [placeholders]',
+        ]
+      : [
+          ['Rewrites it as a short, clear prompt ', kbd('e')],
+          [settings.model, SEP, dim('effort '), settings.effort ?? 'the model default'],
+          [dim('Sent the last '), `${EXCERPT_MESSAGES}`, dim(' messages as an excerpt')],
+          [dim('Up to '), `${EXCERPT_CHARS / 1000}k`, dim(' chars, '), `${EXCERPT_MESSAGE_CHARS / 1000}k`, dim(' per message')],
+          'Task first, success checks, [placeholders]',
+        ]
+
+  if (now === 'choosing') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        {draft('Your draft', false)}
+        <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+          <Text bold>Enhance as</Text>
+          <Box key="tip:clean">
+            <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
+            {tip([['Cleans up the draft, one model call ', kbd('c')], [settings.cleanModel, SEP, dim('effort '), 'low', SEP, dim('no conversation')], 'Fixes typos, fillers, words said twice', 'Voice-to-text slips, punctuation, capitals', 'Every other word stays as written'], 'left', 'action', isDown)}
+          </Box>
+          <Box key="tip:expand">
+            <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
+            {tip(expandTip, 'left', 'action', isDown)}
+          </Box>
+          <Box flexGrow={1} />
+          <Box key="tip:cancel">
+            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
+            {tip(['Drops the draft and closes the pane', keeps, 'No model call has been made'], 'right', 'danger', isDown)}
+          </Box>
+        </Box>
+        {room}
+      </Box>
+    )
+  }
+
+  if (now === 'working') {
+    const isFork = current.kind === 'expand' && settings.model === 'session'
+    return (
+      <Box flexDirection="column" gap={1}>
+        {draft('Your draft', true)}
+        <Box flexDirection="row" gap={1} alignItems="center">
+          <Text color="suggestion">{current.kind === 'clean' ? '✦ Cleaning up…' : '✦ Expanding…'}</Text>
+          <Text dimColor>{label}</Text>
+          <Box flexGrow={1} />
+          <Box key="tip:cancel">
+            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
+            {tip(['Stops the call and closes the pane', isFork ? "A fork can't be aborted: its answer is ignored" : [dim('Aborts the '), label, dim(' call')], seconds, keeps], 'right', 'danger', isDown)}
+          </Box>
+        </Box>
+        {room}
+      </Box>
+    )
+  }
+
+  if (now === 'error') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        {draft('Your draft', true)}
+        <Text color="error">Could not enhance: {failed ?? 'unknown error'}</Text>
+        <Box flexDirection="row" gap={1}>
+          <Box key="tip:retry-failed">
+            <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
+            {tip([`Runs ${current.kind ? TITLES[current.kind] : 'it'} again on the same draft`, [dim('On '), label, SEP, dim('a new model call')], seconds], 'left', 'action', isDown)}
+          </Box>
+          <Box flexGrow={1} />
+          <Box key="tip:dismiss">
+            <Button key="dismiss" label="dismiss" plain dimColor onPress={() => void cancel($)} />
+            {tip(['Drops the draft and closes the pane', keeps], 'right', 'danger', isDown)}
+          </Box>
+        </Box>
+        {room}
+      </Box>
+    )
+  }
+
+  const missing = missingTokens(current.original, text)
+  const title = current.kind ? TITLES[current.kind] : ''
+  const n = (v: number) => v.toLocaleString('en-US')
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Box flexDirection="row" gap={1} flexWrap="wrap" hover={shows('info') ? { scope: 'usage', backgroundColor: '#ffffff10' } : undefined}>
+        <Text color="suggestion" bold>
+          ✦ {title}
+        </Text>
+        <Text dimColor>
+          · {label}
+          {spent !== null ? ` · ${formatUsage(spent)}` : ''}
+        </Text>
+      </Box>
+      {draft('Before', true)}
+      <Box flexDirection="column">
+        <Text dimColor>After</Text>
+        <Text>{text}</Text>
+      </Box>
+      {missing.length > 0 && (
+        <Box key="tip:missing" hover={shows('info') ? { backgroundColor: '#ffffff10' } : undefined}>
+          <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>
+          {tip([[`${missing.length} of ${protectedTokens(current.original).length} not kept verbatim (`, { t: '✗', s: 'bad' }, ')'], tokenPieces(current.original, text), [dim('Checked: '), '@mentions, /commands, `code`']], 'left', 'info', false, 1)}
+        </Box>
+      )}
+      <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+        {hasBox && (
+          <Box key="tip:use">
+            <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />
+            {tip(['Replaces the prompt box text with this', 'Closes the pane; nothing is sent', 'Edit it there, then send it yourself'], 'left', 'action')}
+          </Box>
+        )}
+        <Box key="tip:send">
+          <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
+          {tip(['Sends this as your next prompt', fromBox ? 'Clears your draft from the prompt box first' : 'Leaves the prompt box as is', 'Closes the pane'], 'left', 'warn')}
+        </Box>
+        <Box key="tip:copy">
+          <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
+          {tip(['Copies this to the clipboard', 'Of the device you pressed it on', 'The pane stays open'], 'left', 'action')}
+        </Box>
+        <Box flexGrow={1} />
+        <Box key="tip:retry">
+          <Button key="retry" label="retry" plain dimColor onPress={() => void retry($)} />
+          {tip([`Runs ${title || 'it'} again on the draft`, 'A new model call; this result is replaced'], 'right', 'action')}
+        </Box>
+        <Box key="tip:discard">
+          <Button key="discard" label="discard" plain dimColor onPress={() => void cancel($)} />
+          {tip(['Drops this result and closes the pane', keeps], 'right', 'danger')}
+        </Box>
+      </Box>
+      {shows('info') && (
+        // The header's card: drawn last so it paints over the rows below
+        // the header, shown while the header (its scope) is hovered. It
+        // opens downward, so it is narrow and at the right, leaving the
+        // left of the pane clear for the pointer going down past it.
+        <Box position="absolute" top={2} right={0} display="none" hover={{ scope: 'usage', display: 'flex' }} flexDirection={term ? 'column' : 'row'} backgroundColor={CARD} paddingX={term ? 0.75 : 0} paddingY={term ? 0 : 0.3} width={Math.min(48, Math.max(24, Math.round(v.columns * 0.6)))} borderStyle={term ? 'round' : undefined} borderColor={term ? TONES.info : undefined}>
+          {cardBody(
+            Box,
+            Text,
+            [
+              ...(spent === null
+                ? []
+                : [
+                    [n(spent.input), dim(' tokens in'), SEP, n(spent.output), dim(' out')],
+                    [n(spent.cached), { t: ' cached', s: 'good' }, dim(` (${spent.input > 0 ? Math.round((100 * spent.cached) / spent.input) : 0}%)`), SEP, n(spent.input - spent.cached), dim(' uncached')],
+                  ] as Line[]),
+              current.via === 'box' ? 'Draft from the prompt box' : 'Draft from /enhance',
+            ],
+            'info',
+            term,
+          )}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
 export const register: Register = (on, options) => {
   const effort = String(options.effort ?? 'default')
   settings = {
@@ -492,7 +794,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Text } = elements
     const now = await read($, phase)
     const current = await read($, job)
     const hasBox = e.surface === 'terminal' || (await read($, boxAccess)) !== 'no'
@@ -501,87 +804,20 @@ export const register: Register = (on, options) => {
     if (now === 'idle' || current === null) {
       return <Text dimColor>Press ✦ enhance above the prompt, or run /enhance followed by your prompt.</Text>
     }
-
-    const draft = (title: string, isDim: boolean) => (
-      <Box flexDirection="column">
-        <Text dimColor>{title}</Text>
-        <Text dimColor={isDim}>{current.original}</Text>
-      </Box>
-    )
-
-    if (now === 'choosing') {
-      return (
-        <Box flexDirection="column" gap={1}>
-          {draft('Your draft', false)}
-          <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
-            <Text bold>Enhance as</Text>
-            <Button key="clean" label="Cleaned up" hotkey="c" onPress={() => void run($, 'clean')} />
-            <Button key="expand" label="Expanded" hotkey="e" onPress={() => void run($, 'expand')} />
-            <Box flexGrow={1} />
-            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
-          </Box>
-        </Box>
-      )
+    const view: PaneView = {
+      surface: e.surface,
+      placement: e.props.placement,
+      columns: e.props.bodyColumns || 60,
+      now,
+      current,
+      hasBox,
+      label,
+      failed: await read($, failure),
+      text: await read($, result),
+      spent: await read($, usage),
+      fromBox: current.via === 'box' && (await read($, boxAccess)) === 'yes',
     }
-
-    if (now === 'working') {
-      return (
-        <Box flexDirection="column" gap={1}>
-          {draft('Your draft', true)}
-          <Box flexDirection="row" gap={1} alignItems="center">
-            <Text color="suggestion">{current.kind === 'clean' ? '✦ Cleaning up…' : '✦ Expanding…'}</Text>
-            <Text dimColor>{label}</Text>
-            <Box flexGrow={1} />
-            <Button key="cancel" label="cancel" plain dimColor onPress={() => void cancel($)} />
-          </Box>
-        </Box>
-      )
-    }
-
-    if (now === 'error') {
-      const failed = await read($, failure)
-      return (
-        <Box flexDirection="column" gap={1}>
-          {draft('Your draft', true)}
-          <Text color="error">Could not enhance: {failed ?? 'unknown error'}</Text>
-          <Box flexDirection="row" gap={1}>
-            <Button key="retry-failed" label="Retry" onPress={() => void retry($)} />
-            <Box flexGrow={1} />
-            <Button key="dismiss" label="dismiss" plain dimColor onPress={() => void cancel($)} />
-          </Box>
-        </Box>
-      )
-    }
-
-    const text = await read($, result)
-    const spent = await read($, usage)
-    const missing = missingTokens(current.original, text)
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" gap={1} flexWrap="wrap">
-          <Text color="suggestion" bold>
-            ✦ {current.kind ? TITLES[current.kind] : ''}
-          </Text>
-          <Text dimColor>
-            · {label}
-            {spent !== null ? ` · ${formatUsage(spent)}` : ''}
-          </Text>
-        </Box>
-        {draft('Before', true)}
-        <Box flexDirection="column">
-          <Text dimColor>After</Text>
-          <Text>{text}</Text>
-        </Box>
-        {missing.length > 0 && <Text color="warning">Changed or dropped: {missing.join(', ')}</Text>}
-        <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
-          {hasBox && <Button key="use" label="Use it" variant="primary" onPress={() => void useIt($, text)} />}
-          <Button key="send" label="Send" {...(hasBox ? {} : { variant: 'primary' as const })} onPress={() => void send($, text)} />
-          <Button key="copy" label="Copy" onPress={press => void copy($, text, press.surface)} />
-          <Box flexGrow={1} />
-          <Button key="retry" label="retry" plain dimColor onPress={() => void retry($)} />
-          <Button key="discard" label="discard" plain dimColor onPress={() => void cancel($)} />
-        </Box>
-      </Box>
-    )
+    // At the richest level that fits the desktop's element budget.
+    return fit(e.surface, TOP_LEVEL, level => enhancerPane($, elements, view, level))
   })
 }

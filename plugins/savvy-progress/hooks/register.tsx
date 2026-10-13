@@ -37,6 +37,29 @@ type ProgressInput = {
   tasks?: { title?: string; tier?: string; after?: number[] }[]
 }
 
+// Hover-card text: a line is a string or a list of pieces; a piece is a string
+// (plain) or text with a style. The first line is bold; a plain string line
+// after it is dim. Labels dim, values plain, separators fainter still.
+type TipStyle = 'b' | 'd' | 'f' | 'i' | 'good' | 'bad' | 'warn' | 'accent' | 'key' | 'tag' | 'tag-good' | 'tag-bad' | 'tag-warn'
+type TipPiece = string | { t: string; s: TipStyle }
+type Tone = 'action' | 'info' | 'warn' | 'danger' | 'good'
+const TIP_FG = '#e9e7e2'
+const TIP_DIM = '#9c9a94'
+const TIP_FAINT = '#6f6d68'
+const TIP_GOOD = '#7fc97f'
+const TIP_BAD = '#ef8a80'
+const TIP_WARN = '#e7c06b'
+const TIP_ACCENT = '#8db4f0'
+const TIP_CHIP = '#ffffff1f'
+const TONES: Record<Tone, string> = { action: TIP_ACCENT, info: TIP_FAINT, warn: TIP_WARN, danger: TIP_BAD, good: TIP_GOOD }
+const TINT: Record<string, [string, string]> = { 'tag-good': [TIP_GOOD, '#7fc97f26'], 'tag-bad': [TIP_BAD, '#ef8a8026'], 'tag-warn': [TIP_WARN, '#e7c06b26'], tag: [TIP_FG, TIP_CHIP], key: [TIP_FG, TIP_CHIP] }
+const SEP = { t: ' · ', s: 'f' } as const
+const dim = (t: string): TipPiece => ({ t, s: 'd' })
+const pathPieces = (path: string): TipPiece[] => {
+  const i = path.lastIndexOf('/')
+  return i < 0 ? [{ t: path, s: 'b' }] : [{ t: path.slice(0, i + 1), s: 'd' }, { t: path.slice(i + 1), s: 'b' }]
+}
+
 // ---------------------------------------------------------------------------
 // Language: the `language` option, else Claude Code's `language` setting, else the
 // process locale; English when nothing says Russian.
@@ -82,6 +105,27 @@ const STRINGS = {
     overdue: 'overdue',
     stopped: 'stopped',
     kinds: { read: 'read', change: 'change', run: 'run', delegate: 'delegate', bookkeeping: 'bookkeeping' },
+    costumes: { fable: 'astronaut crab', heavy: 'detective crab', careful: 'engineer crab', medium: 'chef crab', light: 'racer crab', explore: 'pirate crab', other: 'plain crab' },
+    byTier: 'savvy tier',
+    byWord: (w: string): TipPiece[] => [`“${w}”`, dim(' in its type')],
+    byModel: (m: string, effort?: string): TipPiece[] => [dim('from '), m, ...(effort ? [dim(` ${effort}`)] : [])],
+    noRole: 'no role in its type',
+    thresholds: (idle: string, overdue: string): TipPiece[] => [dim('idle at '), idle, dim(', overdue at '), overdue],
+    priced: (tokens: string, i: number, o: number): TipPiece[] => [dim('≈ '), tokens, dim(' tokens at '), `$${i}/$${o}`, dim(' per M')],
+    context: (used: string, max: string): TipPiece[] => [used, dim(' of '), max, dim(' context')],
+    shows: (what: string) => `Shows ${what}`,
+    hides: (what: string) => `Hides ${what}`,
+    failedAgents: 'the failed agents',
+    finishedAgents: 'the finished agents',
+    olderFinished: (n: number) => `${n} older finished ${n === 1 ? 'agent' : 'agents'}`,
+    olderAgents: 'the older finished agents',
+    show: 'Show',
+    hide: 'Hide',
+    foldedToFit: 'folded to fit',
+    toFull: "Shows every agent's card",
+    toCompact: 'Folds the pane to one strip of crabs',
+    costNote: 'Cost ≈: tokens × the price table, per model',
+    timeNote: (sum: string): TipPiece[] => [dim('Time: first start to last end'), SEP, sum, dim(' summed')],
   },
   ru: {
     pane: 'Агенты',
@@ -125,6 +169,27 @@ const STRINGS = {
     overdue: 'просрочен',
     stopped: 'остановлен',
     kinds: { read: 'чтение', change: 'правки', run: 'запуск', delegate: 'делегирование', bookkeeping: 'служебное' },
+    costumes: { fable: 'краб-астронавт', heavy: 'краб-детектив', careful: 'краб-инженер', medium: 'краб-повар', light: 'краб-гонщик', explore: 'краб-пират', other: 'простой краб' },
+    byTier: 'уровень savvy',
+    byWord: (w: string): TipPiece[] => [`«${w}»`, dim(' в типе')],
+    byModel: (m: string, effort?: string): TipPiece[] => [dim('по модели '), m, ...(effort ? [dim(` ${effort}`)] : [])],
+    noRole: 'роль не найдена',
+    thresholds: (idle: string, overdue: string): TipPiece[] => [dim('тишина с '), idle, dim(', просрочен с '), overdue],
+    priced: (tokens: string, i: number, o: number): TipPiece[] => [dim('≈ '), tokens, dim(' токенов по '), `$${i}/$${o}`, dim(' за 1M')],
+    context: (used: string, max: string): TipPiece[] => [used, dim(' из '), max, dim(' контекста')],
+    shows: (what: string) => `Показывает ${what}`,
+    hides: (what: string) => `Скрывает ${what}`,
+    failedAgents: 'агентов с ошибкой',
+    finishedAgents: 'завершённых агентов',
+    olderFinished: (n: number) => `Ранее завершённые: ${n}`,
+    olderAgents: 'ранее завершённых агентов',
+    show: 'Показать',
+    hide: 'Скрыть',
+    foldedToFit: 'свёрнуты, чтобы поместиться',
+    toFull: 'Показывает карточку каждого агента',
+    toCompact: 'Сворачивает панель в полосу крабов',
+    costNote: 'Стоимость ≈: токены × таблица цен моделей',
+    timeNote: (sum: string): TipPiece[] => [dim('Время: от первого старта до конца'), SEP, dim('всего '), sum],
   },
 } as const
 
@@ -597,6 +662,20 @@ export const roleOf = (a: Pick<AgentRun, 'type' | 'model' | 'effort'>): Role => 
   return { costume, color: modelColor(a.model), label: a.type }
 }
 
+// The costume and the rule of roleOf's that picked it, for the pane's hover card.
+const costumeWhy = (a: AgentRun): TipPiece[] => {
+  const s = tr()
+  const { costume } = roleOf(a)
+  const crab = s.costumes[costume as keyof typeof s.costumes] ?? s.costumes.other
+  if (tierOf(a.type) !== 'other') return [crab, SEP, dim(s.byTier)]
+  const words = a.type.replace(/^[^:]*:/, '').toLowerCase().split(/[^a-z0-9]+/)
+  const rule = ROLE_WORDS.find(([re]) => words.some(w => re.test(w)))
+  const word = rule && words.find(w => rule[0].test(w))
+  if (word) return [crab, SEP, ...s.byWord(word)]
+  if (costume !== 'other') return [crab, SEP, ...s.byModel(modelName(a.model), a.effort)]
+  return [crab, SEP, dim(s.noRole)]
+}
+
 const modelName = (id: string): string => {
   const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
   const [, family = '', major = '', minor] = m ?? []
@@ -764,17 +843,28 @@ const crab = (
   accent = colorOf(costume),
   look: { body?: string; isAsleep?: boolean } = {},
 ): string => {
-  const groups = new Map<string, string[]>([['bd', []]])
+  // Each part's cells as one path per color, a run of cells along a row as one
+  // rect of it: a rect per cell made a pane of a few agents too heavy for the
+  // desktop.
+  const groups = new Map<string, Map<string, number[][]>>([['bd', new Map()]])
   const f: Fill = (cx, cy, w, h, c, cls = 'bd') => {
     if (cls === 'eye') return f(cx, look.isAsleep ? cy + 1 : cy, w, look.isAsleep ? 1 : h, c)
-    if (!groups.has(cls)) groups.set(cls, [])
-    groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c === CLAY && look.body ? look.body : c}"/>`)
+    if (!groups.has(cls)) groups.set(cls, new Map())
+    const fill = c === CLAY && look.body ? look.body : c
+    const paths = groups.get(cls)!
+    const rects = paths.get(fill) ?? []
+    const last = rects.at(-1)
+    if (last && last[1] === cy && last[3] === h && last[0]! + last[2]! === cx) last[2]! += w
+    else rects.push([cx, cy, w, h])
+    paths.set(fill, rects)
   }
   const draw = COSTUMES[costume] ?? ((g: Fill) => crabBody(g))
   draw(f, accent)
-  const group = (cls: string) => `<g class="${cls}">${(groups.get(cls) ?? []).join('')}</g>`
+  const cells = (cls: string) =>
+    [...(groups.get(cls) ?? new Map<string, number[][]>()).entries()].map(([fill, rects]) => `<path fill="${fill}" d="${rects.map(([x, y, w, h]) => `M${x} ${y}h${w}v${h}h${-w!}z`).join('')}"/>`).join('')
+  const group = (cls: string) => `<g class="${cls}">${cells(cls)}</g>`
   const props = [...groups.keys()].filter(k => k !== 'bd' && k !== 'la' && k !== 'lb')
-  const body = `<g class="bd">${(groups.get('bd') ?? []).join('')}${props.map(group).join('')}</g>`
+  const body = `<g class="bd">${cells('bd')}${props.map(group).join('')}</g>`
   const zs = look.isAsleep ? `<text x="24" y="7" font-family="${FONT}" font-size="7" font-weight="700" fill="${WARN}">z</text><text x="27" y="3" font-family="${FONT}" font-size="5" font-weight="700" fill="${WARN}">z</text>` : ''
   return `<g transform="translate(${x},${y}) scale(${scale})" opacity="${dim ? 0.45 : 1}" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g>${zs}</g>`
 }
@@ -1329,6 +1419,141 @@ ${statusMark(W - 8, 16, 'planned', color)}
   )
 }
 
+// --- the pane's hover cards: a hidden Box shown while its host is hovered. In
+// the column a card opens upward from its keyed host (a row drawn later would
+// paint over one hanging below); the top rows have no room above, so theirs
+// are drawn last in the pane, below the host, and named by its hover scope.
+
+// A path line keeps `text` a string: the desktop cuts it to its tail, then
+// draws it as folder (dim) and file (bold).
+type TipLine = { text: string | TipPiece[]; isPath?: boolean }
+type TipAt = { bottom?: number; top?: number; scope?: string; side?: 'left' | 'right' }
+
+const TIP_BG = '#34332f'
+const TIP_LINES = 5
+const TIP_W = 48
+// A desktop text row, in px: what one cell of offset moves.
+const ROW_PX = 19
+// A desktop button's height in rows, rounded up: a card clears it by this much.
+const BUTTON_ROWS = 2
+
+// The desktop app stops drawing a pane past about 1,100 elements (1,006 drew,
+// 1,204 did not) or about 300,000 characters (257k drew, 355k did not). The Agents pane
+// draws at the richest level that fits: 0 every card, 1 action and status
+// cards only, 2 no cards, 3 Finished folds after FOLD_TIGHT agents (even if
+// shown), 4 Finished folded whole. A running agent is never folded.
+export const BUDGET = 1000
+// Characters of the serialized tree: an agent block's SVG alone is ~20k.
+export const CHAR_BUDGET = 200_000
+const LEVEL_TOP = 4
+// Finished shows its newest FOLD_AFTER agents; the rest wait under one line.
+const FOLD_AFTER = 20
+const FOLD_TIGHT = 10
+// Elements in a tree, counted as the live measure counted them.
+export function countNodes(tree: unknown): number {
+  let nodes = 0
+  const walk = (n: any): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    nodes += 1
+    walk(n.children)
+    walk(n.props?.children)
+  }
+  walk(tree)
+  return nodes
+}
+// Draws at level 0, then 1, 2, ... until the tree fits or `top` is reached.
+// Only the desktop (and VS Code) has the limit: the terminal keeps level 0.
+export function fit<T>(surface: string, top: number, draw: (level: number) => T): T {
+  if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
+  let tree = draw(0)
+  for (let level = 1; level <= top && (countNodes(tree) > BUDGET || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)
+  return tree
+}
+// The level being drawn, set by the pane's draw before it builds: tip() reads it.
+let cardLevel = 0
+const hasCard = (tone: Tone): boolean => cardLevel === 0 || (cardLevel === 1 && tone !== 'info')
+// A card's host lights up on hover only while it has a card to reveal.
+const lit = (hasTip: unknown, scope?: string) => (hasTip ? { hover: scope ? { scope, backgroundColor: '#ffffff10' } : { backgroundColor: '#ffffff10' } } : {})
+// The fold line's Show: the older finished agents drawn past FOLD_AFTER.
+let isOlderShown = false
+// Finished, newest first, cut to the agents the level leaves: the groups to
+// draw and how many agents wait under the fold line.
+export const foldFinished = (groups: AgentGroup[], level: number, isShown: boolean): { shown: AgentGroup[]; hidden: number } => {
+  let left = level >= 4 ? 0 : level >= 3 ? FOLD_TIGHT : isShown ? Infinity : FOLD_AFTER
+  let hidden = 0
+  const shown: AgentGroup[] = []
+  for (const g of groups) {
+    const agents = g.agents.slice(0, Math.max(0, left))
+    hidden += g.agents.length - agents.length
+    left -= agents.length
+    if (agents.length) shown.push({ ...g, agents })
+  }
+  return { shown, hidden }
+}
+
+// How a card fits over a host `h` rows tall with `room` plain rows above it,
+// back to the nearest button: as many lines as fit, raised as far as they may,
+// sliding down over the host itself rather than onto the button. `pad` is the
+// card's own rows besides its lines.
+const tipFit = (h: number, room: number, pad: number, want = TIP_LINES): { lines: number; bottom: number } => {
+  const lines = Math.max(0, Math.min(want, Math.floor(h + room - pad)))
+  return { lines, bottom: Math.max(0, Math.min(Math.ceil(h), Math.floor(h + room - lines - pad))) }
+}
+
+// None on mobile, which has no pointer. One row clear of its host: a pointer
+// leaving the host crosses that row, so the card closes instead of holding the
+// pointer over what it covers.
+function tip(ui: any, surface: string, lines: TipLine[], at: TipAt, width: number, tone: Tone = 'info') {
+  const { Box, Text } = ui
+  if (surface === 'mobile' || lines.length === 0 || !hasCard(tone)) return null
+  const term = surface === 'terminal'
+  const place = { ...(at.top !== undefined ? { top: at.top + 1 } : { bottom: (at.bottom ?? 1) + 1 }), ...(at.side === 'left' ? { left: 0 } : { right: 0 }) }
+  const drawn = lines.slice(0, TIP_LINES).map((l, i) => {
+    let pieces: TipPiece[]
+    if (l.isPath && typeof l.text === 'string') {
+      // The desktop cuts a path's end whatever the wrap: keep its tail by hand.
+      pieces = pathPieces(!term && l.text.length > width - 6 ? `…${l.text.slice(-(width - 7))}` : l.text)
+    } else pieces = typeof l.text === 'string' ? [{ t: l.text, s: i === 0 ? 'b' : 'd' }] : l.text
+    return (
+      <Text key={`l${i}`} wrap={l.isPath ? 'truncate-start' : 'truncate-end'} bold={i === 0} color={TIP_FG}>
+        {pieces.map((p, j) => {
+          if (typeof p === 'string') return p
+          const tint = TINT[p.s]
+          if (tint)
+            return (
+              <Text key={j} color={tint[0]} backgroundColor={tint[1]} bold={p.s === 'key'}>
+                {` ${p.t} `}
+              </Text>
+            )
+          const color = { d: TIP_DIM, f: TIP_FAINT, good: TIP_GOOD, bad: TIP_BAD, warn: TIP_WARN, accent: TIP_ACCENT }[p.s as string]
+          return (
+            <Text key={j} bold={p.s === 'b'} italic={p.s === 'i'} color={color}>
+              {p.t}
+            </Text>
+          )
+        })}
+      </Text>
+    )
+  })
+  const hover = at.scope ? { scope: at.scope, display: 'flex' } : { display: 'flex' }
+  if (term)
+    return (
+      <Box position="absolute" {...place} display="none" hover={hover} flexDirection="column" paddingX={0.75} paddingY={0} width={width} borderStyle="round" borderColor={TONES[tone]}>
+        {drawn}
+      </Box>
+    )
+  // The desktop: a thin bar down the left edge in the card's tone.
+  return (
+    <Box position="absolute" {...place} display="none" hover={hover} flexDirection="row" backgroundColor={TIP_BG} paddingX={0} paddingY={0.3} width={width}>
+      <Box width={0.25} backgroundColor={TONES[tone]} />
+      <Box flexDirection="column" paddingX={0.75} flexShrink={1} minWidth={0}>
+        {drawn}
+      </Box>
+    </Box>
+  )
+}
+
 // A crab's name tag: the title's first word, past a `Prefix:` the titles share
 // ("Demo: stopped midway" is "stopped"), cut to the crab's width.
 export const shortName = (title: string): string => {
@@ -1662,6 +1887,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     lang = await detectLang($, options.language)
+    isOlderShown = false
     await $.tool.register({
       name: 'progress',
       description:
@@ -1965,232 +2191,427 @@ export const register: Register = (on, options) => {
     // The pane's title says "Agents"; inside, only the flow's own name.
     const title = f && !f.isFinished ? f.title : ''
 
-    // A real button, apart from the section toggles below it: it changes the
-    // whole pane, not one section.
-    const toggleCompact = (
-      <Button
-        key="compact"
-        label={p.isCompact ? s.expand : s.collapse}
-        onPress={() => update($, panel, prev => ({ ...prev, isCompact: !prev.isCompact }))}
-      />
-    )
-    const toggleDone = (
-      <Button
-        key="done"
-        label={`${p.isDoneCollapsed ? '▸' : '▾'} ${s.finished} · ${finishedCount}`}
-        plain
-        onPress={() => update($, panel, prev => ({ ...prev, isDoneCollapsed: !prev.isDoneCollapsed }))}
-      />
-    )
-    // Failed folds as Finished does; its label stays red.
-    const toggleFailed = (
-      <Button
-        key="failed"
-        label={`${s.failedGroup} · ${failed.length}`}
-        plain
-        onPress={() => update($, panel, prev => ({ ...prev, isFailedCollapsed: !prev.isFailedCollapsed }))}
-      >
-        <Text color={FAIL}>{`${p.isFailedCollapsed ? '▸' : '▾'} ${s.failedGroup} · ${failed.length}`}</Text>
-      </Button>
-    )
-    const isEmpty = list.length === 0 && planned.length === 0
-    const summary = `≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
-    // A group of two or more gets a header line; a lone agent is its own card.
-    const groupHead = (g: AgentGroup) => (g.agents.length > 1 ? <Text key={`g-${g.key}`} dimColor>{`${g.title} · ${g.agents.length} · ${fmtTime(g.span)}`}</Text> : null)
+    // Drawn at the richest level that fits the desktop's budget (see fit).
+    const draw = (level: number) => {
+      cardLevel = level
+      const isDoneFolded = p.isDoneCollapsed || level >= 4
+      const { shown: shownFinished, hidden } = foldFinished(finished, level, isOlderShown)
 
-    if (e.surface === 'desktop' && 'Svg' in ui) {
-      const { Svg } = ui
-      const W = Math.max(240, Math.min(900, (e.props.bodyColumns || 40) * 8 - 8))
-      const section = (key: string, text: string) => (
-        <Text key={key} dimColor>
-          {text}
-        </Text>
+      // A real button, apart from the section toggles below it: it changes the
+      // whole pane, not one section. Near the top, its card hangs below it.
+      const toggleCompact = (
+        <Box {...lit(hasCard('action'), 'tip:compact')}>
+          <Button
+            key="compact"
+            label={p.isCompact ? s.expand : s.collapse}
+            onPress={() => update($, panel, prev => ({ ...prev, isCompact: !prev.isCompact }))}
+          />
+        </Box>
       )
-      const card = (a: AgentRun) => (
-        <Svg
-          key={a.id}
-          source={agentSvg(W, a, at)}
-          alt={`${a.description}: ${modelName(a.model)}, ${a.status === 'running' ? s.isRunning : s.isFinished}${a.trail?.length ? `: ${entryText(a.trail[a.trail.length - 1]!)}` : ''}`}
-          width={W}
-          height={agentHeight(a, at)}
-        />
+      // Down the column, its card rises over the cards above.
+      const toggleDone = (card: ReturnType<typeof tip>) => (
+        <Box key="tip:done">
+          <Button
+            key="done"
+            label={`${isDoneFolded ? '▸' : '▾'} ${s.finished} · ${finishedCount}`}
+            plain
+            onPress={() => update($, panel, prev => ({ ...prev, isDoneCollapsed: !prev.isDoneCollapsed }))}
+          />
+          {card}
+        </Box>
       )
-      const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(card)]
+      // Past the fold, one line: how many older finished agents wait there. Its
+      // press shows them, unless the pane is folding them to fit.
+      const olderCount = Math.max(0, finishedCount - FOLD_AFTER)
+      const hasOlderLine = !isDoneFolded && (hidden > 0 || (isOlderShown && olderCount > 0))
+      const olderTip: TipLine[] = [{ text: (isOlderShown ? s.hides : s.shows)(s.olderAgents) }]
+      const olderLine = (card: ReturnType<typeof tip>) =>
+        level >= 3 ? (
+          <Text key="older" dimColor>{`${s.olderFinished(hidden)} · ${s.foldedToFit}`}</Text>
+        ) : (
+          <Box key="tip:older">
+            <Button
+              key="older"
+              label={hidden > 0 ? `${s.olderFinished(hidden)} · ${s.show}` : `${s.olderFinished(olderCount)} · ${s.hide}`}
+              plain
+              onPress={() => {
+                isOlderShown = !isOlderShown
+                $.ui.invalidate('ui.render')
+              }}
+            />
+            {card}
+          </Box>
+        )
+      // Failed folds as Finished does; its label stays red.
+      const toggleFailed = (
+        <Box {...lit(hasCard('action'), 'tip:failed')}>
+          <Button
+            key="failed"
+            label={`${s.failedGroup} · ${failed.length}`}
+            plain
+            onPress={() => update($, panel, prev => ({ ...prev, isFailedCollapsed: !prev.isFailedCollapsed }))}
+          >
+            <Text color={FAIL}>{`${p.isFailedCollapsed ? '▸' : '▾'} ${s.failedGroup} · ${failed.length}`}</Text>
+          </Button>
+        </Box>
+      )
+      const isEmpty = list.length === 0 && planned.length === 0
+      const summary = `≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
+      // A group of two or more gets a header line; a lone agent is its own card.
+      const groupHead = (g: AgentGroup) => (g.agents.length > 1 ? <Text key={`g-${g.key}`} dimColor>{`${g.title} · ${g.agents.length} · ${fmtTime(g.span)}`}</Text> : null)
 
-      if (p.isCompact) {
+      // --- hover cards: what each part adds to what it draws.
+      const tipW = Math.min(TIP_W, Math.max(24, e.props.bodyColumns || 40))
+      // A card that opens downward hangs from the right, 60% wide and at most 4
+      // lines: the pointer going down the left side doesn't land on it and keep it open.
+      const downW = Math.min(TIP_W, Math.max(24, Math.round((e.props.bodyColumns || 40) * 0.6)))
+      const DOWN_LINES = 4
+      const capped = (lines: TipLine[], want = TIP_LINES): TipLine[] => (lines.length > want ? [...lines.slice(0, want - 1), { text: `+${lines.length - want + 1}` }] : lines)
+      // A status mark: ✓ good, ✗ bad, stopped and planned dim, running plain.
+      const mark = (st: string): TipPiece => {
+        const g = STATUS_GLYPH[st] ?? ''
+        return st === 'done' ? { t: g, s: 'good' } : st === 'failed' ? { t: g, s: 'bad' } : st === 'running' ? g : dim(g)
+      }
+      const named = (as: AgentRun[]): TipLine[] =>
+        as.map(a => ({ text: [mark(a.status), ` ${a.description || a.type}`, ...(a.failed ? [SEP, { t: `✗${a.failed}`, s: 'bad' } as const] : [])] }))
+      // An agent's, most useful first: the files' full paths, when it counts as
+      // idle, what its ≈cost is reckoned from, its model's exact name and window,
+      // why its crab wears what it does.
+      const agentTip = (a: AgentRun, hasCrab: boolean): TipLine[] => {
+        const [i, o] = priceOf(a.model)
+        return [
+          ...(a.files ?? []).slice(0, 2).map(fl => ({ text: fl.path, isPath: true })),
+          ...(idleNote(a, at) ? [{ text: s.thresholds(fmtTime(IDLE_MS), fmtTime(OVERDUE_MS)) }] : []),
+          { text: s.priced(fmtTokens(a.tokens), i, o) },
+          { text: [a.model, SEP, ...s.context(fmtTokens(a.contextTokens), fmtTokens(a.contextMax))] },
+          ...(hasCrab ? [{ text: costumeWhy(a) }] : []),
+        ]
+      }
+      // An agent card's tone: red for a failed agent, amber for an overdue one.
+      const agentTone = (a: AgentRun): Tone => (a.status === 'failed' ? 'danger' : isOverdue(a, at) ? 'warn' : 'info')
+      // A planned task's: the tasks it waits for, each with how it stands.
+      const planTip = (pl: Planned): TipLine[] =>
+        capped(
+          pl.after.flatMap(n => {
+            const task = f?.tasks[n - 1]
+            if (!task) return []
+            const run = list.find(a => norm(a.description) === norm(task.title))
+            return [{ text: [mark(run?.status ?? 'planned'), ` ${n}. ${task.title}`] }]
+          }),
+        )
+      const counts = (
+        [
+          [s.running, runningCount],
+          [s.finished, finishedCount],
+          [s.failedGroup, failed.length],
+          [s.planned, planned.length],
+        ] as const
+      )
+        .filter(([, n]) => n > 0)
+        .flatMap(([w, n], k): TipPiece[] => [...(k ? [SEP] : []), dim(`${w} `), w === s.failedGroup ? { t: `${n}`, s: 'bad' } : `${n}`])
+      const compactTip: TipLine[] = [{ text: p.isCompact ? s.toFull : s.toCompact }, ...(counts.length ? [{ text: counts }] : [])]
+      const failedTip = capped([{ text: (p.isFailedCollapsed ? s.shows : s.hides)(s.failedAgents) }, ...named(failed)], DOWN_LINES)
+      const doneTip = capped([{ text: (isDoneFolded ? s.shows : s.hides)(s.finishedAgents) }, ...named(finished.flatMap(g => g.agents))])
+      // The tiles': what ≈cost is, the agents that cost most, what the time spans.
+      const tilesTip: TipLine[] = list.length
+        ? [
+            { text: s.costNote },
+            ...[...list]
+              .sort((x, y) => y.costUsd - x.costUsd)
+              .slice(0, DOWN_LINES - 2)
+              .map(a => ({ text: [`≈${fmtCost(a.costUsd)}`, SEP, fmtTokens(a.tokens), SEP, dim(a.description || a.type)] })),
+            { text: s.timeNote(fmtTime(list.reduce((n, a) => n + elapsed(a, at), 0))) },
+          ]
+        : []
+      // The strip's: the full titles behind its name tags, in its order.
+      const stripTip = capped([...named(COMPACT_ORDER.flatMap(st => all.filter(a => a.status === st))), ...planned.map(pl => ({ text: [mark('planned'), ` ${pl.n}. ${pl.title}`] }))], DOWN_LINES)
+      // The plain rows above each card, back to the nearest button, in the
+      // column's order: a card rises that far and no further. `top` counts on
+      // past buttons to the pane's top: how far the Finished toggle's may rise.
+      const roomOf = (start: number, top: number, gap: number, button: number, rowsOf: (a: AgentRun) => number, planRows: number) => {
+        const room = new Map<string, number>()
+        let r = start
+        let total = top
+        const add = (rows: number) => {
+          r += rows
+          total += rows
+        }
+        const pass = (key: string, rows: number) => {
+          room.set(key, r)
+          add(rows + gap)
+        }
+        const groups = (gs: AgentGroup[]) =>
+          gs.forEach(g => {
+            if (g.agents.length > 1) add(1)
+            g.agents.forEach(a => pass(a.id, rowsOf(a)))
+          })
+        if (failed.length > 0) [r, total] = [0, total + button]
+        if (!p.isFailedCollapsed) failed.forEach(a => pass(a.id, rowsOf(a)))
+        if (runningCount > 0) add(1)
+        groups(running)
+        const doneAbove = total
+        if (finishedCount > 0) [r, total] = [0, total + button]
+        if (!isDoneFolded) groups(shownFinished)
+        if (hasOlderLine) [r, total] = [0, total + button]
+        if (planned.length > 0) add(1)
+        planned.forEach(pl => pass(`plan-${pl.n}`, planRows))
+        return { room, doneAbove, total }
+      }
+
+      if (e.surface === 'desktop' && 'Svg' in ui) {
+        const { Svg } = ui
+        const W = Math.max(240, Math.min(900, (e.props.bodyColumns || 40) * 8 - 8))
+        const section = (key: string, text: string) => (
+          <Text key={key} dimColor>
+            {text}
+          </Text>
+        )
+        // Heights in rows: the cards' Svgs are px tall.
+        const rowsOf = (a: AgentRun) => agentHeight(a, at) / ROW_PX
+        const stripRows = isEmpty ? 0 : (COMPACT_H + STRIP_GAP) / ROW_PX
+        const headRows = Math.ceil(stripRows + headerHeight(title) / ROW_PX)
+        const { room, doneAbove, total } = roomOf(1, headRows + BUTTON_ROWS + 1, 0, BUTTON_ROWS, rowsOf, 46 / ROW_PX)
+        // A desktop pane is only as tall as its tree: room under the last row for
+        // a card that opens down past it, or the card is cut off into a scroll.
+        const spacer = (rows: number) => (rows > 0 ? <Box key="tip-room" height={Math.ceil(rows)} flexShrink={0} /> : null)
+        const failedTop = headRows + 2 * BUTTON_ROWS + 1
+        const hover = (key: string, h: number, lines: TipLine[], tone: Tone = 'info') => {
+          const fit = tipFit(h, room.get(key) ?? 0, 0.6)
+          // Seen on the desktop: a card sat a row low, over its own card's title.
+          return tip(ui, e.surface, lines.slice(0, fit.lines), { bottom: fit.bottom + ((room.get(key) ?? 0) > 0 ? 1 : 0) }, tipW, tone)
+        }
+        const card = (a: AgentRun) => (
+          <Box key={a.id} flexDirection="column" {...lit(hasCard(agentTone(a)))}>
+            <Svg
+              source={agentSvg(W, a, at)}
+              alt={`${a.description}: ${modelName(a.model)}, ${a.status === 'running' ? s.isRunning : s.isFinished}${a.trail?.length ? `: ${entryText(a.trail[a.trail.length - 1]!)}` : ''}`}
+              width={W}
+              height={agentHeight(a, at)}
+            />
+            {hover(a.id, rowsOf(a), agentTip(a, true), agentTone(a))}
+          </Box>
+        )
+        const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(card)]
+
+        if (p.isCompact) {
+          return (
+            <Box flexDirection="column" gap={1}>
+              <Box {...lit(hasCard('info'), 'tip:strip')}>
+                <Svg source={compactSvg(W, all, planned, t, at)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={COMPACT_H} />
+              </Box>
+              {toggleCompact}
+              {tip(ui, e.surface, stripTip, { top: Math.ceil(COMPACT_H / ROW_PX), scope: 'tip:strip' }, downW)}
+              {tip(ui, e.surface, compactTip, { top: Math.ceil(COMPACT_H / ROW_PX) + 1 + BUTTON_ROWS, scope: 'tip:compact' }, downW, 'action')}
+              {/* Past the button: the strip's card overhangs it by its lines less the button, the button's by all of its own and a row of padding. */}
+              {spacer(Math.max(hasCard('info') ? stripTip.length - BUTTON_ROWS : 0, hasCard('action') ? compactTip.length + 1 : 0))}
+            </Box>
+          )
+        }
         return (
-          <Box flexDirection="column" gap={1}>
-            <Svg source={compactSvg(W, all, planned, t, at)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={COMPACT_H} />
-            {toggleCompact}
+          <Box flexDirection="column">
+            {!isEmpty && (
+              <Box {...lit(hasCard('info'), 'tip:strip')}>
+                <Svg key="strip" source={compactSvg(W, all, planned, t, at, false, STRIP_GAP)} alt={`${list.length} ${s.agentsCount}`} width={W} height={COMPACT_H + STRIP_GAP} />
+              </Box>
+            )}
+            <Box {...lit(hasCard('info'), 'tip:tiles')}>
+              <Svg source={headerSvg(W, title, t)} alt={title ? `${title}: ${summary}` : summary} width={W} height={headerHeight(title)} />
+            </Box>
+            <Box flexDirection="row" justifyContent="flex-end" marginBottom={1}>
+              {toggleCompact}
+            </Box>
+            {isEmpty && <Text dimColor>{s.empty}</Text>}
+            {failed.length > 0 && toggleFailed}
+            {!p.isFailedCollapsed && failed.map(card)}
+            {runningCount > 0 && section('h-run', `${s.running} · ${runningCount}`)}
+            {running.flatMap(group)}
+            {finishedCount > 0 && toggleDone(tip(ui, e.surface, doneTip.slice(0, Math.floor(doneAbove - 1.6)), { bottom: BUTTON_ROWS, side: 'left' }, tipW, 'action'))}
+            {!isDoneFolded && shownFinished.flatMap(group)}
+            {hasOlderLine && olderLine(tip(ui, e.surface, olderTip, { bottom: BUTTON_ROWS, side: 'left' }, tipW, 'action'))}
+            {planned.length > 0 && section('h-plan', `${s.planned} · ${planned.length}`)}
+            {planned.map(pl => (
+              <Box key={`plan-${pl.n}`} flexDirection="column" {...lit(hasCard('info') && planTip(pl).length > 0)}>
+                <Svg source={plannedSvg(W, pl)} alt={`${pl.n}. ${pl.title}: ${s.isPlanned}`} width={W} height={46} />
+                {hover(`plan-${pl.n}`, 46 / ROW_PX, planTip(pl))}
+              </Box>
+            ))}
+            {!isEmpty && tip(ui, e.surface, stripTip, { top: Math.ceil(stripRows), scope: 'tip:strip' }, downW)}
+            {tip(ui, e.surface, tilesTip, { top: headRows, scope: 'tip:tiles' }, downW)}
+            {tip(ui, e.surface, compactTip, { top: headRows + BUTTON_ROWS, scope: 'tip:compact' }, downW, 'action')}
+            {failed.length > 0 && tip(ui, e.surface, failedTip, { top: failedTop, scope: 'tip:failed' }, downW, 'action')}
+            {failed.length > 0 && hasCard('action') && spacer(failedTop + failedTip.length + 1 - total)}
           </Box>
         )
       }
-      return (
-        <Box flexDirection="column">
-          {!isEmpty && <Svg key="strip" source={compactSvg(W, all, planned, t, at, false, STRIP_GAP)} alt={`${list.length} ${s.agentsCount}`} width={W} height={COMPACT_H + STRIP_GAP} />}
-          <Svg source={headerSvg(W, title, t)} alt={title ? `${title}: ${summary}` : summary} width={W} height={headerHeight(title)} />
-          <Box flexDirection="row" justifyContent="flex-end" marginBottom={1}>
-            {toggleCompact}
-          </Box>
-          {isEmpty && <Text dimColor>{s.empty}</Text>}
-          {failed.length > 0 && toggleFailed}
-          {!p.isFailedCollapsed && failed.map(card)}
-          {runningCount > 0 && section('h-run', `${s.running} · ${runningCount}`)}
-          {running.flatMap(group)}
-          {finishedCount > 0 && toggleDone}
-          {!p.isDoneCollapsed && finished.flatMap(group)}
-          {planned.length > 0 && section('h-plan', `${s.planned} · ${planned.length}`)}
-          {planned.map(pl => (
-            <Svg key={`plan-${pl.n}`} source={plannedSvg(W, pl)} alt={`${pl.n}. ${pl.title}: ${s.isPlanned}`} width={W} height={46} />
-          ))}
-        </Box>
-      )
-    }
 
-    // Terminal: the same content in text rows.
-    const cols = Math.max(24, e.props.bodyColumns || 40)
-    const barW = Math.max(6, Math.min(20, cols - 34))
-    const row = (a: AgentRun) => {
-      const { color, label: role } = roleOf(a)
-      const ctx = ctxOf(a)
-      const progress = progressOf(a)
-      const parts = cardParts(a, at)
-      const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal}${a.stepNote ? ' ' + a.stepNote : ''} · ` : ''
-      return (
-        <Box key={a.id} flexDirection="column" marginBottom={1}>
-          <Box flexDirection="row" gap={1}>
-            <Text color={color}>▣</Text>
-            <Text bold wrap="truncate-end">
-              {a.description || a.type}
-            </Text>
-            <Text color={a.status === 'failed' ? FAIL : a.status === 'done' ? OK : a.status === 'stopped' ? STOPPED : isOverdue(a, at) ? WARN : color}>{isOverdue(a, at) ? '◷' : STATUS_GLYPH[a.status]}</Text>
-            {(a.failed ?? 0) > 0 && <Text color={FAIL}>✗{a.failed}</Text>}
-          </Box>
-          <Text wrap="truncate-end">
-            {'  '}
-            <Text bold>{role}</Text>
-            {' '}
-            <Text color={color}>{modelName(a.model)}</Text>
-            <Text dimColor>
-              {a.effort ? ` ${a.effort}` : ''}
-              {a.toolCalls ? ` · ${s.toolCalls(a.toolCalls)}` : ''}
-              {a.round > 1 ? ` · ${s.round} ${a.round}` : ''}
-              {a.status === 'failed' ? ` · ${s.failed}` : a.status === 'stopped' ? ` · ${s.stopped}` : ''}
-            </Text>
-            {isOverdue(a, at) && <Text color={WARN}>{` · ${s.overdue}`}</Text>}
-          </Text>
-          <Text wrap="truncate-end">
-            {'  '}
-            <Text dimColor>{ctxBar(progress === null ? ctx : progress * 100, barW)}</Text>
-            <Text dimColor>
+      // Terminal: the same content in text rows.
+      const cols = Math.max(24, e.props.bodyColumns || 40)
+      const barW = Math.max(6, Math.min(20, cols - 34))
+      // A row's lines, as drawn below: name, role, bar, then its card's parts.
+      const rowsOf = (a: AgentRun) => {
+        const parts = cardParts(a, at)
+        return 3 + (parts.mix ? 1 : 0) + parts.trail.length + (parts.idle ? 1 : 0) + (parts.files ? 1 : 0) + (parts.result ? 1 : 0)
+      }
+      // Title and summary over the column, which starts a row down.
+      const { room, doneAbove } = roomOf(2, 3, 1, 1, rowsOf, 2)
+      const hover = (key: string, h: number, lines: TipLine[], tone: Tone = 'info') => {
+        const fit = tipFit(h, room.get(key) ?? 0, 2)
+        return tip(ui, e.surface, lines.slice(0, fit.lines), { bottom: fit.bottom }, tipW, tone)
+      }
+      const row = (a: AgentRun) => {
+        const { color, label: role } = roleOf(a)
+        const ctx = ctxOf(a)
+        const progress = progressOf(a)
+        const parts = cardParts(a, at)
+        const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal}${a.stepNote ? ' ' + a.stepNote : ''} · ` : ''
+        return (
+          <Box key={a.id} flexDirection="column" marginBottom={1} {...lit(hasCard(agentTone(a)))}>
+            <Box flexDirection="row" gap={1}>
+              <Text color={color}>▣</Text>
+              <Text bold wrap="truncate-end">
+                {a.description || a.type}
+              </Text>
+              <Text color={a.status === 'failed' ? FAIL : a.status === 'done' ? OK : a.status === 'stopped' ? STOPPED : isOverdue(a, at) ? WARN : color}>{isOverdue(a, at) ? '◷' : STATUS_GLYPH[a.status]}</Text>
+              {(a.failed ?? 0) > 0 && <Text color={FAIL}>✗{a.failed}</Text>}
+            </Box>
+            <Text wrap="truncate-end">
+              {'  '}
+              <Text bold>{role}</Text>
               {' '}
-              {steps}ctx {ctx}% · {fmtTokens(a.contextTokens)} ≈{fmtCost(a.costUsd)} {fmtTime(elapsed(a, at))}
+              <Text color={color}>{modelName(a.model)}</Text>
+              <Text dimColor>
+                {a.effort ? ` ${a.effort}` : ''}
+                {a.toolCalls ? ` · ${s.toolCalls(a.toolCalls)}` : ''}
+                {a.round > 1 ? ` · ${s.round} ${a.round}` : ''}
+                {a.status === 'failed' ? ` · ${s.failed}` : a.status === 'stopped' ? ` · ${s.stopped}` : ''}
+              </Text>
+              {isOverdue(a, at) && <Text color={WARN}>{` · ${s.overdue}`}</Text>}
             </Text>
-          </Text>
-          {parts.mix && (
             <Text wrap="truncate-end">
               {'  '}
-              {FAMILY_ORDER.filter(k => a.kinds?.[k]).map(k => (
-                <Text key={k}>
-                  <Text color={toolColor(k, 'machine')}>■</Text>
-                  <Text dimColor>{` ${s.kinds[k]} ${a.kinds?.[k]}  `}</Text>
-                </Text>
-              ))}
+              <Text dimColor>{ctxBar(progress === null ? ctx : progress * 100, barW)}</Text>
+              <Text dimColor>
+                {' '}
+                {steps}ctx {ctx}% · {fmtTokens(a.contextTokens)} ≈{fmtCost(a.costUsd)} {fmtTime(elapsed(a, at))}
+              </Text>
             </Text>
-          )}
-          {parts.trail.map((en, i) => {
-            const mark = entryMark(en)
-            return (
-              <Text key={en.id} wrap="truncate-end" dimColor={i > 0} italic={en.kind !== 'tool'}>
+            {parts.mix && (
+              <Text wrap="truncate-end">
                 {'  '}
-                {entryText(en)}
-                {mark && <Text color={mark.color}>{` ${mark.glyph}`}</Text>}
+                {FAMILY_ORDER.filter(k => a.kinds?.[k]).map(k => (
+                  <Text key={k}>
+                    <Text color={toolColor(k, 'machine')}>■</Text>
+                    <Text dimColor>{` ${s.kinds[k]} ${a.kinds?.[k]}  `}</Text>
+                  </Text>
+                ))}
               </Text>
-            )
-          })}
-          {parts.idle && (
-            <Text color={WARN} wrap="truncate-end">
-              {'  ◷ '}
-              {parts.idle}
-            </Text>
-          )}
-          {parts.files && (
-            <Text wrap="truncate-end">
-              {'  '}
-              {(a.files ?? []).slice(0, 6).map((fl, i) => (
-                <Text key={fl.path} color={toolColor(fileFamily(fl), fl.reach ?? 'machine')}>
-                  {i ? ', ' : ''}
-                  {baseName(fl.path)}
-                </Text>
-              ))}
-              {(a.files?.length ?? 0) > 6 && <Text dimColor>{` +${(a.files?.length ?? 0) - 6}`}</Text>}
-            </Text>
-          )}
-          {parts.result && (
-            <Text dimColor wrap="truncate-end">
-              {'  “'}
-              {parts.result}
-              {'”'}
-            </Text>
-          )}
-        </Box>
-      )
-    }
-    const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(row)]
-
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text bold wrap="truncate-end">
-            {title}
-          </Text>
-          {toggleCompact}
-        </Box>
-        <Text dimColor>
-          ≈{fmtCost(t.cost)} · {fmtTokens(t.tokens)} {s.tokensWord} · {fmtTime(t.time)}
-        </Text>
-        {p.isCompact ? (
-          <Text wrap="truncate-end">
-            {all.map(a => (
-              <Text key={a.id} color={roleOf(a).color}>
-                {STATUS_GLYPH[a.status]}{' '}
-              </Text>
-            ))}
-            {planned.map(pl => (
-              <Text key={`plan-${pl.n}`} dimColor>
-                ◷{' '}
-              </Text>
-            ))}
-          </Text>
-        ) : (
-          <Box flexDirection="column" marginTop={1}>
-            {isEmpty && <Text dimColor>{s.empty}</Text>}
-            {failed.length > 0 && toggleFailed}
-            {!p.isFailedCollapsed && failed.map(row)}
-            {runningCount > 0 && <Text dimColor>{`${s.running} · ${runningCount}`}</Text>}
-            {running.flatMap(group)}
-            {finishedCount > 0 && toggleDone}
-            {!p.isDoneCollapsed && finished.flatMap(group)}
-            {planned.length > 0 && <Text dimColor>{`${s.planned} · ${planned.length}`}</Text>}
-            {planned.map(pl => {
-              const tier = pl.tier in TIER_COLOR ? pl.tier : 'other'
+            )}
+            {parts.trail.map((en, i) => {
+              const mark = entryMark(en)
               return (
-                <Box key={`plan-${pl.n}`} flexDirection="column" marginBottom={1}>
-                  <Text dimColor wrap="truncate-end">
-                    <Text color={colorOf(tier)}>▢</Text> {pl.n}. {pl.title} ◷
-                  </Text>
-                  <Text dimColor wrap="truncate-end">
-                    {'  '}
-                    {tier} · {TIER_MODEL[tier] ?? ''}
-                    {pl.after.length ? ` · ${s.after} ${pl.after.join(', ')}` : ''}
-                  </Text>
-                </Box>
+                <Text key={en.id} wrap="truncate-end" dimColor={i > 0} italic={en.kind !== 'tool'}>
+                  {'  '}
+                  {entryText(en)}
+                  {mark && <Text color={mark.color}>{` ${mark.glyph}`}</Text>}
+                </Text>
               )
             })}
+            {parts.idle && (
+              <Text color={WARN} wrap="truncate-end">
+                {'  ◷ '}
+                {parts.idle}
+              </Text>
+            )}
+            {parts.files && (
+              <Text wrap="truncate-end">
+                {'  '}
+                {(a.files ?? []).slice(0, 6).map((fl, i) => (
+                  <Text key={fl.path} color={toolColor(fileFamily(fl), fl.reach ?? 'machine')}>
+                    {i ? ', ' : ''}
+                    {baseName(fl.path)}
+                  </Text>
+                ))}
+                {(a.files?.length ?? 0) > 6 && <Text dimColor>{` +${(a.files?.length ?? 0) - 6}`}</Text>}
+              </Text>
+            )}
+            {parts.result && (
+              <Text dimColor wrap="truncate-end">
+                {'  “'}
+                {parts.result}
+                {'”'}
+              </Text>
+            )}
+            {hover(a.id, rowsOf(a), agentTip(a, false), agentTone(a))}
           </Box>
-        )}
-      </Box>
-    )
+        )
+      }
+      const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(row)]
+
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text bold wrap="truncate-end">
+              {title}
+            </Text>
+            {toggleCompact}
+          </Box>
+          <Box {...lit(hasCard('info'), 'tip:tiles')}>
+            <Text dimColor>
+              ≈{fmtCost(t.cost)} · {fmtTokens(t.tokens)} {s.tokensWord} · {fmtTime(t.time)}
+            </Text>
+          </Box>
+          {p.isCompact ? (
+            <Box {...lit(hasCard('info'), 'tip:strip')}>
+              <Text wrap="truncate-end">
+                {all.map(a => (
+                  <Text key={a.id} color={roleOf(a).color}>
+                    {STATUS_GLYPH[a.status]}{' '}
+                  </Text>
+                ))}
+                {planned.map(pl => (
+                  <Text key={`plan-${pl.n}`} dimColor>
+                    ◷{' '}
+                  </Text>
+                ))}
+              </Text>
+            </Box>
+          ) : (
+            <Box flexDirection="column" marginTop={1}>
+              {isEmpty && <Text dimColor>{s.empty}</Text>}
+              {failed.length > 0 && toggleFailed}
+              {!p.isFailedCollapsed && failed.map(row)}
+              {runningCount > 0 && <Text dimColor>{`${s.running} · ${runningCount}`}</Text>}
+              {running.flatMap(group)}
+              {finishedCount > 0 && toggleDone(tip(ui, e.surface, doneTip.slice(0, doneAbove - 2), { bottom: 1, side: 'left' }, tipW, 'action'))}
+              {!isDoneFolded && shownFinished.flatMap(group)}
+              {hasOlderLine && olderLine(tip(ui, e.surface, olderTip, { bottom: 1, side: 'left' }, tipW, 'action'))}
+              {planned.length > 0 && <Text dimColor>{`${s.planned} · ${planned.length}`}</Text>}
+              {planned.map(pl => {
+                const tier = pl.tier in TIER_COLOR ? pl.tier : 'other'
+                return (
+                  <Box key={`plan-${pl.n}`} flexDirection="column" marginBottom={1} {...lit(hasCard('info') && planTip(pl).length > 0)}>
+                    <Text dimColor wrap="truncate-end">
+                      <Text color={colorOf(tier)}>▢</Text> {pl.n}. {pl.title} ◷
+                    </Text>
+                    <Text dimColor wrap="truncate-end">
+                      {'  '}
+                      {tier} · {TIER_MODEL[tier] ?? ''}
+                      {pl.after.length ? ` · ${s.after} ${pl.after.join(', ')}` : ''}
+                    </Text>
+                    {hover(`plan-${pl.n}`, 2, planTip(pl))}
+                  </Box>
+                )
+              })}
+            </Box>
+          )}
+          {tip(ui, e.surface, compactTip, { top: 1, scope: 'tip:compact' }, downW, 'action')}
+          {tip(ui, e.surface, tilesTip, { top: 2, scope: 'tip:tiles' }, downW)}
+          {p.isCompact && tip(ui, e.surface, stripTip, { top: 3, scope: 'tip:strip' }, downW)}
+          {!p.isCompact && failed.length > 0 && tip(ui, e.surface, failedTip, { top: 4, scope: 'tip:failed' }, downW, 'action')}
+        </Box>
+      )
+    }
+    return fit(e.surface, LEVEL_TOP, draw)
   })
 
   // The bar lives in the transcript, under the row of the call that started the

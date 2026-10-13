@@ -136,6 +136,104 @@ export function groupLabel(prompt: string): string {
 const MARK: Record<Status, string> = { open: '○', wrong: '✗', corrected: '✎', confirmed: '✓' }
 const CONFIDENCE_COLOR: Record<Confidence, string> = { low: 'error', medium: 'warning', high: 'success' }
 const BORDER: Record<Status, string> = { open: 'subtle', wrong: 'error', corrected: 'error', confirmed: 'success' }
+const STATUS_WORD: Record<Status, string> = { open: 'to check', wrong: '✗ marked wrong', corrected: '✎ corrected', confirmed: '✓ confirmed' }
+// What each count box's filter keeps, as its hover card says it.
+const RULE_OF: Record<Filter, Line> = {
+  open: 'Open cards, not yet marked right or wrong',
+  low: [{ t: 'Open cards Claude logged at ', s: 'd' }, { t: 'low confidence', s: 'bad' }],
+  marked: 'Cards marked wrong, with a fix typed or not',
+  confirmed: 'Cards marked right',
+}
+
+// The hover cards' colors, as changes-drill draws them.
+const CARD = '#34332f'
+const FG = '#e9e7e2'
+const DIM = '#9c9a94'
+const FAINT = '#6f6d68'
+const GOOD = '#7fc97f'
+const BAD = '#ef8a80'
+const WARN = '#e7c06b'
+const ACCENT = '#8db4f0'
+const CHIP = '#ffffff1f'
+
+// Card text: a line is a string or a list of pieces; a piece is a string
+// (plain) or text with a style. The first line is bold, a plain string after
+// it dim. A card's tone colors the bar down its left edge on the desktop and
+// its border in the terminal: action for a press that stays local, warn for
+// one that reaches Claude, danger for one that destroys, info for the rest.
+type Style = 'b' | 'd' | 'f' | 'i' | 'good' | 'bad' | 'warn' | 'accent' | 'key' | 'tag' | 'tag-good' | 'tag-bad' | 'tag-warn'
+type Piece = string | { t: string; s: Style }
+type Line = string | Piece[]
+type Tone = 'action' | 'info' | 'warn' | 'danger' | 'good'
+const TONES: Record<Tone, string> = { action: ACCENT, info: FAINT, warn: WARN, danger: BAD, good: GOOD }
+const TINT: Partial<Record<Style, [string, string]>> = {
+  'tag-good': [GOOD, '#7fc97f26'],
+  'tag-bad': [BAD, '#ef8a8026'],
+  'tag-warn': [WARN, '#e7c06b26'],
+  tag: [FG, CHIP],
+  key: [FG, CHIP],
+}
+const PAINT: Partial<Record<Style, string>> = { d: DIM, f: FAINT, good: GOOD, bad: BAD, warn: WARN, accent: ACCENT }
+const SEP = { t: ' · ', s: 'f' } as const
+const key = (letter: string) => ({ t: letter, s: 'key' }) as const
+const PROMPT_TAG = { t: 'sends a prompt', s: 'tag-warn' } as const
+const STATUS_TONE: Record<Status, Tone> = { open: 'info', wrong: 'danger', corrected: 'warn', confirmed: 'good' }
+const STATUS_STYLE: Record<Status, Style> = { open: 'd', wrong: 'bad', corrected: 'warn', confirmed: 'good' }
+
+// The folder dim, the file name bold.
+const pathPieces = (path: string): Piece[] => {
+  const i = path.lastIndexOf('/')
+  return i < 0 ? [{ t: path, s: 'b' }] : [{ t: path.slice(0, i + 1), s: 'd' }, { t: path.slice(i + 1), s: 'b' }]
+}
+// Text with its ids (A1, P2) bold and the rest dim.
+const idPieces = (text: string): Piece[] =>
+  text
+    .split(/\b([AP]\d+)\b/)
+    .map((part, i) => ({ t: part, s: i % 2 === 1 ? ('b' as const) : ('d' as const) }))
+    .filter(p => p.t !== '')
+// How many cells a line takes: a chip pads its text with a space each side.
+const lineLength = (line: Line): number =>
+  typeof line === 'string' ? line.length : line.reduce((n, p) => n + (typeof p === 'string' ? p.length : p.t.length + (TINT[p.s] ? 2 : 0)), 0)
+// Pieces cut to `max` characters, the last one ending in an ellipsis.
+function clip(pieces: Piece[], max: number): Piece[] {
+  const out: Piece[] = []
+  let n = 0
+  for (const p of pieces) {
+    const text = typeof p === 'string' ? p : p.t
+    if (n + text.length > max) {
+      const rest = `${text.slice(0, Math.max(0, max - n - 1))}…`
+      out.push(typeof p === 'string' ? rest : { ...p, t: rest })
+      return out
+    }
+    out.push(p)
+    n += text.length
+  }
+  return out
+}
+
+// One line of a card: its pieces as nested Text, so it stays one line.
+function cardLine(Text: any, line: Line, i: number) {
+  const pieces: Piece[] = typeof line === 'string' ? [{ t: line, s: i === 0 ? 'b' : 'd' }] : line
+  return (
+    <Text key={`l${i}`} wrap="wrap" bold={i === 0} color={FG}>
+      {pieces.map((p, j) => {
+        if (typeof p === 'string') return p
+        const tint = TINT[p.s]
+        if (tint)
+          return (
+            <Text key={j} color={tint[0]} backgroundColor={tint[1]} bold={p.s === 'key'}>
+              {` ${p.t} `}
+            </Text>
+          )
+        return (
+          <Text key={j} bold={p.s === 'b'} italic={p.s === 'i'} color={PAINT[p.s]}>
+            {p.t}
+          </Text>
+        )
+      })}
+    </Text>
+  )
+}
 
 export const MATCHES: Record<Filter, (card: Card) => boolean> = {
   open: c => c.status === 'open',
@@ -153,6 +251,16 @@ export function ordered(list: readonly Card[]): Card[] {
 export function parseSource(source: string): { path: string; line?: number } {
   const match = /^(.+?):(\d+)(?:[-:]\d+)?$/.exec(source.trim())
   return match?.[1] !== undefined ? { path: match[1], line: Number(match[2]) } : { path: source.trim() }
+}
+
+// A card's list of ids, cut where it would run past `max` characters.
+function idList(ids: readonly string[], max = 80): string {
+  const all = ids.join(', ')
+  return all.length > max ? `${all.slice(0, max - 1).replace(/,? *[^,]*$/, '')}, …` : all
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
 function absolute(path: string, cwd: string): string {
@@ -234,6 +342,45 @@ async function remove($: EngineInterface, card: Card) {
   await update($, cards, list => list.filter(c => c.id !== card.id))
   await update($, selected, id => (id === card.id ? null : id))
   await update($, fixing, id => (id === card.id ? null : id))
+}
+
+// A prompt the pane folded to fit, opened alone: the others fold and the
+// filter clears, so it is the one prompt drawn open.
+async function openAlone($: EngineInterface, id: string) {
+  await update($, expanded, () => [id])
+  await update($, filter, () => null)
+}
+
+// The desktop app stops drawing a pane past about 1,100 elements (1,006 drew,
+// 1,204 did not) or about 300,000 characters (257k drew, 355k did not). The pane draws at
+// the richest level that fits: 0 every card, 1 action and status cards only,
+// 2 no cards, 3 the open prompts past the newest two folded, 4 only the
+// newest open prompt, with MAX_ROWS of its cards at most.
+export const BUDGET = 1000
+// Characters of the serialized tree, an inline SVG's source included.
+export const CHAR_BUDGET = 200_000
+export const TOP_LEVEL = 4
+export const MAX_ROWS = 15
+// Elements in a tree, counted as the live measure counted them.
+export function countNodes(tree: unknown): number {
+  let nodes = 0
+  const walk = (n: any): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    nodes += 1
+    walk(n.children)
+    walk(n.props?.children)
+  }
+  walk(tree)
+  return nodes
+}
+// Draws at level 0, then 1, 2, ... until the tree fits or `top` is reached.
+// Only the desktop (and VS Code) has the limit: the terminal keeps level 0.
+export function fit<T>(surface: string, top: number, draw: (level: number) => T): T {
+  if (surface !== 'desktop' && surface !== 'vscode') return draw(0)
+  let tree = draw(0)
+  for (let level = 1; level <= top && (countNodes(tree) > BUDGET || JSON.stringify(tree).length > CHAR_BUDGET); level += 1) tree = draw(level)
+  return tree
 }
 
 export const register: Register = (on, options) => {
@@ -325,182 +472,475 @@ export const register: Register = (on, options) => {
     const fix = await read($, fixing)
     const only = await read($, filter)
     const shown = only === null ? all : all.filter(MATCHES[only])
+    const term = e.surface === 'terminal'
+    const cols = e.props.bodyColumns || 60
 
-    // One line, cut with an ellipsis where the pane ends. A flex item is as
-    // wide as its text unless its minimum is 0, so without it the text
-    // overruns the card instead of being cut.
-    const line = (text: string, props: Record<string, unknown> = {}) => (
-      <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-        <Text wrap="truncate-end" {...props}>
-          {text}
-        </Text>
-      </Box>
-    )
-    // A label beside a line, kept whole: it never shrinks or wraps.
-    const fixed = (text: string, props: Record<string, unknown> = {}) => (
-      <Box flexShrink={0}>
-        <Text {...props}>{text}</Text>
-      </Box>
-    )
+    // The pane at a level of the ladder (see BUDGET).
+    const draw = (level: number) => {
+      // Whether a card of `tone` is drawn at this level: none on a phone,
+      // which has no hover.
+      const shows = (tone: Tone) => e.surface !== 'mobile' && (level <= 0 || (level === 1 && tone !== 'info'))
+      // A hover card: hidden, shown while its host (the nearest keyed Box, or
+      // the boxes of `scope`) is hovered, placed by `at` in whole cells. The
+      // first line is the action or the headline, the rest dim, and every line
+      // wraps. A phone has no hover, so it gets none. One row clear of its host:
+      // a pointer leaving the host crosses that row, so the card closes instead
+      // of holding the pointer over what it covers. Its tone is a bar down the
+      // left edge on the desktop, the border's color in the terminal.
+      const tip = (lines: Line[], at: { top?: number; bottom?: number; left?: number; right?: number }, width = 48, scope?: string, tone: Tone = 'info') =>
+        !shows(tone) ? null : (
+          <Box
+            position="absolute"
+            {...at}
+            top={at.top === undefined ? undefined : at.top + 1}
+            bottom={at.bottom === undefined ? undefined : at.bottom + 1}
+            display="none"
+            hover={scope === undefined ? { display: 'flex' } : { scope, display: 'flex' }}
+            flexDirection="row"
+            backgroundColor={CARD}
+            paddingX={0}
+            paddingY={term ? 0 : 0.3}
+            width={Math.max(12, Math.min(48, width))}
+            borderStyle={term ? 'round' : undefined}
+            borderColor={term ? TONES[tone] : undefined}
+          >
+            {!term && <Box width={0.25} backgroundColor={TONES[tone]} />}
+            <Box flexDirection="column" paddingX={0.75} flexShrink={1} minWidth={0}>
+              {lines.map((one, i) => cardLine(Text, one, i))}
+            </Box>
+          </Box>
+        )
+      // A one-card-line tip as wide as its longest line, border and padding in.
+      const snug = (lines: Line[]) => Math.max(...lines.map(lineLength)) + 4
 
-    const header = (
-      <Box flexDirection="row" gap={1} flexWrap="wrap">
-        <Text color={on_ ? 'success' : undefined} dimColor={!on_}>
-          {on_ ? '● capture on' : '○ capture off'}
-        </Text>
-        <Button key="toggle" label={on_ ? 'turn off' : 'turn on'} onPress={() => void (on_ ? turnOff($) : turnOn($))} />
-      </Box>
-    )
-
-    // The counts are over every card, whatever the filter shows. A box's label
-    // filters to its cards; pressed again, it shows them all.
-    const stat = (which: Filter, label: string, color: string) => {
-      const n = all.filter(MATCHES[which]).length
-      const isActive = only === which
-      return (
-        <Box
-          key={`stat-${which}`}
-          flexDirection="column"
-          flexGrow={1}
-          borderStyle="round"
-          borderColor={isActive ? color : 'subtle'}
-          hover={{ borderColor: color }}
-          paddingX={1}
-        >
-          <Button key={`filter-${which}`} label={label} plain dimColor={!isActive} onPress={() => void update($, filter, f => (f === which ? null : which))} />
-          <Text bold color={n > 0 ? color : undefined} dimColor={n === 0}>
-            {String(n)}
+      // One line, cut with an ellipsis where the pane ends. A flex item is as
+      // wide as its text unless its minimum is 0, so without it the text
+      // overruns the card instead of being cut.
+      const line = (text: string, props: Record<string, unknown> = {}) => (
+        <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+          <Text wrap="truncate-end" {...props}>
+            {text}
           </Text>
         </Box>
       )
-    }
-    const stats = (
-      <Box flexDirection="row" gap={1} flexWrap="wrap">
-        {stat('open', 'To check', 'warning')}
-        {stat('low', 'Low confidence', 'error')}
-        {stat('marked', 'Corrected', 'suggestion')}
-        {stat('confirmed', 'Confirmed', 'success')}
-      </Box>
-    )
+      // A label beside a line, kept whole: it never shrinks or wraps.
+      const fixed = (text: string, props: Record<string, unknown> = {}) => (
+        <Box flexShrink={0}>
+          <Text {...props}>{text}</Text>
+        </Box>
+      )
 
-    const field = (label: string, value: string) => (
-      <Box flexDirection="column">
-        <Text dimColor>{label}</Text>
-        <Text>{value}</Text>
-      </Box>
-    )
+      // Turning it off stops Claude logging; turning it on stays local.
+      const captureTone: Tone = on_ ? 'danger' : 'action'
+      const header = (
+        <Box flexDirection="row" gap={1} flexWrap="wrap" hover={shows(captureTone) ? { scope: 'tip:capture', backgroundColor: '#ffffff10' } : undefined}>
+          <Text color={on_ ? 'success' : undefined} dimColor={!on_}>
+            {on_ ? '● capture on' : '○ capture off'}
+          </Text>
+          <Button key="toggle" label={on_ ? 'turn off' : 'turn on'} onPress={() => void (on_ ? turnOff($) : turnOn($))} />
+        </Box>
+      )
 
-    const card = (c: Card) => {
-      const isPicked = picked === c.id
-      const isOpen = c.status === 'open'
-      const isWrong = c.status === 'wrong' || c.status === 'corrected'
-      return (
-        <Box
-          key={`row-${c.id}`}
-          flexDirection="column"
-          borderStyle="round"
-          borderColor={isOpen && isPicked ? 'text' : BORDER[c.status]}
-          {...(isOpen && !isPicked ? { hover: { borderColor: 'text' } } : {})}
-          paddingX={1}
-          gap={isPicked ? 1 : 0}
-        >
-          <Box flexDirection="row" gap={1}>
-            <Button key={`card-${c.id}`} label={isPicked ? '▾' : '▸'} plain onPress={() => void update($, selected, () => (isPicked ? null : c.id))} />
-            {!isOpen && fixed(MARK[c.status], { color: isWrong ? 'error' : 'success' })}
-            {fixed(c.id, { dimColor: true })}
-            {fixed(`● ${c.confidence}`, { color: CONFIDENCE_COLOR[c.confidence] })}
-            {isPicked && fixed(`· ${c.category}`, { dimColor: true })}
-            {!isPicked && line(c.statement, { strikethrough: isWrong, dimColor: !isOpen })}
+      // The counts are over every card, whatever the filter shows. A box's label
+      // filters to its cards; pressed again, it shows them all.
+      const stat = (which: Filter, label: string, color: string) => {
+        const n = all.filter(MATCHES[which]).length
+        const isActive = only === which
+        return (
+          <Box
+            key={`stat-${which}`}
+            flexDirection="column"
+            flexGrow={1}
+            borderStyle="round"
+            borderColor={isActive ? color : 'subtle'}
+            hover={shows('action') ? { borderColor: color, backgroundColor: '#ffffff10', scope: `tip:stat-${which}` } : { borderColor: color }}
+            paddingX={1}
+          >
+            <Button key={`filter-${which}`} label={label} plain dimColor={!isActive} onPress={() => void update($, filter, f => (f === which ? null : which))} />
+            <Text bold color={n > 0 ? color : undefined} dimColor={n === 0}>
+              {String(n)}
+            </Text>
           </Box>
-          {isPicked && (
-            <Text bold strikethrough={isWrong}>
-              {c.statement}
+        )
+      }
+      const stats = (
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          {stat('open', 'To check', 'warning')}
+          {stat('low', 'Low confidence', 'error')}
+          {stat('marked', 'Corrected', 'suggestion')}
+          {stat('confirmed', 'Confirmed', 'success')}
+        </Box>
+      )
+
+      // The cards of the header and the count boxes. Above them the pane ends,
+      // so each opens downward, drawn last in the pane to paint over the rows
+      // below, and its host lights it through a scope. A downward card stays
+      // open while the pointer is on it, so it keeps to the right 60% of the
+      // pane and leaves the labels on the left free to move down. Which line a
+      // box sits on is worked out as the row lays them: each as wide as its
+      // label, wrapped to the pane.
+      const downWidth = Math.min(48, Math.max(24, Math.round(cols * 0.6)))
+      const STATS: [Filter, string][] = [
+        ['open', 'To check'],
+        ['low', 'Low confidence'],
+        ['marked', 'Corrected'],
+        ['confirmed', 'Confirmed'],
+      ]
+      const bands: { which: Filter; width: number }[][] = [[]]
+      let used = 0
+      for (const [which, label] of STATS) {
+        const width = label.length + 4 + (term ? 0 : 1.5)
+        const band = bands.at(-1)!
+        if (band.length > 0 && used + 1 + width > cols) {
+          bands.push([{ which, width }])
+          used = width
+        } else {
+          band.push({ which, width })
+          used += (band.length > 1 ? 1 : 0) + width
+        }
+      }
+      const statCards = bands.flatMap((band, row) =>
+        band.map(({ which }) => {
+          const ids = all.filter(MATCHES[which]).map(c => c.id)
+          const isActive = only === which
+          // The ids by prompt, newest first, as the pane lists them.
+          const byPrompt = [...allGroups]
+            .reverse()
+            .map(g => [g.id, all.filter(c => c.group === g.id && MATCHES[which](c)).map(c => c.id)] as const)
+            .filter(([, mine]) => mine.length > 0)
+            .flatMap(([g, mine], i): Piece[] => [...(i > 0 ? [SEP] : []), ...idPieces(`${g}: ${idList(mine, 40)}`)])
+          // Two wrapped lines at most, so the card keeps to four.
+          const most = 2 * (downWidth - 4) - 1
+          return tip(
+            [
+              isActive ? 'Shows every card again' : ids.length === 0 ? 'Shows none: no such card yet' : `Shows only these ${plural(ids.length, 'card')}`,
+              RULE_OF[which],
+              ...(byPrompt.length > 0 ? [lineLength(byPrompt) > most ? clip(byPrompt, most) : byPrompt] : []),
+            ],
+            { top: 2 + row * 4 + 3, right: 0 },
+            downWidth,
+            `tip:stat-${which}`,
+            'action',
+          )
+        }),
+      )
+
+      // A pane is only as tall as its tree on the desktop, so a downward card
+      // that runs past the last row is cut into a scroll. Under a short tree,
+      // room is left for the lowest card: a reckoning of the rows each part
+      // takes, a card row 3 and its gap.
+      const reach = all.length === 0 ? 6 : 2 + (bands.length - 1) * 4 + 3 + 5
+      let rows = all.length === 0 ? 4 : 2 + bands.length * 4 + (shown.length === 0 ? 2 : 0)
+      for (const g of allGroups) {
+        const n = shown.filter(c => c.group === g.id).length
+        if (n > 0) rows += 2 + (only !== null || open.has(g.id) ? 4 * n + 1 : 0)
+      }
+      const room = e.surface === 'mobile' || level >= 2 || reach - rows - 1 <= 0 ? null : <Box key="tip-room" height={reach - rows - 1} flexShrink={0} />
+
+      const field = (label: string, value: string) => (
+        <Box flexDirection="column">
+          <Text dimColor>{label}</Text>
+          <Text>{value}</Text>
+        </Box>
+      )
+
+      // A folded card's hover card: what ▸ opens to, then what the row cuts or
+      // hides. It opens over the rows above, past the card's own border and
+      // correction. The first card of a prompt has the prompt's row above, with
+      // ▸ at the left and "all right" at the right, so its card sits between.
+      const peek = (c: Card, isFirst: boolean) => {
+        const isOpen = c.status === 'open'
+        const hostWidth = cols - 2
+        const width = Math.min(48, isFirst ? hostWidth - 18 : hostWidth - 5)
+        const inner = width - 4
+        // What the row has for the statement after ▸, the mark, the id and the confidence.
+        const room = hostWidth - 6 - (isOpen ? 0 : 2) - (c.id.length + 1) - (c.confidence.length + 3)
+        const info: Line[] = []
+        let rows = 0
+        if (c.statement.length > room) {
+          const text = c.statement.length > 2 * inner - 4 ? `${c.statement.slice(0, 2 * inner - 5)}…` : c.statement
+          info.push([{ t: text, s: 'i' }])
+          rows += text.length > inner ? 2 : 1
+        }
+        const meta = [
+          ...(isOpen ? [] : [[{ t: STATUS_WORD[c.status], s: STATUS_STYLE[c.status] }] as Piece[]]),
+          [c.category] as Piece[],
+          ...(c.source === undefined ? [] : [pathPieces(c.source)]),
+        ].flatMap((part, i) => (i > 0 ? [SEP, ...part] : part))
+        const why: Piece[] | '' = c.why && [{ t: 'Why: ', s: 'd' }, c.why]
+        const impact: Piece[] | '' = c.impact && [{ t: 'If wrong: ', s: 'd' }, c.impact]
+        for (const more of [why, impact, meta]) {
+          if (more && rows < 4) {
+            info.push(more)
+            rows++
+          }
+        }
+        // Each action's hotkey a chip right after it, in fewer words to fit them.
+        const action: Piece[] = isOpen
+          ? ['▸ opens, then right', key('r'), SEP, 'wrong', key('w'), SEP, 'why?', key('y')]
+          : c.status === 'confirmed'
+            ? ['▸ opens, then undo', key('u'), SEP, 'delete', key('d')]
+            : ['▸ opens, then delete', key('d')]
+        const rise = 3 + (c.correction === undefined ? 0 : Math.ceil((c.correction.length + 2) / (hostWidth - 4)))
+        return tip([action, ...info], isFirst ? { bottom: rise, left: 4 } : { bottom: rise, right: 0 }, width, undefined, STATUS_TONE[c.status])
+      }
+
+      // An action's card sits on the body text above the buttons: past the
+      // source, a button of its own, when the card has one.
+      const act = (c: Card, which: string, button: unknown, lines: Line[], tone: Tone, side: 'left' | 'right' = 'left') => {
+        const rise = c.source === undefined ? 1 : 4
+        return (
+          <Box key={`tip:${which}-${c.id}`}>
+            {button}
+            {tip(lines, side === 'left' ? { bottom: rise, left: 0 } : { bottom: rise, right: 0 }, snug(lines), undefined, tone)}
+          </Box>
+        )
+      }
+
+      const card = (c: Card, isFirst: boolean) => {
+        const isPicked = picked === c.id
+        const isOpen = c.status === 'open'
+        const isWrong = c.status === 'wrong' || c.status === 'corrected'
+        const lit = !isPicked && shows(STATUS_TONE[c.status]) ? { backgroundColor: '#ffffff10' } : undefined
+        return (
+          <Box
+            key={`row-${c.id}`}
+            flexDirection="column"
+            borderStyle="round"
+            borderColor={isOpen && isPicked ? 'text' : BORDER[c.status]}
+            {...(isPicked ? {} : isOpen ? { hover: { borderColor: 'text', ...lit } } : lit === undefined ? {} : { hover: lit })}
+            paddingX={1}
+            gap={isPicked ? 1 : 0}
+          >
+            <Box flexDirection="row" gap={1}>
+              <Button key={`card-${c.id}`} label={isPicked ? '▾' : '▸'} plain onPress={() => void update($, selected, () => (isPicked ? null : c.id))} />
+              {!isOpen && fixed(MARK[c.status], { color: isWrong ? 'error' : 'success' })}
+              {fixed(c.id, { dimColor: true })}
+              {fixed(`● ${c.confidence}`, { color: CONFIDENCE_COLOR[c.confidence] })}
+              {isPicked && fixed(`· ${c.category}`, { dimColor: true })}
+              {!isPicked && line(c.statement, { strikethrough: isWrong, dimColor: !isOpen })}
+            </Box>
+            {isPicked && (
+              <Text bold strikethrough={isWrong}>
+                {c.statement}
+              </Text>
+            )}
+            {c.correction !== undefined && <Text color="suggestion">→ {c.correction}</Text>}
+            {isPicked && c.status === 'wrong' && <Text color="error">marked wrong · Claude asks you what's right</Text>}
+            {isPicked && c.why !== '' && field('Why', c.why)}
+            {isPicked && c.impact !== '' && field('If wrong', c.impact)}
+            {isPicked && c.source !== undefined && (
+              <Box flexDirection="column">
+                <Text dimColor>Source</Text>
+                <Button key={`source-${c.id}`} label={c.source} plain onPress={() => void openSource($, c.source ?? '')} />
+              </Box>
+            )}
+            {isPicked && (
+              <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+                {isOpen &&
+                  act(
+                    c,
+                    'right',
+                    <Button key={`right-${c.id}`} label="right" hotkey="r" variant="primary" onPress={() => void confirm($, [c.id])} />,
+                    [['Confirms it', key('r'), SEP, "Claude isn't told"], 'undo puts it back to check'],
+                    'action',
+                  )}
+                {isOpen &&
+                  act(
+                    c,
+                    'wrong',
+                    <Button
+                      key={`wrong-${c.id}`}
+                      label="wrong"
+                      hotkey="w"
+                      onPress={() => void (Input === undefined ? markWrong($, c, '') : update($, fixing, () => (fix === c.id ? null : c.id)))}
+                    />,
+                    fix === c.id
+                      ? [['Closes the field', key('w'), SEP, 'sends nothing']]
+                      : [['Marks it wrong', key('w'), ' ', PROMPT_TAG], 'Type the fix in the field, or send it empty', 'Claude lists what relied on it first'],
+                    // Closing the field stays local; marking it wrong reaches Claude.
+                    fix === c.id ? 'action' : 'warn',
+                  )}
+                {isOpen &&
+                  act(
+                    c,
+                    'why',
+                    <Button key={`why-${c.id}`} label="why?" hotkey="y" onPress={() => void $.prompt.submit({ text: say.why(c) })} />,
+                    [['Asks Claude why', key('y'), ' ', PROMPT_TAG], 'It says what led to it, changes nothing yet'],
+                    'warn',
+                  )}
+                {c.status === 'confirmed' &&
+                  act(
+                    c,
+                    'undo',
+                    <Button key={`undo-${c.id}`} label="undo" hotkey="u" onPress={() => void setCard($, c.id, x => ({ ...x, status: 'open' }))} />,
+                    [['Back to check', key('u'), SEP, "Claude isn't told"]],
+                    'action',
+                  )}
+                <Box flexGrow={1} />
+                {act(
+                  c,
+                  'delete',
+                  <Button key={`delete-${c.id}`} label="delete" hotkey="d" plain dimColor onPress={() => void remove($, c)} />,
+                  [
+                    ['Removes the card', key('d'), SEP, "Claude isn't told"],
+                    [{ t: 'Ids keep counting: ', s: 'd' }, { t: c.id, s: 'b' }, { t: ' is never reused', s: 'd' }],
+                  ],
+                  'danger',
+                  'right',
+                )}
+              </Box>
+            )}
+            {!isPicked && peek(c, isFirst)}
+            {isPicked && fix === c.id && isOpen && Input !== undefined && (
+              <Input
+                key={`fix-${c.id}`}
+                label="right assumption:"
+                placeholder="leave empty and Claude asks you"
+                submitLabel="send"
+                autoFocus
+                onSubmit={(value: string) => void markWrong($, c, value)}
+              />
+            )}
+          </Box>
+        )
+      }
+
+      // The prompts listed, newest first: those with a card the filter shows.
+      // Past level 2 the open ones after the newest two (level 3) or the
+      // newest one (level 4) fold, a line above them saying so.
+      const listed = [...allGroups].reverse().filter(g => shown.some(c => c.group === g.id))
+      const keptOpen = level >= 4 ? 1 : level >= 3 ? 2 : Infinity
+      const folded = new Set(listed.filter(g => only !== null || open.has(g.id)).slice(keptOpen).map(g => g.id))
+      const firstFolded = listed.find(g => folded.has(g.id))?.id
+
+      return (
+        <Box flexDirection="column" gap={1}>
+          {header}
+          {all.length > 0 && stats}
+          {all.length === 0 && (
+            <Text dimColor>
+              {on_ ? 'No assumptions yet. They show here as Claude logs them.' : 'Capture is off, so Claude works as without this mod. Turn it on to see its assumptions.'}
             </Text>
           )}
-          {c.correction !== undefined && <Text color="suggestion">→ {c.correction}</Text>}
-          {isPicked && c.status === 'wrong' && <Text color="error">marked wrong · Claude asks you what's right</Text>}
-          {isPicked && c.why !== '' && field('Why', c.why)}
-          {isPicked && c.impact !== '' && field('If wrong', c.impact)}
-          {isPicked && c.source !== undefined && (
-            <Box flexDirection="column">
-              <Text dimColor>Source</Text>
-              <Button key={`source-${c.id}`} label={c.source} plain onPress={() => void openSource($, c.source ?? '')} />
-            </Box>
+          {all.length > 0 && shown.length === 0 && <Text dimColor>None here. Press the box again to show every card.</Text>}
+          {listed.map(group => {
+            const mine = shown.filter(c => c.group === group.id)
+            const toCheck = all.filter(c => c.group === group.id && c.status === 'open')
+            // "all right" confirms only what the filter shows.
+            const visible = mine.filter(c => c.status === 'open')
+            // A filter shows what it found, folded prompts included, unless
+            // the pane folds them to fit.
+            const isFolded = folded.has(group.id)
+            const isOpen = (only !== null || open.has(group.id)) && !isFolded
+            // Level 4 draws MAX_ROWS of the prompt's cards, the picked one among them.
+            const list = ordered(mine)
+            const more = level >= 4 ? Math.max(0, list.length - MAX_ROWS) : 0
+            const drawn = more === 0 ? list : [...list.slice(0, MAX_ROWS - 1), list.slice(MAX_ROWS - 1).find(c => c.id === picked) ?? list[MAX_ROWS - 1]!]
+            const ours = all.filter(c => c.group === group.id)
+            // The row's three cards share one place: right of ▸, left of "all
+            // right", over what is above, so neither control is ever covered.
+            const width = Math.min(48, cols - 20)
+            const breakdown = (
+              [
+                ['To check', 'open'],
+                ['✗ Wrong', 'wrong'],
+                ['✎ Corrected', 'corrected'],
+                ['✓ Confirmed', 'confirmed'],
+              ] as const
+            ).flatMap(([label, status]) => {
+              const ids = ours.filter(c => c.status === status).map(c => c.id)
+              return ids.length > 0 ? [[{ t: `${label}: `, s: 'd' }, ...idPieces(idList(ids, 40))] as Piece[]] : []
+            })
+            const low = ours.filter(MATCHES.low).length
+            return (
+              <Box key={`group-${group.id}`} flexDirection="column" gap={1}>
+                {group.id === firstFolded && (
+                  <Text key="folded" dimColor>
+                    {`${plural(folded.size, 'prompt')} folded to fit the pane · ▸ opens one alone${only === null ? '' : ', the filter cleared'}`}
+                  </Text>
+                )}
+                <Box flexDirection="row" gap={1} alignItems="center">
+                  <Box key={`tip:toggle-${group.id}`}>
+                    <Button
+                      key={`toggle-${group.id}`}
+                      label={isOpen ? '▾' : '▸'}
+                      plain
+                      onPress={() => void (isFolded ? openAlone($, group.id) : update($, expanded, ids => (ids.includes(group.id) ? ids.filter(id => id !== group.id) : [...ids, group.id])))}
+                    />
+                    {tip(
+                      [`${open.has(group.id) ? 'Folds' : 'Unfolds'} ${group.id}'s ${plural(ours.length, 'card')}`, ...(only === null ? [] : ['A filter shows them either way'])],
+                      { bottom: 1, left: 6 },
+                      width,
+                      undefined,
+                      'action',
+                    )}
+                  </Box>
+                  <Box
+                    key={`ghead-${group.id}`}
+                    flexDirection="row"
+                    gap={1}
+                    alignItems="center"
+                    flexGrow={1}
+                    flexShrink={1}
+                    minWidth={0}
+                    hover={shows('info') ? { backgroundColor: '#ffffff10' } : undefined}
+                  >
+                    {fixed(group.id, { bold: true })}
+                    {line(group.label)}
+                    {toCheck.length > 0 ? fixed(`${toCheck.length} to check`, { color: 'warning' }) : fixed('· all checked', { dimColor: true })}
+                    {tip(
+                      [[group.id, SEP, plural(ours.length, 'card'), ...(low > 0 ? [SEP, { t: `${low} low confidence`, s: 'bad' } as const] : [])], ...breakdown],
+                      { bottom: 1, left: 4 },
+                      width,
+                    )}
+                  </Box>
+                  {visible.length > 0 && (
+                    <Box key={`tip:all-right-${group.id}`}>
+                      <Button key={`all-right-${group.id}`} label="all right" onPress={() => void confirm($, visible.map(c => c.id))} />
+                      {tip(
+                        [
+                          [`Confirms ${plural(visible.length, 'open card')}`, SEP, "Claude isn't told"],
+                          idPieces(idList(visible.map(c => c.id))),
+                          ...(only === null ? [] : ['Only the ones the filter shows']),
+                        ],
+                        { bottom: 1, right: Math.max(0, cols - 6 - width) },
+                        width,
+                        undefined,
+                        'action',
+                      )}
+                    </Box>
+                  )}
+                </Box>
+                {isOpen && (
+                  <Box flexDirection="column" paddingLeft={2} gap={1}>
+                    {drawn.map((c, i) => card(c, i === 0))}
+                    {more > 0 && (
+                      <Text key="more" dimColor>
+                        {`+${more} more in ${group.id}, folded to fit the pane · a count box above narrows them`}
+                      </Text>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            )
+          })}
+          {room}
+          {tip(
+            [
+              on_ ? ['turn off: Claude stops logging', SEP, 'cards stay'] : 'turn on: Claude logs its assumptions here',
+              on_ ? 'Its note_assumption tool adds the cards' : 'Off, Claude reads nothing of this mod',
+              [plural(all.length, 'card'), { t: ' so far', s: 'd' }, SEP, { t: 'also ', s: 'd' }, '/assumption-check on', { t: ' or ', s: 'd' }, 'off'],
+            ],
+            { top: 1, right: 0 },
+            downWidth,
+            'tip:capture',
+            captureTone,
           )}
-          {isPicked && (
-            <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
-              {isOpen && <Button key={`right-${c.id}`} label="right" hotkey="r" variant="primary" onPress={() => void confirm($, [c.id])} />}
-              {isOpen && (
-                <Button
-                  key={`wrong-${c.id}`}
-                  label="wrong"
-                  hotkey="w"
-                  onPress={() => void (Input === undefined ? markWrong($, c, '') : update($, fixing, () => (fix === c.id ? null : c.id)))}
-                />
-              )}
-              {isOpen && <Button key={`why-${c.id}`} label="why?" hotkey="y" onPress={() => void $.prompt.submit({ text: say.why(c) })} />}
-              {c.status === 'confirmed' && (
-                <Button key={`undo-${c.id}`} label="undo" hotkey="u" onPress={() => void setCard($, c.id, x => ({ ...x, status: 'open' }))} />
-              )}
-              <Box flexGrow={1} />
-              <Button key={`delete-${c.id}`} label="delete" hotkey="d" plain dimColor onPress={() => void remove($, c)} />
-            </Box>
-          )}
-          {isPicked && fix === c.id && isOpen && Input !== undefined && (
-            <Input
-              key={`fix-${c.id}`}
-              label="right assumption:"
-              placeholder="leave empty and Claude asks you"
-              submitLabel="send"
-              autoFocus
-              onSubmit={(value: string) => void markWrong($, c, value)}
-            />
-          )}
+          {all.length > 0 && statCards}
         </Box>
       )
     }
-
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header}
-        {all.length > 0 && stats}
-        {all.length === 0 && (
-          <Text dimColor>
-            {on_ ? 'No assumptions yet. They show here as Claude logs them.' : 'Capture is off, so Claude works as without this mod. Turn it on to see its assumptions.'}
-          </Text>
-        )}
-        {all.length > 0 && shown.length === 0 && <Text dimColor>None here. Press the box again to show every card.</Text>}
-        {[...allGroups].reverse().map(group => {
-          const mine = shown.filter(c => c.group === group.id)
-          if (mine.length === 0) return null
-          const toCheck = all.filter(c => c.group === group.id && c.status === 'open')
-          // "all right" confirms only what the filter shows.
-          const visible = mine.filter(c => c.status === 'open')
-          // A filter shows what it found, folded prompts included.
-          const isOpen = only !== null || open.has(group.id)
-          return (
-            <Box key={`group-${group.id}`} flexDirection="column" gap={1}>
-              <Box flexDirection="row" gap={1} alignItems="center">
-                <Button
-                  key={`toggle-${group.id}`}
-                  label={isOpen ? '▾' : '▸'}
-                  plain
-                  onPress={() => void update($, expanded, list => (list.includes(group.id) ? list.filter(id => id !== group.id) : [...list, group.id]))}
-                />
-                {fixed(group.id, { bold: true })}
-                {line(group.label)}
-                {toCheck.length > 0 ? fixed(`${toCheck.length} to check`, { color: 'warning' }) : fixed('· all checked', { dimColor: true })}
-                {visible.length > 0 && <Button key={`all-right-${group.id}`} label="all right" onPress={() => void confirm($, visible.map(c => c.id))} />}
-              </Box>
-              {isOpen && (
-                <Box flexDirection="column" paddingLeft={2} gap={1}>
-                  {ordered(mine).map(card)}
-                </Box>
-              )}
-            </Box>
-          )
-        })}
-      </Box>
-    )
+    return fit(e.surface, TOP_LEVEL, draw)
   })
 }

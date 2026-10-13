@@ -3,8 +3,9 @@
 // shell, or you outside Claude), against a baseline of your choice (HEAD, the
 // session's start, the last turn, the base branch), with what to look at
 // (sensitive files, files outside a scope, source without a test), and a
-// History section of the branches under it. It only reads: nothing it draws
-// stages, reverts or writes anything.
+// History section under it: what's happening now, and a button to
+// branch-drill's Branches pane (your branch and every branch). It only reads:
+// nothing it draws stages, reverts or writes anything.
 //
 // It makes no model call, adds nothing to the model's context and makes no
 // network call: the turns
@@ -22,7 +23,7 @@ import { branchOf, isSensitive, numstat, parseChanges, parseNameStatus, repoPath
 import type { Change } from './git.ts'
 import { changesPane } from './pane.tsx'
 import { LOG_FORMAT, parseCounts, parseFiles, parseLog } from './history.ts'
-import { historySection } from './historyView.tsx'
+import { fit, historySection, setLevel, TOP } from './historyView.tsx'
 import type { HistoryReading, Picks } from './historyView.tsx'
 
 const PANE = 'changes-drill'
@@ -105,6 +106,8 @@ let isWindows: boolean | null = null
 let shellRan = false
 let selected: string | null = null
 let showGenerated = false
+// Turns before the last two, folded under one line until pressed.
+let showOlder = false
 let peekCache: { key: string; lines: string[] } | null = null
 let editTimer: { cancel: () => void } | null = null
 const tops = new Map<string, string | null>()
@@ -115,7 +118,7 @@ let history: HistoryReading | null | undefined
 let historyKicked = false
 let isHistoryReading = false
 let historyPrint = ''
-let picks: Picks = { me: 'tracks', all: 'lanes', cur: 'story' }
+let picks: Picks = { cur: 'story' }
 let picksLoaded = false
 const openRows = new Set<string>()
 const commitFiles = new Map<string, [number, number, string][] | 'reading'>()
@@ -229,69 +232,117 @@ export const register: Register = (on, options) => {
       picksLoaded = true
       try {
         const saved = (await $.store.get('historyPicks')) as Partial<Picks> | undefined
-        if (saved && typeof saved === 'object') picks = { me: saved.me === 'places' ? 'places' : 'tracks', all: saved.all === 'subway' ? 'subway' : 'lanes', cur: saved.cur === 'files' ? 'files' : 'story' }
+        if (saved && typeof saved === 'object') picks = { cur: saved.cur === 'files' ? 'files' : 'story' }
       } catch {
         // no store: the defaults stand.
       }
     }
-    const list = changesPane({
-      Box,
-      Text,
-      Button,
-      Code,
-      isDesktop: e.surface === 'desktop',
-      settings,
-      reading: isRead ? reading : undefined,
-      turns: await read($, turnsAtom),
-      session: await read($, sessionAtom),
-      now: await $.clock.now(),
-      selected,
-      showGenerated,
-      peek: selected && peekCache?.key === peekKey(selected) ? peekCache.lines : null,
-      on: {
-        refresh: () => void refresh($),
-        select: path => void select($, path),
-        toggleGenerated: () => {
-          showGenerated = !showGenerated
-          $.ui.invalidate('ui.render')
-        },
+    const columns = (e.props as { bodyColumns?: number }).bodyColumns ?? 0
+    // Everything the drawing reads, read first: the ladder draws it up to five
+    // times, each from these values alone.
+    const turns = await read($, turnsAtom)
+    const session = await read($, sessionAtom)
+    const now = await $.clock.now()
+    const peek = selected && peekCache?.key === peekKey(selected) ? peekCache.lines : null
+    const listOn = {
+      refresh: () => void refresh($),
+      select: (path: string) => void select($, path),
+      toggleGenerated: () => {
+        showGenerated = !showGenerated
+        $.ui.invalidate('ui.render')
       },
+      toggleOlder: () => {
+        showOlder = !showOlder
+        $.ui.invalidate('ui.render')
+      },
+    }
+    const historyOn = {
+      refresh: () => void readHistory($).then(() => $.ui.invalidate('ui.render')),
+      pick: (section: keyof Picks, value: string) => {
+        picks = { ...picks, [section]: value } as Picks
+        void $.store.set('historyPicks', picks)
+        $.ui.invalidate('ui.render')
+      },
+      toggle: (key: string, commit?: string) => void toggleRow($, key, commit),
+      peek: (path: string) => void togglePeek($, path),
+      branches: () => void openBranches($),
+    }
+    // The richest level whose tree the surface draws (see BUDGET in historyView.tsx).
+    return fit(e.surface, TOP, level => {
+      setLevel(level)
+      // The list's cards that open downward from the root, drawn last of all.
+      const floating: any[] = []
+      const list = changesPane({
+        Box,
+        Text,
+        Button,
+        Code,
+        isDesktop: e.surface === 'desktop',
+        surface: e.surface,
+        columns,
+        floating,
+        settings,
+        reading: isRead ? reading : undefined,
+        turns,
+        session,
+        now,
+        selected,
+        showGenerated,
+        showOlder,
+        peek,
+        level,
+        on: listOn,
+      })
+      if (!settings.history)
+        return floating.length ? (
+          <Box flexDirection="column" width="100%">
+            {list}
+            {floating}
+          </Box>
+        ) : (
+          list
+        )
+      return (
+        <Box flexDirection="column" width="100%">
+          {list}
+          {historySection({
+            Box,
+            Text,
+            Button,
+            Svg: 'Svg' in ui ? ui.Svg : undefined,
+            Select: 'Select' in ui ? ui.Select : undefined,
+            Code,
+            surface: e.surface,
+            columns,
+            history,
+            isReading: isHistoryReading,
+            rows: isRead && reading ? reading.rows : [],
+            picks,
+            open: openRows,
+            files: commitFiles,
+            peeks: filePeeks,
+            now,
+            on: historyOn,
+          })}
+          {floating}
+        </Box>
+      )
     })
-    if (!settings.history) return list
-    return (
-      <Box flexDirection="column" width="100%">
-        {list}
-        {historySection({
-          Box,
-          Text,
-          Button,
-          Svg: 'Svg' in ui ? ui.Svg : undefined,
-          Select: 'Select' in ui ? ui.Select : undefined,
-          Code,
-          surface: e.surface,
-          columns: (e.props as { bodyColumns?: number }).bodyColumns ?? 0,
-          history,
-          isReading: isHistoryReading,
-          rows: isRead && reading ? reading.rows : [],
-          picks,
-          open: openRows,
-          files: commitFiles,
-          peeks: filePeeks,
-          now: await $.clock.now(),
-          on: {
-            refresh: () => void readHistory($).then(() => $.ui.invalidate('ui.render')),
-            pick: (section, value) => {
-              picks = { ...picks, [section]: value }
-              void $.store.set('historyPicks', picks)
-              $.ui.invalidate('ui.render')
-            },
-            toggle: (key, commit) => void toggleRow($, key, commit),
-            peek: path => void togglePeek($, path),
-          },
-        })}
-      </Box>
-    )
   })
+}
+
+// --- the Branches pane -----------------------------------------------------
+
+// Opens branch-drill's Branches pane, where Me and All moved: a mod opens only
+// its own panes, so it is asked through the noun branch-drill adds to `$`,
+// missing when branch-drill is not installed.
+async function openBranches($: EngineInterface) {
+  try {
+    const opened = await $.branchDrill.open()
+    if (!opened.isPlaced) $.ui.toast(`Branches pane waits: ${opened.reason ?? 'not placed'}`)
+  } catch {
+    $.ui.toast('Me and All are in the Branches pane: install branch-drill from the motta-claude-mods marketplace')
+  }
 }
 
 // --- the History section ---------------------------------------------------
@@ -668,7 +719,8 @@ async function attributeShell($: EngineInterface, before: Reading, after: Readin
   for (const row of after.rows) {
     const key = await keyOf($, `${after.top.replace(/\\/g, '/')}/${row.path}`)
     row.touch = touches[key] ?? row.touch
-    if (row.touch) row.changedAt = row.touch.at
+    // A touch read back from the transcript has no time (0): keep the file's.
+    if (row.touch?.at) row.changedAt = row.touch.at
   }
 }
 

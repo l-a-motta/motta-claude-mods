@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { actOf, cardParts, charEm, endCall, endStatus, firstLine, groupsOf, idleNote, isOverdue, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
+import { actOf, BUDGET, CHAR_BUDGET, cardParts, charEm, countNodes, endCall, endStatus, firstLine, fit, foldFinished, groupsOf, idleNote, isOverdue, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
 import type { AgentRun } from '../types'
 
 type $ = Parameters<TestBody>[0]
@@ -152,7 +152,9 @@ const spawn = ($: $, call: string, description: string) =>
 const textOf = (node: unknown): string => {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
   if (!node || typeof node !== 'object') return ''
-  const n = node as { type?: string; props?: { source?: string; label?: string }; children?: unknown[] }
+  const n = node as { type?: string; props?: { source?: string; label?: string; display?: string }; children?: unknown[] }
+  // A hover card is hidden until its host is hovered: not drawn text.
+  if (n.props?.display === 'none') return ''
   if (n.type === 'Button') return n.props?.label ?? ''
   if (n.type === 'Svg') return (n.props?.source ?? '').replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
   return (n.children ?? []).map(textOf).join('')
@@ -280,4 +282,126 @@ test("a crab's name tag is its title's first word, past a shared prefix, cut to 
   expect(shortName('Demo: stopped midway')).toBe('stopped')
   expect(shortName('Tour, then stop')).toBe('Tour')
   expect(shortName('Internationalization pass').endsWith('…')).toBe(true)
+})
+
+test('the pane draws hover cards: full paths, the estimate, the toggles, the waited-for tasks', { options: { language: 'en' } }, async ($, on) => {
+  engine(on)
+  await $.tool.call({ tool: 'mcp__savvy-progress__progress', tool_use_id: 'p1', title: 'Ship it', phase: 'delegate', tasks: [{ title: 'Survey READMEs', tier: 'light' }, { title: 'Fix them', tier: 'careful', after: [1] }] } as never)
+  await spawn($, 't1', 'Survey READMEs')
+  await $.tool.call({ tool: 'Read', agentId: 'a1', file_path: '/x/deep/README.md' } as never)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const json = JSON.stringify(await (await $.ui.mount({ plugin: 'savvy-progress', surface, component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never)).drawn())
+    // A card line is pieces: the path's folder dim and its file bold, labels dim and values plain.
+    expect(json).toContain('{"bold":false,"italic":false,"color":"#9c9a94"},"children":["/x/deep/"]')
+    expect(json).toContain('{"bold":true,"italic":false},"children":["README.md"]')
+    expect(json).toContain('" tokens at "]},"$1/$5"')
+    expect(json).toContain('"claude-haiku-5-5",{"type":"Text","props":{"bold":false,"italic":false,"color":"#6f6d68"},"children":[" · "]}')
+    expect(json).toContain('Folds the pane to one strip of crabs')
+    expect(json).toContain('Cost ≈: tokens × the price table, per model')
+    expect(json).toContain('"●"," 1. Survey READMEs"')
+    expect(json).toContain('tip:compact')
+    // The compact toggle's card is an action: a blue bar on the desktop, a blue border in the terminal.
+    expect(json).toMatch(surface === 'desktop' ? /"width":0.25,"backgroundColor":"#8db4f0"/ : /"borderColor":"#8db4f0"/)
+  }
+})
+
+test("a failed agent's card is red and marks its ✗; the Failed toggle's card is an action", { options: { language: 'en' } }, async ($, on) => {
+  const clock = engine(on)
+  on('session.start', async ($, e) => ({ cwd: e.cwd }))
+  on('tool.register', async () => ({ value: {} }) as never)
+  on('command.register', async () => ({ value: {} }) as never)
+  let failed = false
+  const hook = on as unknown as (event: string, h: () => Promise<unknown>) => void
+  hook('agent.list', async () => ({ value: [{ id: 'a1', description: 'x', type: 'Explore', status: failed ? 'failed' : 'running' }] }))
+  await $.session.start({ cwd: '.', surface: null, isInteractive: true })
+  await spawn($, 't1', 'Broken read')
+  failed = true
+  await clock.advance(1_000)
+  const json = JSON.stringify(await (await $.ui.mount({ plugin: 'savvy-progress', surface: 'desktop', component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never)).drawn())
+  expect(json).toMatch(/"width":0.25,"backgroundColor":"#ef8a80"/)
+  expect(json).toContain('{"bold":false,"italic":false,"color":"#ef8a80"},"children":["✗"]')
+  expect(json).toContain('Hides the failed agents')
+})
+
+// --- the ladder: the desktop goes blank past about 2,000 elements, so the pane
+// drops info cards, then every card, then folds Finished.
+
+test('Finished keeps its newest 20 agents, 10 or none when tight; Show is honored below that', () => {
+  const groups = [
+    { key: 'g1', title: 'x', span: 0, agents: Array.from({ length: 15 }, (_, i) => run({ id: `a${i}` })) },
+    { key: 'g2', title: 'y', span: 0, agents: Array.from({ length: 15 }, (_, i) => run({ id: `b${i}` })) },
+  ]
+  const at = (level: number, isShown: boolean) => {
+    const f = foldFinished(groups, level, isShown)
+    return [f.shown.map(g => g.agents.length), f.hidden]
+  }
+  expect(at(0, false)).toEqual([[15, 5], 10])
+  expect(at(2, true)).toEqual([[15, 15], 0])
+  expect(at(3, true)).toEqual([[10], 20])
+  expect(at(4, false)).toEqual([[], 30])
+})
+
+test('the desktop climbs the levels until the tree fits; the terminal stays at 0', () => {
+  // A tree of `n` elements: a Box holding n - 1 Texts.
+  const tree = (n: number) => ({ type: 'Box', props: {}, children: Array.from({ length: n - 1 }, () => ({ type: 'Text', props: {}, children: ['x'] })) })
+  const sizes = [3000, 2000, 1500, 1200, 400]
+  const levelOf = (surface: string) => {
+    const drawn = fit(surface, 4, level => ({ ...tree(sizes[level]!), level }))
+    return [drawn.level, countNodes(drawn)]
+  }
+  expect(levelOf('desktop')).toEqual([4, 400])
+  expect(levelOf('terminal')).toEqual([0, 3000])
+})
+
+// Agents that each read a file and finished, a second apart.
+const finishMany = async ($: $, clock: ReturnType<typeof engine>, n: number) => {
+  for (let i = 1; i <= n; i++) {
+    await clock.advance(1_000)
+    await spawn($, `t${i}`, `Survey part ${i}`)
+    await $.tool.call({ tool: 'Read', agentId: `a${i}`, file_path: `/x/deep/part-${i}.md` } as never)
+    await $.turn.complete({ turnId: `r${i}`, answer: 'Done.', durationMs: 1, isAborted: false, agentId: `a${i}`, reason: 'answer' })
+  }
+}
+const mountPane = ($: $, surface: 'terminal' | 'desktop') =>
+  $.ui.mount({ plugin: 'savvy-progress', surface, component: 'Pane', requestId: 'savvy-agents', props: { bodyColumns: 100 } } as never)
+
+test('older finished agents fold under one line, and its press shows them', { options: { language: 'en' } }, async ($, on) => {
+  const clock = engine(on)
+  await finishMany($, clock, 25)
+  const panes = await Promise.all((['terminal', 'desktop'] as const).map(surface => mountPane($, surface)))
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/Finished · 25/)
+    expect(text).toMatch(/5 older finished agents · Show/)
+    expect(text).toMatch(/Survey part 6(?!\d)/)
+    expect(text).not.toMatch(/Survey part 5(?!\d)/)
+  }
+  await panes[1]!.press({ key: 'older' })
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/5 older finished agents · Hide/)
+    expect(text).toMatch(/Survey part 1(?!\d)/)
+  }
+})
+
+test('over the budget the desktop drops info cards first, keeping the action ones; the terminal keeps them all', { options: { language: 'en' } }, async ($, on) => {
+  const clock = engine(on)
+  await finishMany($, clock, 60)
+  const panes = await Promise.all((['terminal', 'desktop'] as const).map(surface => mountPane($, surface)))
+  await panes[1]!.press({ key: 'older' })
+  const desktop = await panes[1]!.drawn()
+  const json = JSON.stringify(desktop)
+  // 60 agent blocks are too many characters even shown: Finished folds to fit.
+  expect(textOf(desktop)).toMatch(/older finished agents · folded to fit/)
+  expect(countNodes(desktop)).toBeLessThanOrEqual(BUDGET)
+  expect(json.length).toBeLessThanOrEqual(CHAR_BUDGET)
+  // A card's bar in its tone: no gray (info) one is left, the blue (action) ones are.
+  expect(json).not.toMatch(/"width":0.25,"backgroundColor":"#6f6d68"/)
+  // Folding is the step after "no cards", so the action cards are gone too.
+  expect(json).not.toMatch(/"width":0.25,"backgroundColor":"#8db4f0"/)
+  // An agent's host no longer lights up for a card it doesn't have.
+  expect(json).not.toContain('"hover":{"backgroundColor":"#ffffff10"}')
+  const terminal = JSON.stringify(await panes[0]!.drawn())
+  expect(terminal).toMatch(/"borderColor":"#6f6d68"/)
+  expect(terminal).toContain('"hover":{"backgroundColor":"#ffffff10"}')
 })

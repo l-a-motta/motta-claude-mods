@@ -116,6 +116,8 @@ let view = { from: 0, max: 0, size: 0 }
 let nativeScroll = false
 let lastSync = 0
 let noDock = false
+// When the tree opens by itself at a session's start: desktop, always or never.
+let startOpen = 'desktop'
 let home = ''
 let platform: Promise<'linux' | 'darwin' | 'win32'> | null = null
 let dirty: { root: string; files: Record<string, Change> } = { root: '', files: {} }
@@ -1144,6 +1146,7 @@ function shortPath(path: string): string {
 
 export const register: Register = (on, options) => {
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
+  startOpen = typeof options?.startOpen === 'string' ? options.startOpen : 'desktop'
   base = {
     activity: typeof options?.activity === 'string' ? options.activity : 'reads and writes',
     followClaude: options?.follow !== 'off',
@@ -1177,6 +1180,9 @@ export const register: Register = (on, options) => {
       if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} }))
       if (t.preview) await patch($, () => ({ preview: '', previewTop: 0 }))
       await setActivities($, cur => cur.map(a => (a.state === 'running' ? { ...a, state: 'failed', label: `${a.kind} interrupted` } : a)))
+      // In the CLI (by default) the tree waits for /filetree, which docks it.
+      const cli = await $.session.surfaces().then(s => s.includes('terminal'), () => true)
+      if (startOpen === 'never' || (startOpen === 'desktop' && cli)) noDock = true
       const cwd = await cwdOf($)
       if (!t.root || t.nodes.length === 0 || (follow && t.root !== cwd)) await reset($, cwd)
       else if (!noDock) await $.ui.open({ id: PANE, title: `Files: ${t.root.split('/').pop() || t.root}` })
