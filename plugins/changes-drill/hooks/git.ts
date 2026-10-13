@@ -82,14 +82,34 @@ export function statusColor(xy: string) {
 export const isStaged = (xy: string) => xy[0] !== ' ' && xy[0] !== '?'
 export const isUnstaged = (xy: string) => xy[1] !== ' ' && xy !== '??'
 
+// A status in words: what its letter means, and where the change sits.
+export function statusWord(xy: string) {
+  const words: Record<string, string> = { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', C: 'Copied', T: 'Type changed', U: 'In conflict', '?': 'Untracked' }
+  return words[statusLetter(xy)] ?? 'Changed'
+}
+export function stageWord(xy: string) {
+  if (xy === '??') return 'not added to git'
+  return isStaged(xy) && isUnstaged(xy) ? 'partly staged' : isStaged(xy) ? 'staged' : 'unstaged'
+}
+
 const base = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 
 // A file that likely holds a secret: `.env` files, keys and certificates,
 // credentials. Matched on the name alone; nothing is read.
 export function isSensitive(path: string) {
+  return sensitiveRule(path) !== null
+}
+
+// What a sensitive file's name matched, in words; null for any other file.
+export function sensitiveRule(path: string) {
   const name = base(path).toLowerCase()
-  if (name === '.env.example' || name === '.env.sample' || name === '.env.template') return false
-  return /^\.env(\..+)?$/.test(name) || /\.(pem|key|p12|pfx|keystore|jks)$/.test(name) || /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) || /^(credentials|secrets?)(\.[a-z]+)?$/.test(name) || name === '.npmrc' || name === '.netrc'
+  if (name === '.env.example' || name === '.env.sample' || name === '.env.template') return null
+  if (/^\.env(\..+)?$/.test(name)) return 'an .env file'
+  if (/\.(pem|key|p12|pfx|keystore|jks)$/.test(name)) return 'a key or certificate'
+  if (/^id_(rsa|dsa|ecdsa|ed25519)$/.test(name)) return 'an SSH private key'
+  if (/^(credentials|secrets?)(\.[a-z]+)?$/.test(name)) return 'a credentials file'
+  if (name === '.npmrc' || name === '.netrc') return `${name}, which holds tokens`
+  return null
 }
 
 // A file a tool writes rather than a person: lockfiles, build output, minified

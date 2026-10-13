@@ -1,7 +1,7 @@
 {
   "name": "changes-drill",
   "version": "0.3.0",
-  "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch; with a guard for sensitive or out-of-scope files, a hunk peek, and a History section of the branches (you against main, every branch as lanes or a subway map, what happened). Read-only: it changes nothing in the repository. No model calls, no tokens and no network: local git only, read while the pane is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
+  "description": "A Changes pane that says which turn changed each file and who (Claude, a subagent, Claude's shell or you), against HEAD, the session's start, the last turn or the base branch; with a guard for sensitive or out-of-scope files, a hunk peek, and a History section (what happened lately, in sentences or as a files tree) with a Branches button that opens branch-drill's pane (your branch against main, every branch as lanes or a subway map). Read-only: it changes nothing in the repository. No model calls, no tokens and no network: local git only, read while the pane is up. Opened by /changes-drill, or by $.changesDrill.open() from another mod (motta-statusline's files).",
   "author": {
     "name": "l-a-motta"
   },
@@ -147,7 +147,7 @@
     "history": {
       "type": "boolean",
       "title": "History",
-      "description": "A History section under the list: Me (your branch against main, or where your work sits), All (every branch as lanes or a subway map) and Current (what happened, or the changed files as a tree), each with its own picker. Read from local git when the pane opens, at a turn's end when a branch moved, and on its Refresh; never with the pane closed.",
+      "description": "A History section under the list: Current (what happened, or the changed files as a tree, by its picker) and a Branches button that opens branch-drill's pane, where Me and All are. Read from local git when the pane opens, at a turn's end when a branch moved, and on its Refresh; never with the pane closed.",
       "default": true
     },
     "historyDepth": {
