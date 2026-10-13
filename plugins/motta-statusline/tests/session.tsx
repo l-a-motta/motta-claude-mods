@@ -86,10 +86,19 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     if (beneath === 'nothing') return { type: 'engine', ref: 1 } as never
     const { Box, Text, Button } = $.ui.resolve(e)
+    // As withChip stacks them: prompt-enhancer's column holding its chip,
+    // then cache-warmer's column nested in it.
     if (beneath === 'chip') {
       return (
-        <Box key="band-beside:prompt-enhancer" flexDirection="row" justifyContent="flex-end" paddingX={1}>
-          <Button key="enhance" plain label="✦ enhance" onPress={() => undefined} />
+        <Box key="band-beside:prompt-enhancer" flexDirection="column" alignItems="flex-end">
+          <Box key="enhance-chip" flexDirection="row" justifyContent="flex-end" paddingX={1}>
+            <Button key="enhance" plain label="✦ enhance" onPress={() => undefined} />
+          </Box>
+          <Box key="band-beside:cache-warmer" flexDirection="column" alignItems="flex-end">
+            <Box key="cache-chip" flexDirection="row" justifyContent="flex-end" paddingX={1}>
+              <Button key="keep-warm" plain label="cache" onPress={() => undefined} />
+            </Box>
+          </Box>
         </Box>
       )
     }

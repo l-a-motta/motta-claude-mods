@@ -1193,7 +1193,40 @@ function stripRow(ui: any, surface: string, columns: number, title: string, mine
 
 const ROLL_MAX = 10
 
-export const rollStats = (mine: AgentRun[], at: number): string => {
+// The band's look, as motta-statusline draws its lines (the band's model):
+// gaps in character cells between a segment's items (`inner`) and between
+// segments (`outer`), never spaces in text; a desktop cell is wider than a
+// space in its proportional font. A pressable word is drawn dim, full
+// strength under the pointer: a desktop draws a Button as a native button of
+// its plain label, padded about 0.75 cell each side, which a negative margin
+// takes back so the word sits where text would.
+const BAND_SPACE = { desktop: { inner: 0.5, outer: 2 }, terminal: { inner: 1, outer: 3 } }
+const BAND_BUTTON_PAD = 0.75
+
+const bandSpace = (surface: string) => (surface === 'terminal' ? BAND_SPACE.terminal : BAND_SPACE.desktop)
+
+export function bandPress(ui: any, surface: string, key: string, label: string, onPress: () => void, role?: 'dismiss') {
+  const { Box, Button } = ui
+  const button = <Button plain dimColor key={key} label={label} onPress={onPress} {...(role ? { role } : {})} />
+  return surface === 'desktop' ? <Box marginX={-BAND_BUTTON_PAD}>{button}</Box> : button
+}
+
+// `45s`, `4m10s`, `1h02m`: the status line's units, to the second while short.
+export const bandTime = (ms: number): string => {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m${String(s % 60).padStart(2, '0')}s`
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
+}
+
+// One piece of a segment: a figure at full strength, its word subtle, or a
+// failure in the error color, as the status line draws `12 turns`.
+export type RollPart = { text: string; tone: 'figure' | 'word' | 'error' }
+
+// The roll call's segments: the one agent's name and steps, how many run, the
+// tool calls, failures, the time since the first started, and the cost.
+export const rollParts = (mine: AgentRun[], at: number): RollPart[][] => {
   const s = tr()
   const running = mine.filter(a => a.status === 'running').length
   const calls = mine.reduce((n, a) => n + (a.toolCalls ?? 0), 0)
@@ -1203,64 +1236,78 @@ export const rollStats = (mine: AgentRun[], at: number): string => {
   const end = Math.max(...mine.map(a => a.endedAt ?? at))
   // One agent (its transcript open, or a batch of one) is named, with its steps.
   const only = mine.length === 1 ? mine[0] : undefined
-  return [
-    only ? only.description || only.type : '',
-    only?.stepTotal ? `${only.stepDone ?? 0}/${only.stepTotal}` : '',
-    running ? `${running} ${s.busy}` : s.done,
-    calls ? s.toolCalls(calls) : '',
-    failed ? `✗ ${failed}` : '',
-    fmtTime(Math.max(0, end - start)),
-    `≈${fmtCost(cost)}`,
-  ]
-    .filter(Boolean)
+  const segs: RollPart[][] = []
+  if (only) segs.push([{ text: only.description || only.type, tone: 'figure' }])
+  if (only?.stepTotal) segs.push([{ text: `${only.stepDone ?? 0}/${only.stepTotal}`, tone: 'figure' }, { text: s.steps.toLowerCase(), tone: 'word' }])
+  segs.push(running ? [{ text: String(running), tone: 'figure' }, { text: s.busy, tone: 'word' }] : [{ text: s.done.toLowerCase(), tone: 'word' }])
+  if (calls) segs.push([{ text: String(calls), tone: 'figure' }, { text: s.toolCalls(calls).replace(/^\d+ /, ''), tone: 'word' }])
+  if (failed) segs.push([{ text: `✗ ${failed}`, tone: 'error' }])
+  segs.push([{ text: bandTime(end - start), tone: 'figure' }])
+  segs.push([{ text: `$${cost.toFixed(2)}`, tone: 'figure' }])
+  return segs
+}
+
+export const rollStats = (mine: AgentRun[], at: number): string =>
+  rollParts(mine, at)
+    .map(seg => seg.map(p => p.text).join(' '))
     .join(' · ')
-}
 
-const rollSvg = (W: number, mine: AgentRun[], at: number): string => {
-  const shown = mine.slice(0, ROLL_MAX)
-  const crabs = shown
-    .map((a, i) => {
-      const x = i * 25
-      const fail = a.status === 'failed' ? `<path d="M${x + 17} 1l5 5M${x + 22} 1l-5 5" stroke="${FAIL}" stroke-width="1.6" stroke-linecap="round"/>` : ''
-      return agentCrab(a, x, 1, at, a.status !== 'running', 0.72) + fail
-    })
-    .join('')
-  const x = shown.length * 25 + 6
-  const more = mine.length > ROLL_MAX ? `<text class="m" x="${x}" y="15.5" font-family="${FONT}" font-size="12">+${mine.length - ROLL_MAX}</text>` : ''
-  const tx = x + (more ? 26 : 0)
-  return svg(
-    W,
+// The crabs alone, a pitch of 25 apart, the figures being the band's own text.
+const rollCrabsSvg = (shown: AgentRun[], at: number): string =>
+  svg(
+    rollCrabsWidth(shown.length),
     H,
-    `${crabs}${more}<text class="s" x="${tx}" y="15.5" font-family="${FONT}" font-size="12" font-variant-numeric="tabular-nums">${xml(fitText(rollStats(mine, at), 12, W - tx))}</text>`,
+    shown
+      .map((a, i) => {
+        const x = i * 25
+        const fail = a.status === 'failed' ? `<path d="M${x + 17} 1l5 5M${x + 22} 1l-5 5" stroke="${FAIL}" stroke-width="1.6" stroke-linecap="round"/>` : ''
+        return agentCrab(a, x, 1, at, a.status !== 'running', 0.72) + fail
+      })
+      .join(''),
   )
-}
 
-function rollRow(ui: any, surface: string, columns: number, mine: AgentRun[], at: number, buttons: unknown, key: string) {
+// The last crab's failure cross ends 23 past its start.
+const rollCrabsWidth = (n: number): number => Math.max(1, n * 25 - 2)
+
+// The roll call as the status line lays out a line: `agents` (pressed, it
+// opens the panel) and the crabs, then the figures, wrapping between segments;
+// the dismiss at the band's right edge, under the chips.
+function rollRow(ui: any, surface: string, mine: AgentRun[], at: number, onAgents: () => void, onDismiss: () => void, key: string) {
   const { Box, Text } = ui
-  const stats = rollStats(mine, at)
-  if (surface !== 'terminal' && 'Svg' in ui) {
-    const { Svg } = ui
-    const width = Math.max(180, Math.min(720, columns * 8 - 140))
-    return (
-      <Box key={key} flexDirection="row" alignItems="center" gap={1}>
-        <Svg source={rollSvg(width, mine, at)} alt={stats} width={width} height={H} />
-        {buttons}
-      </Box>
-    )
-  }
-  return (
-    <Box key={key} flexDirection="row" gap={1} paddingLeft={2}>
+  const space = bandSpace(surface)
+  const shown = mine.slice(0, ROLL_MAX)
+  const seg = (parts: unknown[], k: string) => (
+    <Box key={k} flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={space.inner}>
+      {parts}
+    </Box>
+  )
+  const crabs =
+    surface !== 'terminal' && 'Svg' in ui ? (
+      <ui.Svg source={rollCrabsSvg(shown, at)} alt={rollStats(mine, at)} width={rollCrabsWidth(shown.length)} height={H} />
+    ) : (
       <Text>
-        {mine.slice(0, ROLL_MAX).map(a => (
+        {shown.map((a, i) => (
           <Text key={a.id} color={a.status === 'failed' ? FAIL : roleOf(a).color} dimColor={a.status !== 'running'}>
-            ▣{' '}
+            {i === 0 ? '▣' : ' ▣'}
           </Text>
         ))}
       </Text>
-      <Text dimColor wrap="truncate-end">
-        {stats}
-      </Text>
-      {buttons}
+    )
+  const lead = [bandPress(ui, surface, 'savvy-band-agents', tr().agentsCount, onAgents), crabs]
+  if (mine.length > ROLL_MAX) lead.push(<Text color="subtle">+{mine.length - ROLL_MAX}</Text>)
+  const figures = rollParts(mine, at).map((parts, i) =>
+    seg(
+      parts.map(p => (p.tone === 'word' ? <Text color="subtle">{p.text}</Text> : p.tone === 'error' ? <Text color={FAIL}>{p.text}</Text> : <Text>{p.text}</Text>)),
+      `roll-${i}`,
+    ),
+  )
+  return (
+    <Box key={key} flexDirection="row" alignItems="center" columnGap={space.outer}>
+      <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} alignItems="center" columnGap={space.outer}>
+        {seg(lead, 'roll-lead')}
+        {figures}
+      </Box>
+      {bandPress(ui, surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')}
     </Box>
   )
 }
@@ -2192,20 +2239,19 @@ export const register: Register = (on, options) => {
     const below = await next(e)
 
     const ui = $.ui.resolve(e)
-    const { Box, Button } = ui
+    const { Box } = ui
     const { key, bar } = shown
     const { crew, isWorking } = await crewOf($, bar)
-    const buttons = [
-      <Button key="savvy-band-agents" label={`×${crew}`} plain onPress={() => void togglePane($)} />,
-      <Button key="savvy-band-dismiss" label="✕" plain role="dismiss" onPress={() => update($, panel, q => ({ ...q, bandDismissed: key }))} />,
-    ]
+    const onAgents = () => void togglePane($)
+    const onDismiss = () => void update($, panel, q => ({ ...q, bandDismissed: key }))
     const columns = e.props.bodyColumns || e.viewport?.columns || 100
     const crewAt = shown.crew ? Math.max(await read($, now), ...shown.crew.map(a => a.startedAt), 0) : 0
+    // Inset a cell, as the status line's lines and the chips are.
     const card = (
-      <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1}>
+      <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1} paddingX={1}>
         {shown.crew
-          ? rollRow(ui, e.surface, columns, shown.crew, crewAt, buttons, 'savvy-band-bar')
-          : barRow(ui, e.surface, columns, bar, isWorking, buttons, 'savvy-band-bar')}
+          ? rollRow(ui, e.surface, shown.crew, crewAt, onAgents, onDismiss, 'savvy-band-bar')
+          : barRow(ui, e.surface, columns, bar, isWorking, [bandPress(ui, e.surface, 'savvy-band-agents', `×${crew}`, onAgents), bandPress(ui, e.surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')], 'savvy-band-bar')}
       </Box>
     )
     return shareBand(Box, below, card)
