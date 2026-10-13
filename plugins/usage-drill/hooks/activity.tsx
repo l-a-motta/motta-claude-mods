@@ -11,7 +11,7 @@ import { dayKey, hoursOf, MODEL_FAMILIES, MODEL_NAMES, modelShares, shade } from
 import { dotsAcross, meter } from './meter.tsx'
 
 const SLOTS = 8
-const SLOT_HOURS = 24 / SLOTS
+export const SLOT_HOURS = 24 / SLOTS
 const CELL = 10
 const PITCH = 13
 const LEFT = 24
@@ -108,10 +108,10 @@ ${label(3, cx - arm - 14, cy - 4, 'end')}
 }
 
 // The terminal's grid: a row of squares per slot, each colored by its shade,
-// the hour before it on every other row.
-export function gridText(Box: any, Text: any, days: Days, now: number, columns: number) {
+// the hour before it on every other row, and `tipOf` the slot's hover card.
+export function gridText(Box: any, Text: any, days: Days, now: number, columns: number, tipOf: (from: number, values: number[], dates: Date[]) => unknown) {
   const count = Math.max(7, columns - 4)
-  const { cells } = grid(days, now, count)
+  const { cells, dates } = grid(days, now, count)
   const max = Math.max(0, ...cells.flat())
   return cells.map((row, slot) => {
     const runs: { color: string; text: string }[] = []
@@ -123,41 +123,68 @@ export function gridText(Box: any, Text: any, days: Days, now: number, columns: 
       if (last !== undefined && last.color === color) last.text += glyph
       else runs.push({ color, text: glyph })
     }
+    const card = tipOf(slot * SLOT_HOURS, row, dates)
     return (
-      <Box key={`slot-${slot}`} flexDirection="row">
+      <Box key={`slot-${slot}`} flexDirection="row" hover={card == null ? undefined : LIT}>
         <Box width={3}>{slot % 2 === 0 ? <Text color="subtle">{String(slot * SLOT_HOURS).padStart(2, '0')}</Text> : null}</Box>
         {runs.map(r => (
           <Text color={r.color}>{r.text}</Text>
         ))}
+        {card}
       </Box>
     )
   })
 }
 
-// The terminal's cross: a row per model family, its share as a braille bar.
-export function modelsText(Box: any, Text: any, shares: number[]) {
-  return MODEL_FAMILIES.map(f => MODEL_NAMES[f]).map((name, i) => (
-    <Box key={name} flexDirection="row" columnGap={1}>
-      <Box width={10}>
-        <Text color="subtle">{name}</Text>
+// The terminal's cross: a row per model family, its share as a braille bar,
+// and `tipOf` the family's hover card.
+export function modelsText(Box: any, Text: any, shares: number[], tipOf: (i: number) => unknown) {
+  return MODEL_FAMILIES.map(f => MODEL_NAMES[f]).map((name, i) => {
+    const card = tipOf(i)
+    return (
+      <Box key={name} flexDirection="row" columnGap={1} hover={card == null ? undefined : LIT}>
+        <Box width={10}>
+          <Text color="subtle">{name}</Text>
+        </Box>
+        <Box flexDirection="row">{meter(Text, dotsAcross(shares[i] * 100, 12), DARK[3], null)}</Box>
+        <Text>{Math.round(shares[i] * 100)}%</Text>
+        {card}
       </Box>
-      <Box flexDirection="row">{meter(Text, dotsAcross(shares[i] * 100, 12), DARK[3], null)}</Box>
-      <Text>{Math.round(shares[i] * 100)}%</Text>
-    </Box>
-  ))
+    )
+  })
+}
+
+// A card host's faint highlight under the pointer.
+const LIT = { backgroundColor: '#ffffff10' }
+
+export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// A day's key, `2026-10-12`, as its local midnight.
+export function dateOfKey(key: string) {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d).getTime()
+}
+
+// `Mon 12 Oct`, in local time.
+export function dayText(at: number) {
+  const t = new Date(at)
+  return `${WEEKDAYS[t.getDay()]} ${t.getDate()} ${MONTHS[t.getMonth()]}`
+}
+
+// What each day of the week took, Sunday first.
+export function weekdaySums(days: Days): number[] {
+  const sums = new Array(7).fill(0)
+  for (const [key, hours] of Object.entries(days)) sums[new Date(dateOfKey(key)).getDay()] += hours.reduce((a, b) => a + b, 0)
+  return sums
 }
 
 // The day of the week that took the most, and its share.
 export function busiestWeekday(days: Days): { name: string; share: number } | null {
-  const sums = new Array(7).fill(0)
-  for (const [key, hours] of Object.entries(days)) {
-    const [y, m, d] = key.split('-').map(Number)
-    sums[new Date(y, m - 1, d).getDay()] += hours.reduce((a, b) => a + b, 0)
-  }
+  const sums = weekdaySums(days)
   const total = sums.reduce((a, b) => a + b, 0)
   if (total <= 0) return null
   const best = sums.indexOf(Math.max(...sums))
-  return { name: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][best], share: sums[best] / total }
+  return { name: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][best], share: (sums[best] ?? 0) / total }
 }
 
 export function activityFigures(days: Days, models: ModelDays) {

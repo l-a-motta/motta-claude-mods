@@ -22,6 +22,7 @@ import {
 } from '../hooks/figures.ts'
 import { grid } from '../hooks/activity.tsx'
 import { barBlocks, blockDots, seriesBlocks } from '../hooks/meter.tsx'
+import { BUDGET, countNodes, fit, TOP_LEVEL, usagePane } from '../hooks/draw.tsx'
 
 const HOUR = 3_600_000
 
@@ -231,6 +232,83 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
+// Both limits, a 5h window with readings, turns (this session's and
+// another's) and a past window, and a day of activity.
+function answerBoth(on: Parameters<TestBody>[1]) {
+  const clock = mock.clock(on)
+  const now = clock.now()
+  const five = now + 2 * HOUR
+  const seven = now + 72 * HOUR
+  const hours = new Array(24).fill(0)
+  hours[new Date(now).getHours()] = 4
+  mock.store(on, {
+    'usage:5h': { resetsAt: five, points: [[now - 2 * HOUR, 10], [now - HOUR, 20]] },
+    'usage:turns:5h': { resetsAt: five, turns: [{ at: now - HOUR, session: 's1', delta: 1.5 }, { at: now - HOUR / 2, session: 's2', delta: 2 }] },
+    'usage:history:5h': [{ resetsAt: five - 5 * HOUR, peak: 70, last: 64 }],
+    'usage:days': { [dayKey(now)]: hours },
+    'usage:models': { [dayKey(now)]: { opus: 3, haiku: 1 } },
+  })
+  on('session.id', () => ({ value: 's1' }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: now - 2 * HOUR,
+      context: { tokens: 0, window: 1_000_000, percent: 0 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 30.4, resetsAt: new Date(five).toISOString() },
+        { kind: 'seven_day', percentUsed: 41.2, resetsAt: new Date(seven).toISOString() },
+      ],
+      cost: { usd: 1.5 },
+    },
+  }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`hover cards carry the figures behind the rows (${surface})`, async ($, on) => {
+    answerBoth(on)
+    await $.command.run({ command: 'usage-drill', args: '' } as never)
+    const pane = await $.ui.mount({ plugin: 'usage-drill', surface, component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
+    const drawn = JSON.stringify(await pane.drawn())
+    // Card text is split into styled pieces: values plain, labels dim.
+    // The 5h head sits on the pane's top line: its card is revealed below it.
+    expect(drawn).toContain('"30.4%"')
+    expect(drawn).toContain('" used of a 5-hour window"')
+    expect(drawn).toContain('"69.6 pts"')
+    expect(drawn).toContain('tip:5h:head')
+    expect(drawn).toContain('"41.2%"')
+    expect(drawn).toContain('" used of a 7-day window"')
+    // The verdict card takes its status: on track, its color word green.
+    expect(drawn).toContain('"green"')
+    expect(drawn).toContain('": heading for under 80% by the reset"')
+    expect(drawn).toContain('"other sessions: "')
+    expect(drawn).toContain('"1 turn, +2"')
+    expect(drawn).toContain('"70%"')
+    expect(drawn).toContain('" at its end"')
+    // The Details button's card: the action, then its hotkey as a chip.
+    expect(drawn).toContain('"Hides the 5h and 7d details "')
+    expect(drawn).toContain('" d "')
+    expect(drawn).toContain('"Opus "')
+    expect(drawn).toContain('"$3.00"')
+    // Tone colors: the action's accent, the verdict's good, the plain cards' faint.
+    expect(drawn).toContain('#8db4f0')
+    expect(drawn).toContain('#7fc97f')
+    expect(drawn).toContain('#6f6d68')
+    expect(await pane.find({ key: 'details' } as never)).toBeDefined()
+  })
+}
+
+test('no hover cards on a phone', async ($, on) => {
+  answerBoth(on)
+  await $.command.run({ command: 'usage-drill', args: '' } as never)
+  const pane = await $.ui.mount({ plugin: 'usage-drill', surface: 'mobile', component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 60 } as never })
+  const drawn = JSON.stringify(await pane.drawn())
+  expect(drawn).toContain('41%')
+  expect(drawn).not.toContain('pts left')
+  expect(drawn).not.toContain('" left"')
+  expect(drawn).not.toContain('tip:5h:head')
+  expect(drawn).not.toContain('" d "')
+})
+
 test('a step’s cost goes to the model that answered it', async ($, on) => {
   let usd = 1
   answerSession(on, () => 30, () => ({}), () => usd)
@@ -247,4 +325,63 @@ test('a step’s cost goes to the model that answered it', async ($, on) => {
   const pane = await $.ui.mount({ plugin: 'usage-drill', surface: 'desktop', component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
   expect(await pane.find({ type: 'Text', text: 'Haiku' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '100% of $0.75 by model' })).toBeDefined()
+})
+
+// The element budget. This pane is fixed in size (about 340 elements here,
+// 393 measured live), so it never reaches BUDGET itself: the ladder is shown
+// with a lower budget, drawing straight from usagePane with a plain table.
+describe('the element budget', () => {
+  const now = new Date(2026, 9, 12, 10).getTime()
+  const hours = new Array(24).fill(0)
+  hours[10] = 4
+  const view = (surface: 'desktop' | 'terminal') => ({
+    limits: limitsOf([
+      { kind: 'five_hour', percentUsed: 30.4, resetsAt: new Date(now + 2 * HOUR).toISOString() },
+      { kind: 'seven_day', percentUsed: 41.2, resetsAt: new Date(now + 72 * HOUR).toISOString() },
+    ] as never),
+    kept: {},
+    days: { [dayKey(now)]: hours },
+    models: { [dayKey(now)]: { opus: 3, haiku: 1 } },
+    columns: 100,
+    session: { id: 's1', startedAt: now - 2 * HOUR, costUsd: 1.5 },
+    settings: settingsOf({}),
+    showDetails: true,
+    onToggleDetails: () => {},
+    now,
+    surface,
+  })
+  const table = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const draw = (surface: 'desktop' | 'terminal') => (level: number) => usagePane(table, surface === 'desktop' ? 'Svg' : null, view(surface), level)
+  const counts = [0, 1, 2].map(level => countNodes(draw('desktop')(level)))
+
+  test('each level draws fewer elements; info cards go first, then every card', () => {
+    expect(counts[0]).toBeGreaterThan(counts[1])
+    expect(counts[1]).toBeGreaterThan(counts[2])
+    // Between level 1 and level 0: level 1, the action and status cards kept.
+    const one = JSON.stringify(fit('desktop', TOP_LEVEL, draw('desktop'), counts[1]))
+    expect(countNodes(JSON.parse(one))).toBe(counts[1])
+    expect(one).not.toContain('" used of a 5-hour window"')
+    expect(one).not.toContain('local hours, over every day kept')
+    expect(one).toContain('"Hides the 5h and 7d details "')
+    expect(one).toContain('#7fc97f')
+    // Under level 1: no card, and no host lit or scoped for one.
+    const two = JSON.stringify(fit('desktop', TOP_LEVEL, draw('desktop'), counts[2]))
+    expect(two).not.toContain('#8db4f0')
+    expect(two).not.toContain('#7fc97f')
+    expect(two).not.toContain('#ffffff10')
+    expect(two).not.toContain('"scope":"tip:')
+    // The terminal has no limit: every card stays.
+    const terminal = JSON.stringify(fit('terminal', TOP_LEVEL, draw('terminal'), 1))
+    expect(terminal).toContain('" used of a 5-hour window"')
+    expect(terminal).toContain('"Hides the 5h and 7d details "')
+  })
+
+  test('the mounted desktop pane stays under the budget with every card', async ($, on) => {
+    answerBoth(on)
+    await $.command.run({ command: 'usage-drill', args: '' } as never)
+    const pane = await $.ui.mount({ plugin: 'usage-drill', surface: 'desktop', component: 'Pane', requestId: 'usage-drill', props: { title: 'Usage', isFocused: false, bodyColumns: 100 } as never })
+    const drawn = await pane.drawn()
+    expect(countNodes(drawn)).toBeLessThanOrEqual(BUDGET)
+    expect(JSON.stringify(drawn)).toContain('" used of a 5-hour window"')
+  })
 })

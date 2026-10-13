@@ -22,7 +22,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { UsageDrillOpened } from '../types'
-import { usagePane } from './draw.tsx'
+import { fit, TOP_LEVEL, usagePane } from './draw.tsx'
 import type { Days, Kept, ModelDays, Limit, PastWindow, Readings, Settings, Turns } from './figures.ts'
 import { addRise, addSpend, daysOf, elapsedShare, fileWindow, isSameWindow, limitLevel, limitsOf, pointsOf, settingsOf, toastText } from './figures.ts'
 
@@ -124,7 +124,9 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
-    return usagePane(table, 'Svg' in table ? table.Svg : null, { limits, kept, days, models, session, settings, showDetails, columns: e.props.bodyColumns, surface: e.surface, onToggleDetails: () => void toggleDetails($), now: await $.clock.now() })
+    const view = { limits, kept, days, models, session, settings, showDetails, columns: e.props.bodyColumns, surface: e.surface, onToggleDetails: () => void toggleDetails($), now: await $.clock.now() }
+    // At the richest level that fits the desktop's element budget.
+    return fit(e.surface, TOP_LEVEL, level => usagePane(table, 'Svg' in table ? table.Svg : null, view, level))
   })
 }
 
