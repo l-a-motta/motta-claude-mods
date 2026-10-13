@@ -41,7 +41,6 @@ export function emptyTree(root: string): FileTree {
     flashVerbs: {},
     pinned: false,
     showKey: false,
-    outsideOpen: false,
     overrides: {},
     scroll: null,
     preview: '',

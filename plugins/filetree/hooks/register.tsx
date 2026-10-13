@@ -55,7 +55,6 @@ const ACTIVITY_TTL_MS = 45_000
 // is under its root. A prompt or the × clears them; the terminal shows the newest few.
 const OUTSIDE_KEEP = 50
 const OUTSIDE_ROWS = 5
-const OUTSIDE_TOGGLE = 'filetree:outside-toggle'
 // Nerd Font's rounded half circles, the ends of a pill.
 const PILL_L = '\u{e0b6}'
 const PILL_R = '\u{e0b4}'
@@ -338,7 +337,7 @@ async function reset($: EngineInterface, root: string, focus = false): Promise<v
   searchIndex = null
   sizeEpoch += 1
   sizeQueue = []
-  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, outsideOpen: prev.outsideOpen, overrides: prev.overrides }))
+  await put($, () => ({ ...emptyTree(root), showHidden: prev.showHidden, showSize: prev.root ? prev.showSize : sizeDefault, pinned: !follow, showKey: prev.showKey, overrides: prev.overrides }))
   const title = `Files: ${root.split('/').pop() || root}`
   if (focus) await $.ui.open({ id: PANE, title, focus: true })
   else if (!noDock) await $.ui.open({ id: PANE, title })
@@ -1257,7 +1256,6 @@ export const register: Register = (on, options) => {
     if (e.requestId === PANE && e.element === 'outside' && e.data && typeof e.data === 'object') {
       const data = e.data as { press?: unknown; copy?: unknown }
       if (typeof data.copy === 'string') await copyPath($, data.copy, true, e.surface)
-      else if (data.press === OUTSIDE_TOGGLE) await patch($, t => ({ outsideOpen: !t.outsideOpen }))
       else if (typeof data.press === 'string') await pressOutside($, data.press)
       return {}
     }
@@ -1451,7 +1449,8 @@ export const register: Register = (on, options) => {
     const rows = visibleRows(t)
     const away = (await outside($)).filter(o => !inside(t.root, o.path))
     const strip = nativeScroll ? away : away.slice(0, OUTSIDE_ROWS)
-    const stripRows = strip.length ? 1 + (t.outsideOpen ? strip.length + (away.length > strip.length ? 1 : 0) : 0) : 0
+    // The list, its header and a rule above it.
+    const stripRows = strip.length ? strip.length + 2 + (away.length > strip.length ? 1 : 0) : 0
     const totals: [number, number] = t.top ? (t.diff[t.root] ?? [0, 0]) : [0, 0]
     // Git marks are tags: the letter (and a folder's count) on a fill of its own color.
     // What Claude did is a pill beside the name: rounded ends where a Nerd Font draws
@@ -1539,7 +1538,8 @@ export const register: Register = (on, options) => {
       const verb = OUTSIDE_VERB[o.tone] ?? 'changed'
       const base = o.path.slice(o.path.lastIndexOf('/') + 1)
       const folder = shortPath(dirname(o.path))
-      const cols = Math.max(8, width - verb.length - 8)
+      // Slack for the × beside the list and the desktop's proportional font.
+      const cols = Math.max(8, width - verb.length - 14)
       const name = base.length > cols ? base.slice(0, cols - 1) + '…' : base
       const room = cols - name.length - 2
       const where = room < 4 ? '' : folder.length > room ? '…' + folder.slice(folder.length - room + 1) : folder
@@ -1549,25 +1549,24 @@ export const register: Register = (on, options) => {
         right: [{ t: ` ${verb} `, c: FAR_TONES[o.tone]?.solid ?? theme.muted }],
       }
     }
-    // The list's header: folded, a count and what the files were; it shimmers in the
-    // newest file's color while that one does.
+    // The list's header and its count; it shimmers in the newest file's color while
+    // that one does.
     const outsideHead = (): RowSpec => {
-      const changed = away.filter(o => o.tone !== 'read').length
-      const read = away.length - changed
       const fresh = away.find(o => o.lit)
-      const caret = unicode ? (t.outsideOpen ? '▾' : '▸') : t.outsideOpen ? CHEVRON_OPEN : CHEVRON_CLOSED
-      const what = [changed ? `${changed} changed` : '', read ? `${read} read` : ''].filter(Boolean).join(' · ')
       return {
-        id: OUTSIDE_TOGGLE,
-        left: clean([
-          { t: caret + ' ', c: theme.muted },
-          fresh ? { t: 'outside this folder', sh: fresh.tone } : { t: 'outside this folder', c: theme.fg || undefined },
-          { t: ` (${away.length})`, c: theme.muted },
-          ...(t.outsideOpen ? [] : [{ t: `  ${what}`, c: theme.muted }]),
-        ]),
+        id: '',
+        left: clean([fresh ? { t: 'outside this folder', sh: fresh.tone } : { t: 'outside this folder', c: theme.fg || undefined }, { t: ` (${away.length})`, c: theme.muted }]),
         right: [],
       }
     }
+    // A thin line across the pane between its sections.
+    const rule = (
+      <Box height={1} overflow="hidden">
+        <Text color={theme.muted} dimColor wrap="truncate-end">
+          {'─'.repeat(width * 2)}
+        </Text>
+      </Box>
+    )
     const pillText = (text: string, color: string) => (
       <Text>
         {pill(text, color)
@@ -1638,7 +1637,7 @@ export const register: Register = (on, options) => {
     const keyRows = 2 + keySections.reduce((n, s) => n + 1 + Math.ceil(s.items.length / keyCols), 0)
     // Rows above and below the tree: breadcrumb, buttons, setting chips, search, the
     // branch, the key when open, and the two labeled footer lines.
-    const fixed = 4 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.showKey ? keyRows : 0) + 2 + stripRows
+    const fixed = 4 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.showKey ? keyRows : 0) + 3 + stripRows
     const isLit = (id: string) => bright.has(id) || dimmed.has(id)
     const focus = followClaude && t.flashOn ? ([...t.flash].reverse().find(id => id !== BRANCH_ROW) ?? t.cursor) : t.cursor
     const at = Math.max(0, rows.findIndex(r => r.node.id === focus))
@@ -1933,6 +1932,7 @@ export const register: Register = (on, options) => {
           props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
         />
         <Box flexGrow={1} />
+        {strip.length > 0 && rule}
         {strip.length > 0 && (
           <Box flexDirection="row">
             <Box flexGrow={1} flexShrink={1}>
@@ -1940,7 +1940,7 @@ export const register: Register = (on, options) => {
                 key="outside"
                 module="./rows.tsx"
                 props={{
-                  rows: [outsideHead(), ...(t.outsideOpen ? [...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`    ⋮ ${away.length - strip.length} more`)] : [])] : [])],
+                  rows: [outsideHead(), ...strip.map(outsideSpec), ...(away.length > strip.length ? [note(`    ⋮ ${away.length - strip.length} more`)] : [])],
                   active: '',
                   activeBg: theme.selection,
                   hoverBg: faint(theme.selection),
@@ -1952,6 +1952,7 @@ export const register: Register = (on, options) => {
             <Button key="outside-clear" plain dimColor label={unicode ? '×' : '\u{f0156}'} onPress={() => void clearOutside($)} />
           </Box>
         )}
+        {rule}
         {/* Always drawn, so what each line is for shows before it holds anything. */}
         <Box flexDirection="row">
           <Text color={theme.muted}>sent with your prompts </Text>

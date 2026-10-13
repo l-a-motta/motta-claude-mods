@@ -60,8 +60,6 @@ export type FileTree = {
   // Pinned: the tree stays on its root instead of following the cwd.
   pinned: boolean
   showKey: boolean
-  // The list of files outside the root, open or folded to its header line.
-  outsideOpen: boolean
   // Settings changed from the pane's chips for this session, over /config.
   overrides: { followClaude?: boolean; activity?: string; open?: string }
   scroll: number | null
