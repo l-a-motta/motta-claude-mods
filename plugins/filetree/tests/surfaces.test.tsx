@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { LINUX_LAUNCH } from '../hooks/open'
-import { ancestorsOf, formatSize, replaceChildren, toNodes } from '../hooks/tree'
+import { ancestorsOf, formatSize, replaceChildren, stamp, toNodes } from '../hooks/tree'
 
 type World = {
   os: 'darwin' | 'linux' | 'win32'
@@ -118,7 +118,7 @@ async function texts(ui: any): Promise<string> {
   return JSON.stringify(await ui.drawn()) + rows
 }
 
-const STAMP = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/
+const STAMP = /"[A-Z][a-z]{2} \d{1,2} (\d{4}|\d{2}:\d{2})"|"\d{2}:\d{2}"/
 const NERD = /[\u{e000}-\u{f8ff}\u{f0000}-\u{fffff}]/u
 
 test('macOS Claude Code app: desktop pane draws, selects, opens with open', { timeoutMs: 20_000, options: { open: 'app' } }, async ($, on) => {
@@ -272,11 +272,9 @@ test('the pane says what is on: the pin badge, breadcrumb, setting chips and the
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'desktop', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   let shown = await texts(ui)
-  for (const word of ['nothing yet: click a file', ' none yet', '"following cwd"', '"~"', '"proj"', 'hidden on', 'sizes off', '"? key"', 'settings ▸']) expect(shown).toContain(word)
+  for (const word of ['nothing yet: click a file', ' none yet', '"pinned"', '"~"', '"proj"', 'hidden on', '"? key"', 'settings ▸']) expect(shown).toContain(word)
   expect(shown).not.toContain('What Claude just did')
-  await ui.press({ key: 'pin' })
-  await clock.settle()
-  expect(await texts(ui)).toContain('"pinned"')
+  expect(shown).not.toContain('sizes')
   w.cwd = '/Users/k/other'
   await $.prompt.submit({ text: 'next', wait: false } as any)
   await clock.settle()
@@ -999,7 +997,7 @@ test('replacing many folders in one batch keeps unchanged nodes and drops what v
   expect(out.find(n => n.id === '/r/b')?.loaded).toBe(true)
 })
 
-test('a cwd change moves the tree and drops the old selection before the next prompt', { timeoutMs: 20_000 }, async ($, on) => {
+test('a cwd change moves the tree and drops the old selection before the next prompt', { timeoutMs: 20_000, options: { root: 'follows cwd' } }, async ($, on) => {
   const ran: Ran = []
   const a = '/home/k/repo-a'
   const b = '/home/k/repo-b'
@@ -1208,6 +1206,14 @@ test('without an Omarchy theme the pane keeps the terminal background and nothin
   await ui.unmount()
 })
 
+test('stamp: the time alone today, the day and time this year, the day and year before', async () => {
+  const now = new Date(2026, 9, 12, 22, 0).getTime()
+  expect(stamp(new Date(2026, 9, 12, 19, 39).getTime(), now)).toBe('19:39')
+  expect(stamp(new Date(2026, 9, 11, 1, 49).getTime(), now)).toBe('Oct 11 01:49')
+  expect(stamp(new Date(2025, 2, 3, 8, 5).getTime(), now)).toBe('Mar 3 2025')
+  expect(stamp(0, now)).toBe('')
+})
+
 test('formatSize: bytes, binary units, one decimal under 100, ? for unknown', async () => {
   expect(formatSize(0)).toBe('0 B')
   expect(formatSize(1023)).toBe('1023 B')
@@ -1217,7 +1223,7 @@ test('formatSize: bytes, binary units, one decimal under 100, ? for unknown', as
   expect(formatSize(-1)).toBe('?')
 })
 
-test('size column: the toggle swaps dates for sizes, folders are sized with du, an edit re-sizes its folders', { timeoutMs: 20_000 }, async ($, on) => {
+test('date and size together: folders are sized with du, an edit re-sizes its folders', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/proj'
   const clock = world(on, {
@@ -1230,14 +1236,10 @@ test('size column: the toggle swaps dates for sizes, folders are sized with du, 
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  expect(await texts(ui)).toMatch(STAMP)
-  expect(ran.some(a => a[0] === 'du')).toBe(false)
-  await ui.press({ key: 'size' })
-  await clock.settle()
   const sized = await texts(ui)
-  expect(sized).not.toMatch(STAMP)
-  expect(sized).toContain(' 1 B')
-  expect(sized).toContain(' 2.0 M')
+  expect(sized).toMatch(STAMP)
+  expect(sized).toContain('"1 B"')
+  expect(sized).toContain('"2.0 M"')
   expect(ran).toContainEqual(['du', '-skxH', `${root}/src`])
   const before = ran.filter(a => a[0] === 'du').length
   await $.tool.call({ tool: 'Edit', file_path: `${root}/src/a.ts`, old_string: 'a', new_string: 'b' } as any)
@@ -1245,13 +1247,10 @@ test('size column: the toggle swaps dates for sizes, folders are sized with du, 
   await ui.press({ key: 'refresh' })
   await clock.settle()
   expect(ran.filter(a => a[0] === 'du').length).toBeGreaterThan(before)
-  await ui.press({ key: 'size' })
-  await clock.settle()
-  expect(await texts(ui)).toMatch(STAMP)
   await ui.unmount()
 })
 
-test('size column on Windows sums file sizes with fs.list instead of du', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('size column on Windows sums file sizes with fs.list instead of du', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -1263,12 +1262,12 @@ test('size column on Windows sums file sizes with fs.list instead of du', { time
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
-  expect(await texts(ui)).toContain(' 3 B')
+  expect(await texts(ui)).toContain('"3 B"')
   expect(ran.some(a => a[0] === 'du')).toBe(false)
   await ui.unmount()
 })
 
-test('a folder whose size job goes stale mid-run is sized again instead of waiting forever', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('a folder whose size job goes stale mid-run is sized again instead of waiting forever', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/proj'
   const clock = world(on, {
@@ -1286,11 +1285,11 @@ test('a folder whose size job goes stale mid-run is sized again instead of waiti
   await clock.settle()
   await clock.advance(1_500)
   await clock.settle()
-  expect(await texts(ui)).toContain(' 2.0 M')
+  expect(await texts(ui)).toContain('"2.0 M"')
   await ui.unmount()
 })
 
-test('on Windows a folder size does not walk into linked folders, like du', { timeoutMs: 20_000, options: { column: 'size' } }, async ($, on) => {
+test('on Windows a folder size does not walk into linked folders, like du', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = 'C:/Users/k/proj'
   const clock = world(on, {
@@ -1304,8 +1303,8 @@ test('on Windows a folder size does not walk into linked folders, like du', { ti
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await clock.settle()
   const shown = await texts(ui)
-  expect(shown).toContain(' 2 B')
-  expect(shown).not.toContain(' 6 B')
+  expect(shown).toContain('"2 B"')
+  expect(shown).not.toContain('"6 B"')
   await ui.unmount()
 })
 

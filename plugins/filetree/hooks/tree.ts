@@ -24,7 +24,6 @@ export function emptyTree(root: string): FileTree {
     selected: '',
     query: '',
     showHidden: true,
-    showSize: false,
     dirSizes: {},
     git: {},
     diff: {},
@@ -316,11 +315,19 @@ export function visibleRows(t: FileTree): Row[] {
   return rows
 }
 
-export function stamp(ms: number): string {
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// When a file last changed: the time alone for today, the day and time this year,
+// the day and year before that.
+export function stamp(ms: number, now: number): string {
   if (!ms) return ''
   const d = new Date(ms)
+  const n = new Date(now)
   const p = (v: number) => String(v).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`
+  const day = `${MONTHS[d.getMonth()]} ${d.getDate()}`
+  if (d.getFullYear() !== n.getFullYear()) return `${day} ${d.getFullYear()}`
+  return d.getMonth() === n.getMonth() && d.getDate() === n.getDate() ? time : `${day} ${time}`
 }
 
 export function formatSize(bytes: number): string {

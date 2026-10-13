@@ -47,14 +47,14 @@
         "off"
       ]
     },
-    "column": {
+    "root": {
       "type": "string",
-      "title": "Right column",
-      "description": "What the right column shows by default: date (last modified) or size (files in bytes, folders as disk usage computed in the background). The header button toggles it.",
-      "default": "date",
+      "title": "Tree folder",
+      "description": "pinned: the tree stays on the folder it opened on, or the one you move it to. follows cwd: it moves whenever Claude's shell changes folder (a cd, a worktree). The badge beside the path switches between the two.",
+      "default": "pinned",
       "options": [
-        "date",
-        "size"
+        "pinned",
+        "follows cwd"
       ]
     },
     "open": {

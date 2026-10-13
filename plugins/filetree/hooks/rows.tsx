@@ -1,6 +1,6 @@
 import type { ClientModule } from 'claude-code'
 
-export type Seg = { t: string; c?: string; b?: boolean; s?: boolean; i?: boolean; sh?: string; dim?: boolean; one?: boolean; spin?: boolean; bg?: string; tab?: string }
+export type Seg = { t: string; w?: number; c?: string; b?: boolean; s?: boolean; i?: boolean; sh?: string; dim?: boolean; one?: boolean; spin?: boolean; bg?: string; tab?: string }
 export type RowSpec = { id: string; left: Seg[]; right: Seg[] }
 export type RowsProps = {
   rows: RowSpec[]
@@ -89,7 +89,9 @@ const Rows: ClientModule<RowsProps, Local> = (props, surface) => {
     return p.markdown ? <Markdown text={p.text} /> : <Code source={p.text} path={p.path} startLine={p.startLine} wrap="truncate-end" />
   }
   const frames = props.spinner?.length ? props.spinner : FRAMES
-  const draw = (s: Seg) => {
+  // A segment with a width is a column: its text right-aligned in that many cells.
+  const draw = (s: Seg) => (s.w ? <Box width={s.w} flexShrink={0} justifyContent="flex-end">{text(s)}</Box> : text(s))
+  const text = (s: Seg) => {
     if (s.spin) {
       return (
         <Text color={s.c} bold={s.b}>
