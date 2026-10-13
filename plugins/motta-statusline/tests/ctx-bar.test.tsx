@@ -139,13 +139,14 @@ describe('squaresSvg', () => {
     expect(shades[0]).toBe(0.465)
     expect(shades.every((o, i) => i === 0 || o > (shades[i - 1] ?? 1))).toBe(true)
     expect(shades[35]).toBe(1)
-    expect(svg.match(/rx="1.5"/g)).toHaveLength(10)
+    // Every point has its square: the 36 lit and 64 empty ones in the track gray.
+    expect(svg.match(/<rect x=/g)).toHaveLength(100)
     expect(svg).toContain('fill="#e5b84b"')
-    // 83.5%: 35% into the ninth block's track, which runs 72-79.
-    expect(svg).toContain('class="tk" x="73.7"')
+    // 83.5%: 35% into the ninth block's track, which runs 88-97.
+    expect(svg).toContain('class="tk" x="90.4"')
     // 96.7% sits two thirds into the last block, short of the end.
-    expect(squaresSvg(0, 'success', 0.967)).toContain('class="tk" x="84.94"')
-    expect(squaresSvg(0, 'success', 1)).toContain('class="tk" x="86.5"')
+    expect(squaresSvg(0, 'success', 0.967)).toContain('class="tk" x="104.28"')
+    expect(squaresSvg(0, 'success', 1)).toContain('class="tk" x="106.5"')
     expect(squaresSvg(0, 'success', null)).not.toContain('class="tk"')
     expect(squaresSvg(140, 'error', null).match(/opacity=/g)).toHaveLength(100)
   })
@@ -156,7 +157,7 @@ test('draws the bars as square grids on the desktop', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
   const drawn = JSON.stringify(await ui.drawn())
   // 835k of 1M compacts 35% into the ninth block, where the tick stands.
-  expect(drawn).toContain('class=\\"tk\\" x=\\"73.7\\"')
+  expect(drawn).toContain('class=\\"tk\\" x=\\"90.4\\"')
   expect(drawn).toContain('"alt":"context 36%"')
   expect(drawn).toContain('"alt":"5h limit 5%"')
   expect(await ui.find({ type: 'Text', text: /⣀/ })).toBeUndefined()
