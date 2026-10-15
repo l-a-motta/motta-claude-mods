@@ -50,7 +50,12 @@
     {
       "name": "tool-borders",
       "source": "./plugins/tool-borders",
-      "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). A border in the CLI, a thin bar on the desktop app."
+      "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). A border in the CLI, a thin bar on the desktop app. The stroke says how it got past the permission check: a rule, the auto-mode classifier, you, or a refusal."
+    },
+    {
+      "name": "turn-receipt",
+      "source": "./plugins/turn-receipt",
+      "description": "A receipt under Claude's latest reply for what your message set going, across the turns its agents' reports start: time, agents, edits, errors and cost added, colored; agents and edits open their panes. No model calls."
     },
     {
       "name": "filetree",
@@ -60,7 +65,7 @@
     {
       "name": "savvy-progress",
       "source": "./plugins/savvy-progress",
-      "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time. Vendored from JohnnyVizz/claude-kit@272a877 (MIT)."
+      "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time, under a timeline of your turns: a session ruler in clock time with idle time folded, and one batch of lanes per turn. Vendored from JohnnyVizz/claude-kit@272a877 (MIT)."
     }
   ]
 }
