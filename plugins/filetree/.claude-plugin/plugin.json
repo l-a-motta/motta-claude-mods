@@ -1,6 +1,6 @@
 {
   "name": "filetree",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "An IDE-style file tree for Claude Code that shows what Claude is doing and where in files",
   "types": "./types/index.d.ts",
   "author": {
@@ -66,8 +66,8 @@
     "startOpen": {
       "type": "string",
       "title": "Open on start",
-      "description": "Whether the tree opens by itself when a session starts. desktop (default): in the desktop app only; in the CLI, /filetree opens it. always: in both. never: only /filetree opens it.",
-      "default": "desktop",
+      "description": "Whether the tree opens by itself when a session starts. never (default): only /filetree opens it. desktop: in the desktop app only. always: in the desktop app and the CLI.",
+      "default": "never",
       "options": [
         "desktop",
         "always",
