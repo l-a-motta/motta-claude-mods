@@ -1,6 +1,6 @@
 {
   "name": "agent-lane",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "The agent-lane skills: motta-setup-repo (sets a repo up for the lane: dev -> main flow, labels, delivery board, BOARD.md, issue forms, PR template, CI, ship workflow and scripts, AGENTS.md, from the templates it carries), motta-intake (notes to spike issues), motta-settle-spike (the owner's decisions to agent-ready issues), motta-dispatch (one worktree build session per ready issue), motta-build-issue (the unattended build playbook), motta-review (acting on and answering the comments on agent: review items) and motta-ship-pr (the gated merge of agent: human-approved PRs). They target the repo they run in: its .github/BOARD.md is the rulebook and its .github/scripts do the board and the merge, so they work in any checkout set up for the agent lane and stop in one that is not.",
   "author": {
     "name": "l-a-motta"

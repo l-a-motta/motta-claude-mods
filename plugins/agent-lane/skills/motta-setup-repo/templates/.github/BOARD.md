@@ -301,6 +301,16 @@ creating a duplicate — in **both** directions:
   before it merges) — prefer recreating the branch via `gh issue develop` so the link is native.
   (`gh issue develop` creates linked branches; retro-linking an already-pushed branch is done from
   the issue's _Development_ section in the GitHub UI.)
+- **Session started on an app-made `claude/*` branch? It is scratch only.** The Claude desktop
+  app gives each session a worktree branch named `claude/<session-title>-<hash>` before any rule
+  here is read, cut from whatever the main checkout has checked out (which can be `main`). No app
+  setting can make it follow this playbook: its prefix is one fixed word for every repo. Never push
+  it or open a PR from it — the app's _Create PR_ button and `git push -u origin HEAD` both publish
+  whatever is checked out. Before the first push, create the real branch with
+  `gh issue develop <n> --base dev --name <type>/<n>-<topic>`, switch to it, and cherry-pick only
+  the session's own commits (`git log --oneline <scratch> --not origin/dev origin/main` lists them).
+  When the work is done, tell the user which scratch branches the session left behind and offer to
+  delete them (`git branch -D`; skip one still checked out in a live worktree), so they don't pile up.
 - **Opened a PR? Attach it to its issue — every time.** A linked branch does **not** link the PR;
   the `Closes #<n>` keyword in the PR body is what ties them together. On a PR targeting `dev` it
   registers as a **timeline cross-reference**, not a closing link: GitHub creates the closing
