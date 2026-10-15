@@ -1,7 +1,7 @@
 {
   "name": "turn-receipt",
-  "version": "0.1.0",
-  "description": "A receipt under Claude's latest reply for what your message set going: its turn and the turns agents' reports start after it, how long they took, the agents spawned, the edits made, the failed tool calls and the cost added. The figures in tool-borders' colors; agents opens savvy-progress's agents pane, edits changes-drill's Changes pane. Read from the engine's events; no model calls.",
+  "version": "0.2.0",
+  "description": "A receipt under each turn's reply, yours and the ones agents' reports start: how long it took, the agents spawned, the edits made, the failed tool calls and the cost added. The figures in tool-borders' colors; agents opens savvy-progress's agents pane, edits changes-drill's Changes pane. Read from the engine's events; no model calls.",
   "author": {
     "name": "l-a-motta"
   },

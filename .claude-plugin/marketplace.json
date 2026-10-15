@@ -55,7 +55,7 @@
     {
       "name": "turn-receipt",
       "source": "./plugins/turn-receipt",
-      "description": "A receipt under Claude's latest reply for what your message set going, across the turns its agents' reports start: time, agents, edits, errors and cost added, colored; agents and edits open their panes. No model calls."
+      "description": "A receipt under each turn's reply, yours and the ones agents' reports start: time, agents, edits, errors and cost added, colored; agents and edits open their panes. No model calls."
     },
     {
       "name": "filetree",

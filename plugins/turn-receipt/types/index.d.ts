@@ -1,8 +1,6 @@
-/** What one of your messages set going, kept under the latest reply it led to. */
+/** What one turn did, kept under that turn's reply. */
 export type Receipt = {
   isRunning: boolean
-  /** The turns it spans: its own, then those agents' reports and task notices started before your next message. */
-  turns: number
   /** Subagents the main loop spawned. */
   agents: number
   /** Edit, Write and NotebookEdit calls that went through, from any loop. */
@@ -11,11 +9,11 @@ export type Receipt = {
   errors: number
   /** The session's cost when the running turn started, from /cost's ledger; absent without one. */
   costAtStart?: number
-  /** What its turns added to it. */
+  /** What the turn added to it. */
   costAdded?: number
-  /** How long its turns ran, summed, in milliseconds. */
+  /** How long the turn ran, in milliseconds. */
   durationMs: number
-  /** Why the last of its turns ended, as turn.complete says. */
+  /** Why the turn ended, as turn.complete says. */
   reason?: 'answer' | 'aborted' | 'refusal' | 'error'
 }
 

@@ -3,14 +3,12 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Receipt } from '../types'
 
-// A receipt under Claude's last reply: how long the work took, the agents it
+// A receipt under each turn's reply: how long the turn took, the agents it
 // spawned, the edits it made, the main loop's failed calls and what it added to
 // the session's cost.
 //
-// One receipt covers what one of your messages set going: its turn, and the
-// turns that agents' reports and background tasks start after it, until you
-// send the next message. It moves down to the latest reply as those turns end,
-// with how many turns it spans.
+// Every turn gets its own: yours, and each one an agent's report or a
+// background task's notice starts. A turn that wrote no answer gets none.
 //
 // A reply's drawing (`AssistantMessage`) carries the API's message id, which no
 // event hands a mod, so a receipt is found by the reply's text: `turn.complete`
@@ -29,13 +27,10 @@ const SHORT = 40
 const COLOR = { good: '#4eba65', bad: '#ef5350', quiet: '#8a8a8a', agents: '#c0674a', edits: '#b8a531', cost: '#ee8d3a' }
 const COST_LOUD = 1
 
-// The turn running now; the receipt of the message it belongs to, and the key
-// it is shown under; whether a message you typed came in since the last turn.
+// The turn running now.
 let running: Receipt | undefined
-let chain: { key?: string; receipt: Receipt } | undefined
-let isFreshPrompt = false
 
-const blank = (): Receipt => ({ isRunning: true, turns: 0, agents: 0, edits: 0, errors: 0, durationMs: 0 })
+const blank = (): Receipt => ({ isRunning: true, agents: 0, edits: 0, errors: 0, durationMs: 0 })
 
 // An answer's end, whitespace folded: what a receipt is kept by.
 export const textKey = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(-TAIL)
@@ -50,23 +45,21 @@ export const receiptFor = (all: Record<string, Receipt>, text: string): Receipt 
   return key ? all[key] : undefined
 }
 
-const keep = (all: Record<string, Receipt>, id: string, r: Receipt, drop?: string): Record<string, Receipt> => {
+const keep = (all: Record<string, Receipt>, id: string, r: Receipt): Record<string, Receipt> => {
   const next = { ...all, [id]: r }
-  if (drop && drop !== id) delete next[drop]
   const ids = Object.keys(next)
   return ids.length > KEPT ? Object.fromEntries(ids.slice(-KEPT).map(k => [k, next[k]!])) : next
 }
 
-// One more turn into a receipt.
-export const addTurn = (into: Receipt, turn: Receipt, end: { durationMs: number; reason: Receipt['reason']; costAdded?: number }): Receipt => ({
+// A turn's receipt once it ends.
+export const finish = (turn: Receipt, end: { durationMs: number; reason: Receipt['reason']; costAdded?: number }): Receipt => ({
   isRunning: false,
-  turns: (into.turns || 0) + 1,
-  agents: into.agents + turn.agents,
-  edits: into.edits + turn.edits,
-  errors: into.errors + turn.errors,
-  durationMs: into.durationMs + end.durationMs,
+  agents: turn.agents,
+  edits: turn.edits,
+  errors: turn.errors,
+  durationMs: end.durationMs,
   reason: end.reason,
-  costAdded: end.costAdded === undefined ? into.costAdded : (into.costAdded ?? 0) + end.costAdded,
+  costAdded: end.costAdded,
 })
 
 // `7s`, `2m37s`, `1h04m`.
@@ -85,10 +78,9 @@ export type Piece = { figure: string; word?: string; color?: string; press?: 'ag
 export const receiptPieces = (r: Receipt): { mark: string; markColor: string; pieces: Piece[] } => {
   const stopped = r.reason === 'aborted'
   const failed = r.reason === 'error' || r.reason === 'refusal'
-  const turns = r.turns || 1
   const plural = (n: number, w: string) => (n === 1 ? w : `${w}s`)
   const pieces: Piece[] = [
-    { figure: fmtDuration(r.durationMs), word: [stopped ? 'stopped' : '', turns > 1 ? `across ${turns} turns` : ''].filter(Boolean).join(' ') || undefined },
+    { figure: fmtDuration(r.durationMs), word: stopped ? 'stopped' : undefined },
     { figure: String(r.agents), word: plural(r.agents, 'agent'), color: r.agents ? COLOR.agents : undefined, press: 'agents' },
     { figure: String(r.edits), word: plural(r.edits, 'edit'), color: r.edits ? COLOR.edits : undefined, press: 'edits' },
     { figure: String(r.errors), word: plural(r.errors, 'error'), color: r.errors ? COLOR.bad : undefined },
@@ -123,16 +115,7 @@ async function costNow($: EngineInterface): Promise<number | undefined> {
 }
 
 export const register: Register = on => {
-  // A message you typed starts a new receipt; an agent's report or a task's
-  // notice does not.
-  on('session.append', async ($, e, next) => {
-    if (!e.agentId && e.message.type === 'user' && e.door === 'prompt' && e.origin.kind === 'composer') isFreshPrompt = true
-    return next(e)
-  })
-
   on('turn.start', async ($, e, next) => {
-    if (isFreshPrompt || !chain) chain = { receipt: blank() }
-    isFreshPrompt = false
     running = { ...blank(), costAtStart: await costNow($) }
     return next(e)
   })
@@ -155,17 +138,14 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const answered = await next(e)
     const turn = running
-    const c = chain
-    if (e.agentId || !turn || !c) return answered
+    if (e.agentId || !turn) return answered
     running = undefined
+    const key = textKey(answered.text ?? e.answer ?? '')
+    if (!key) return answered
     const cost = await costNow($)
     const costAdded = cost !== undefined && turn.costAtStart !== undefined ? cost - turn.costAtStart : undefined
-    c.receipt = addTurn(c.receipt, turn, { durationMs: e.durationMs, reason: e.reason, costAdded })
-    // It moves to this turn's answer; a turn that wrote none leaves it where it was.
-    const key = textKey(answered.text ?? e.answer ?? '') || c.key
-    const old = c.key
-    c.key = key
-    if (key) await update($, receipts, all => keep(all, key, c.receipt, old))
+    const r = finish(turn, { durationMs: e.durationMs, reason: e.reason, costAdded })
+    await update($, receipts, all => keep(all, key, r))
     return answered
   })
 
