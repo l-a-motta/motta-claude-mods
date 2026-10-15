@@ -71,6 +71,11 @@
       "name": "agent-lane",
       "source": "./plugins/agent-lane",
       "description": "Skills for the agent lane of vtex-copilot-fse: /motta-intake turns notes into spike issues, /motta-settle-spike turns the owner's decisions into agent-ready issues, /motta-dispatch starts a worktree build session per ready issue, motta-build-issue builds one unattended to a PR with CI green, and /motta-ship-pr merges human-approved PRs through the repo's gate script. They work inside a vtex-copilot-fse checkout."
+    },
+    {
+      "name": "motta-heavydev",
+      "source": "./plugins/motta-heavydev",
+      "description": "/motta-heavydev <issue>: a multi-agent flow for large changes in any repo. An intent interview, conservative and bold architects under an adversarial critic, an audit by the strongest model, then implementation, a diff review, QA against the running system and a PR, with a budget in API-equivalent dollars. Brings its seven hd-* agent types. Playbooks and run artifacts go to a store repo (vtex-copilot/motta-heavydev by default; store in ~/.claude/motta-heavydev.json changes it)."
     }
   ]
 }

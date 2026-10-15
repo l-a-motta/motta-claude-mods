@@ -1,6 +1,6 @@
 # Setting up a new machine
 
-Everything here makes a Windows machine's Claude match the others: the same mods, settings and skills, with nothing tied to a project or employer. Each step is a command and a check; run the check before moving on. To have Claude do it, open a session in this checkout and point it at this file.
+Everything here makes a Windows machine's Claude match the others: the same mods, settings and skills, with nothing tied to a project or employer outside the work skills of step 6. Each step is a command and a check; run the check before moving on. To have Claude do it, open a session in this checkout and point it at this file.
 
 Commands are PowerShell unless they say otherwise.
 
@@ -9,7 +9,7 @@ Commands are PowerShell unless they say otherwise.
 | Comes with | What | You do |
 | --- | --- | --- |
 | Logging into your Claude account | claude.ai connectors (Gmail, Calendar, Drive, Slack and the rest), the plugins synced from claude.ai (pdf-viewer, desktop-commander, enterprise-search, cowork-plugin-management), synced skills, and the Code tab's account settings (branch prefix, auto-archive when a PR closes) | Log in (step 1) |
-| This repo | The mods, `settings.json`, the preferences in `~/.claude.json`, the find-skills skill | Steps 2 to 6 |
+| This repo | The mods, the motta-heavydev and agent-lane skills, `settings.json`, the preferences in `~/.claude.json`, the find-skills skill | Steps 2 to 6 |
 | Nowhere | Logins to other tools (`gh`, Codex), session history, file history, memories, the Code tab's per-machine settings (notifications, keep-awake, worktree location, browser tools) | Log in to tools as you need them; Code tab settings in step 7 |
 
 Claude Code's `settings.json` does not sync with your account. The `remote-settings.json` file it keeps is for settings an organization pushes.
@@ -57,13 +57,12 @@ claude plugin install tool-borders@motta-claude-mods --scope user
 claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
 claude plugin install turn-receipt@motta-claude-mods --scope user
-claude plugin install agent-lane@motta-claude-mods --scope user
 claude plugin enable cc-plugin-you-should-know@builtin
 ```
 
 `cc-plugin-you-should-know` is off by default: a side agent that flags things in a reply worth knowing.
 
-Check: `claude plugin list` shows the twelve mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
+Check: `claude plugin list` shows the eleven mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
 
 ## 4. Settings
 
@@ -106,27 +105,32 @@ Invoke-WebRequest "https://raw.githubusercontent.com/vercel-labs/skills/0b8fb22a
 
 Check: `Select-String -Path "$HOME\.claude\skills\find-skills\SKILL.md" -Pattern '^name: find-skills'` prints one line.
 
-## 6. motta-heavydev (only where you can reach its repository)
+## 6. The work skills: motta-heavydev and agent-lane
 
-The `/motta-heavydev` skill and its seven agents live in `vtex-copilot/motta-heavydev`. Skip this step on a machine without access to it.
+Two plugins in this repo carry skills for work rather than drawing. `motta-heavydev` is the `/motta-heavydev` flow and its seven `hd-*` agent types. `agent-lane` holds the five `motta-*` skills of `vtex-copilot-fse`'s agent lane, which only work inside a checkout of that repo.
 
 ```powershell
-gh repo clone vtex-copilot/motta-heavydev "$HOME\Documents\Coding\motta-heavydev"
-New-Item -ItemType Junction -Path "$HOME\.claude\skills\motta-heavydev" -Target "$HOME\Documents\Coding\motta-heavydev\skill" | Out-Null
-New-Item -ItemType Directory -Force "$HOME\.claude\agents" | Out-Null
-Copy-Item "$HOME\Documents\Coding\motta-heavydev\skill\agents\hd-*.md" "$HOME\.claude\agents\"
+claude plugin install motta-heavydev@motta-claude-mods --scope user
+claude plugin install agent-lane@motta-claude-mods --scope user
 ```
 
-Check: `Get-ChildItem "$HOME\.claude\agents\hd-*.md"` lists seven files. Its own `DESIGN.md` says the rest.
+On a machine that installed motta-heavydev the old way, remove the junction and the copied agents first, or the skill shows twice:
 
-The skill follows `git pull` through the junction; the agents are copies, so after a pull that changes `skill\agents`, copy them again and start a new session. The agents report progress through `savvy-progress` (step 3). Two more pieces are optional:
+```powershell
+Remove-Item "$HOME\.claude\skills\motta-heavydev"
+Remove-Item "$HOME\.claude\agents\hd-*.md"
+```
+
+Check: `claude plugin list` shows both enabled, and a new session lists the `motta-heavydev:hd-*` agent types. The plugin's `DESIGN.md` says the rest.
+
+A run writes its playbooks and artifacts to a store repo, `vtex-copilot/motta-heavydev` by default. Without access to it, set `store` to a repo of your own in `~/.claude/motta-heavydev.json`. The agents report progress through `savvy-progress` (step 3). Two more pieces are optional:
 
 ```powershell
 claude plugin install mattpocock-skills@claude-plugins-official --scope user
 claude mcp add playwright --scope user -- cmd /c npx -y @playwright/mcp@latest
 ```
 
-`mattpocock-skills` brings the `grilling` skill that runs the flow's interviews; without it the session runs them in the same format. The Playwright MCP server drives the browser for `--qa=full`. Settings that differ from `skill\defaults.json` go in `~/.claude/motta-heavydev.json`, which no repo carries; without it the defaults apply.
+`mattpocock-skills` brings the `grilling` skill that runs the flow's interviews; without it the session runs them in the same format. The Playwright MCP server drives the browser for `--qa=full`. Settings that differ from the plugin's `skills\motta-heavydev\defaults.json` go in `~/.claude/motta-heavydev.json`, which no repo carries; without it the defaults apply.
 
 Check: `claude plugin list` shows `mattpocock-skills` enabled, and `claude mcp list` shows `playwright` connected.
 
