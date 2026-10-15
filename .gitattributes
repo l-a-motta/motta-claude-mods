@@ -1,0 +1,2 @@
+# The setup templates are copied into new repos; board.sh must stay LF there.
+plugins/agent-lane/skills/motta-setup-repo/** text eol=lf

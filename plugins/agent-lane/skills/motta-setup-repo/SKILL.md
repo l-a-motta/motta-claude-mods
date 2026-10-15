@@ -25,12 +25,17 @@ Templates are the source for new repos only. Repos already set up don't sync fro
 1. **Survey.** `git remote -v`, the default branch, `gh repo view --json visibility,hasIssuesEnabled,hasDiscussionsEnabled`,
    `gh label list`, `gh variable list`, `gh secret list`, `gh project list --owner <owner>`, and what the repo
    already has: `AGENTS.md`/`CLAUDE.md`, `.github/`, a design doc, the package manager and its scripts, a test
-   runner, CI. If `.github/BOARD.md` already exists, stop: the repo is set up; offer to compare it with the
+   runner, CI, and a `.nvmrc` (the CI template reads the Node version from it; create one from `engines` when
+   missing). The owner must be an **organization**: `board.sh` and `BOARD.md` query `organization(login:)`, so for
+   a user-owned repo change those queries to `user(login:)` while filling. If `.github/BOARD.md` already exists, stop: the repo is set up; offer to compare it with the
    templates instead. Done when you can say what exists and what is missing in one table.
 2. **Interview** — before any remote write, one question at a time, each with your recommendation drawn from the
    survey:
-   - **Area list** (`{{AREA_LIST}}`, `{{AREA_OPTIONS}}`): 8–12 areas from the repo's design doc or its top-level
-     layers, each with a one-line description; usually ending `Storage/Observability`, `Infra`, `Docs`.
+   - **Area list**: 8–12 areas from the repo's design doc or its top-level layers, each with a one-line
+     description; usually ending `Storage/Observability`, `Infra`, `Docs`. It fills two placeholders, in these
+     exact formats: `{{AREA_OPTIONS}}` (the five forms) becomes one line per area, `        - <Area>` (8 spaces,
+     so the YAML stays valid); `{{AREA_LIST}}` (`BOARD.md`) becomes one inline run,
+     `` `<Area>` (<description>) · `<Area>` (<description>) ``.
    - **Product terms**: `{{PRODUCT}}` (its name), `{{AUDIENCE}}` (who it serves, as the PR summary says it),
      `{{CHANNELS}}` (where users meet it), `{{DESIGN_DOC}}` (path of the design source of truth).
    - **Commands**: `{{INSTALL_CMD}}` (the frozen install, e.g. `npm ci`), `{{RUN_CMD}}`, `{{TYPECHECK_CMD}}`,
