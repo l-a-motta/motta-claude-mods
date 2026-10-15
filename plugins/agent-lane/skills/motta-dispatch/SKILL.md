@@ -24,4 +24,4 @@ desktop app: one side session per issue, each in its own worktree, each running
    - `prompt`: `Run the motta-build-issue skill on issue #<n> of vtex-copilot/vtex-copilot-fse. You run unattended: the issue and its parent spike are your only source of decisions; when they do not settle a call, follow the skill's "Asking" section and stop.`
    - `background`: `The owner settled this issue's decisions in advance and dispatched it to be built without supervision, alongside other build sessions in their own worktrees. The run ends with a PR into dev and CI green, or a question on the issue. The owner reviews the PR's product summary and ships it with motta-ship-pr.`
 4. **Report** the started sessions as links. When they end, summarise each in one line — PR link
-   or the question asked — and point the owner at the PRs to read and label `human-approved`.
+   or the question asked — and point the owner at the PRs to read and label `agent: human-approved`.

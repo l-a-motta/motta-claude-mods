@@ -107,7 +107,7 @@ Check: `Select-String -Path "$HOME\.claude\skills\find-skills\SKILL.md" -Pattern
 
 ## 6. The work skills: motta-heavydev and agent-lane
 
-Two plugins in this repo carry skills for work rather than drawing. `motta-heavydev` is the `/motta-heavydev` flow and its seven `hd-*` agent types. `agent-lane` holds the five `motta-*` skills of `vtex-copilot-fse`'s agent lane, which only work inside a checkout of that repo.
+Two plugins in this repo carry skills for work rather than drawing. `motta-heavydev` is the `/motta-heavydev` flow and its seven `hd-*` agent types. `agent-lane` holds the six `motta-*` skills of `vtex-copilot-fse`'s agent lane, which only work inside a checkout of that repo.
 
 ```powershell
 claude plugin install motta-heavydev@motta-claude-mods --scope user

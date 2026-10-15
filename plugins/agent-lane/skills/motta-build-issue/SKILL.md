@@ -71,5 +71,5 @@ issue" in the PR.
 ## Boundaries
 
 The run's whole footprint is its issue branch, its PR and its issue. Merging, pushing to `dev` or
-`main`, applying `human-approved`, the release PR, deploys, AWS and SSM, memory files, docs the
+`main`, applying `agent: human-approved`, the release PR, deploys, AWS and SSM, memory files, docs the
 issue did not ask for, and the local `.env` all belong to people or to `motta-ship-pr`.

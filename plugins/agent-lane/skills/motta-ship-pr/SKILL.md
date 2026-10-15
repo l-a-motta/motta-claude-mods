@@ -1,12 +1,12 @@
 ---
 name: motta-ship-pr
-description: Ship PRs the owner approved — for a PR into dev labelled `human-approved`, run the ship script that checks the gates, squash-merges, closes its issues and updates the board and release PR. Use when asked to ship, merge or finish approved PRs, or why an approved PR did not ship.
+description: Ship PRs the owner approved — for a PR into dev labelled `agent: human-approved`, run the ship script that checks the gates, squash-merges, closes its issues and updates the board and release PR. Use when asked to ship, merge or finish approved PRs, or why an approved PR did not ship.
 ---
 
 # Ship approved PRs
 
 The last stage of the agent lane (`.github/BOARD.md`, "Agent lane"). The `agent-lane` workflow
-runs this on its own when an owner applies `human-approved`. Use the skill to ship by hand — the
+runs this on its own when an owner applies `agent: human-approved`. Use the skill to ship by hand — the
 workflow is not on the base branch yet, or an earlier run stopped at a gate and the cause is fixed —
 and to explain a stop.
 
@@ -17,7 +17,7 @@ fix. Never merge around it.
 ## Steps
 
 1. **Pick the PRs.** The numbers the owner named, or every open PR into `dev` carrying
-   `human-approved` (`gh pr list --base dev --label human-approved --json number,title`).
+   `agent: human-approved` (`gh pr list --base dev --label "agent: human-approved" --json number,title`).
 2. **Dry-run each one:** `node .github/scripts/ship-pr.mjs <pr> --dry-run`. It prints the gate that
    stops it, or "all gates pass".
 3. **Ship the ones that pass:** `node .github/scripts/ship-pr.mjs <pr>`, as a command of its own so
