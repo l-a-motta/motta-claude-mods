@@ -1,0 +1,45 @@
+name: '🗂️ Epic'
+description: A large body of work delivered through sub-issues
+title: 'epic: '
+type: Feature
+labels: ['type: epic', 'needs-triage']
+projects: ['{{OWNER}}/{{PROJECT_NUMBER}}']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome does this epic deliver, and what source drives it ({{DESIGN_DOC}} next steps, a stakeholder ask)?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / planned sub-issues
+      description: Bullet list of the work this epic breaks into. Create each as a sub-issue of this epic so the board's Sub-issues progress field tracks it.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: delivery
+    attributes:
+      label: How each sub-issue should be delivered
+      description: The shared pattern every child follows (file locations, registration, tests, verification commands).
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Dominant area — children can override individually on the board.
+      options:
+{{AREA_OPTIONS}}
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Links, related epics (use #numbers), out-of-scope notes.

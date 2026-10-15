@@ -1,0 +1,65 @@
+name: agent-lane
+
+# The agent lane's automatic steps (.github/BOARD.md, "Agent lane").
+#
+# pull_request_target, not pull_request: GitHub runs this file as it is on the default branch
+# (`main`), and the ship script as it is on the base branch (`dev`), never as the PR under review has
+# them, so a PR cannot rewrite the gates that judge it. Nothing here checks out or runs the PR's own
+# code. A change to this file takes effect only once a release puts it on `main`.
+#
+# Every job name starts with `agent-lane`: ship-pr.mjs leaves those checks out of its CI gate, so
+# the ship job never waits on itself.
+on:
+  pull_request_target:
+    types: [labeled, synchronize]
+    branches: [dev]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read # the ship step's CI gate lists the head commit's check runs
+
+jobs:
+  ship:
+    name: 'agent-lane · ship'
+    # Only an owner's label ships. AGENT_LANE_OWNERS is a repo variable holding a comma-separated
+    # list of GitHub logins; while it is unset, no label ships anything.
+    if: >-
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'agent: human-approved' &&
+      contains(format(',{0},', vars.AGENT_LANE_OWNERS), format(',{0},', github.event.sender.login))
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: agent-lane-ship-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          persist-credentials: false
+      - name: Ship the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # GITHUB_TOKEN cannot write org Projects; without this secret the board is left as is.
+          BOARD_TOKEN: ${{ secrets.BOARD_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: node .github/scripts/ship-pr.mjs "$PR" --wait-minutes 30
+
+  reset-approval:
+    name: 'agent-lane · reset approval'
+    # An approval covers the commits it saw: a push after it clears the label.
+    if: >-
+      github.event.action == 'synchronize' &&
+      contains(github.event.pull_request.labels.*.name, 'agent: human-approved')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Remove the approval label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          MESSAGE: 'New commits landed after the approval, so `agent: human-approved` was removed. Read what changed, then apply it again.'
+        run: |
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/agent:%20human-approved" > /dev/null
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$MESSAGE" > /dev/null

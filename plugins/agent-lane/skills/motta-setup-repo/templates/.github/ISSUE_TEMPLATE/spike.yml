@@ -1,0 +1,88 @@
+name: '🔬 Spike'
+description: Timeboxed research or investigation — settled spikes become agent-ready feature issues
+title: 'spike: '
+type: Task
+labels: ['type: spike', 'needs-triage']
+projects: ['{{OWNER}}/{{PROJECT_NUMBER}}']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A spike ends with a written answer, not code. Fill the first fields when filing; the
+        **Settlement** fields are filled when the spike is settled (edit the issue body), and they are
+        what the feature issues and their agent runs are built from — see "Agent lane" in
+        `.github/BOARD.md`. Research notes and measurements can stay in comments.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to answer
+      description: What must be decided before anyone builds?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Who asked and what they said (stakeholder, user case, incident), links, related issues.
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox
+      placeholder: 'e.g. 1 day'
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: Decision doc? Prototype? Recommendation in a comment? Feature issues to build?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+{{AREA_OPTIONS}}
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: 'Settlement: decisions'
+      description: >-
+        Filled when settling. Every product and architecture call, numbered, each with its reason —
+        these bind the feature issues, and an agent must flag any deviation from them.
+      placeholder: |
+        D1 — <decision> — <why>
+        D2 — ...
+  - type: textarea
+    id: rejected
+    attributes:
+      label: 'Settlement: rejected options and out of scope'
+      description: What we considered and will not do, so no implementation reintroduces it.
+  - type: textarea
+    id: plan
+    attributes:
+      label: 'Settlement: feature issues'
+      description: >-
+        The issues this spike produces, one line each, filed as sub-issues of this spike. Write
+        "None" when the answer needs no code (the spike then closes as Closed).
+      placeholder: |
+        - [ ] feat: <title> — <scope in one line> (Size S/M)
+  - type: textarea
+    id: human-steps
+    attributes:
+      label: 'Settlement: human-only steps'
+      description: >-
+        Anything an agent cannot do: a live probe or login-dependent test, an MFA-gated AWS change, a
+        CDK deploy, an SSM value, another team's approval. Write "None" when there are none.
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: 'Settlement: breaking change?'
+      description: Removes an integration, changes what leaves the platform, alters auth, or must be easy to find if production misbehaves.
+      options:
+        - 'Not settled yet'
+        - 'No'
+        - 'Yes — label the feature issues breaking-change'

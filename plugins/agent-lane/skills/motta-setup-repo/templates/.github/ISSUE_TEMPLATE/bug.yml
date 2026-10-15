@@ -1,0 +1,48 @@
+name: '🐛 Bug'
+description: Something is broken
+title: 'fix: '
+type: Bug
+labels: ['type: bug', 'needs-triage']
+projects: ['{{OWNER}}/{{PROJECT_NUMBER}}']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `{{RUN_CMD}}`
+        2. Call agent X with input Y
+        3. Observe Z
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - 'Blocks usage entirely'
+        - 'Degraded but workaround exists'
+        - 'Cosmetic / minor'
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+{{AREA_OPTIONS}}
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / evidence
+      description: Paste relevant logs, traces, or screenshots.
+      render: shell

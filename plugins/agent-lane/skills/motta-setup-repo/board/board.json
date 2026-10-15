@@ -1,0 +1,253 @@
+{
+  "_source": "vtex-copilot org project 11 (vtex-copilot-fse delivery board), 2026-10-15",
+  "fields": [
+    {
+      "name": "Status",
+      "dataType": "SINGLE_SELECT",
+      "options": [
+        {
+          "name": "Backlog",
+          "color": "GRAY",
+          "description": "Captured, not yet triaged or scheduled"
+        },
+        {
+          "name": "Todo",
+          "color": "BLUE",
+          "description": "Triaged and ready to be picked up"
+        },
+        {
+          "name": "In Progress",
+          "color": "YELLOW",
+          "description": "Actively being worked on"
+        },
+        {
+          "name": "In Review",
+          "color": "ORANGE",
+          "description": "PR open, awaiting review"
+        },
+        {
+          "name": "Approved",
+          "color": "RED",
+          "description": "Reviewed, approved, ready for /dev"
+        },
+        {
+          "name": "Done",
+          "color": "GREEN",
+          "description": "Merged, in /dev, ready for /main"
+        },
+        {
+          "name": "Released",
+          "color": "PURPLE",
+          "description": "Shipped to production: merged into main via the dev -> main release PR"
+        },
+        {
+          "name": "Closed",
+          "color": "PURPLE",
+          "description": "Issue has been closed without associated code change"
+        },
+        {
+          "name": "Blocked",
+          "color": "PINK",
+          "description": "Circunstances keeping this from evolving in our flow"
+        }
+      ]
+    },
+    {
+      "name": "Priority",
+      "dataType": "SINGLE_SELECT",
+      "options": [
+        {
+          "name": "P0",
+          "color": "RED",
+          "description": "Critical — drop everything, discuss ASAP"
+        },
+        {
+          "name": "P1",
+          "color": "ORANGE",
+          "description": "Commitment for this iteration"
+        },
+        {
+          "name": "P2",
+          "color": "YELLOW",
+          "description": "Nice to have, scheduled opportunistically"
+        },
+        {
+          "name": "P3",
+          "color": "GREEN",
+          "description": "Not at all prioritized, might need revision"
+        },
+        {
+          "name": "Deferred",
+          "color": "BLUE",
+          "description": "Not being done ATM, saved for documentation"
+        }
+      ]
+    },
+    {
+      "name": "Size",
+      "dataType": "SINGLE_SELECT",
+      "options": [
+        {
+          "name": "XS",
+          "color": "GRAY",
+          "description": "Under an hour"
+        },
+        {
+          "name": "S",
+          "color": "BLUE",
+          "description": "A few hours"
+        },
+        {
+          "name": "M",
+          "color": "GREEN",
+          "description": "A day or two"
+        },
+        {
+          "name": "L",
+          "color": "ORANGE",
+          "description": "Most of a week"
+        },
+        {
+          "name": "XL",
+          "color": "RED",
+          "description": "More than a week — consider splitting"
+        }
+      ]
+    },
+    {
+      "name": "Area",
+      "dataType": "SINGLE_SELECT",
+      "options": [
+        {
+          "name": "<from the interview>",
+          "color": "GRAY",
+          "description": "Replaced by the repo's own areas at setup"
+        }
+      ]
+    },
+    {
+      "name": "Target",
+      "dataType": "DATE"
+    }
+  ],
+  "views": [
+    {
+      "name": "Board View",
+      "layout": "BOARD_LAYOUT",
+      "groupBy": [
+        "Status"
+      ],
+      "sortBy": [
+        {
+          "field": "Priority",
+          "direction": "ASC"
+        }
+      ],
+      "fields": [
+        "Title",
+        "Assignees",
+        "Status",
+        "Linked pull requests",
+        "Parent issue",
+        "Sub-issues progress",
+        "Updated",
+        "Closed",
+        "Priority",
+        "Area"
+      ]
+    },
+    {
+      "name": "Table View",
+      "layout": "TABLE_LAYOUT",
+      "groupBy": [],
+      "sortBy": [
+        {
+          "field": "Created",
+          "direction": "ASC"
+        }
+      ],
+      "fields": [
+        "Title",
+        "Assignees",
+        "Status",
+        "Linked pull requests",
+        "Repository",
+        "Sub-issues progress",
+        "Created",
+        "Updated",
+        "Closed",
+        "Priority",
+        "Size",
+        "Area"
+      ]
+    },
+    {
+      "name": "Roadmap",
+      "layout": "ROADMAP_LAYOUT",
+      "groupBy": [],
+      "sortBy": [
+        {
+          "field": "Created",
+          "direction": "ASC"
+        },
+        {
+          "field": "Parent issue",
+          "direction": "ASC"
+        }
+      ],
+      "fields": [
+        "Title",
+        "Assignees",
+        "Status",
+        "Linked pull requests",
+        "Sub-issues progress"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Auto-add sub-issues to project",
+      "enabled": true
+    },
+    {
+      "name": "Auto-add to project",
+      "enabled": true
+    },
+    {
+      "name": "Auto-archive items",
+      "enabled": false
+    },
+    {
+      "name": "Auto-close issue",
+      "enabled": true
+    },
+    {
+      "name": "Code changes requested",
+      "enabled": true
+    },
+    {
+      "name": "Code review approved",
+      "enabled": true
+    },
+    {
+      "name": "Item added to project",
+      "enabled": true
+    },
+    {
+      "name": "Item closed",
+      "enabled": true
+    },
+    {
+      "name": "Item reopened",
+      "enabled": true
+    },
+    {
+      "name": "Pull request linked to issue",
+      "enabled": true
+    },
+    {
+      "name": "Pull request merged",
+      "enabled": true
+    }
+  ]
+}

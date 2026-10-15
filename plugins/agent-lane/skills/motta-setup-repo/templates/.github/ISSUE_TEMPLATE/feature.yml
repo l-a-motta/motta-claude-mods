@@ -1,0 +1,101 @@
+name: '✨ Feature'
+description: New capability or enhancement — written so an agent can build it without asking
+title: 'feat: '
+type: Feature
+labels: ['type: feature', 'needs-triage']
+projects: ['{{OWNER}}/{{PROJECT_NUMBER}}']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature issue is the contract its implementer works from — a person or an unattended agent
+        run. Everything the implementer must not decide alone belongs here. An issue is ready for
+        an agent only when it meets the "Agent-ready" bar in `.github/BOARD.md`.
+  - type: input
+    id: spike
+    attributes:
+      label: Parent spike
+      description: The spike this issue was settled in, if any. Its decisions bind this work.
+      placeholder: '#123'
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / opportunity
+      description: What user or business need does this address? Why now?
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Product impact
+      description: >-
+        What changes for {{AUDIENCE}}, per channel ({{CHANNELS}}): before → after. What {{PRODUCT}}
+        can do afterwards that it cannot today, or stops doing.
+      placeholder: |
+        - Before: ...
+        - After: ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should we build? The approach and the layers it touches; the implementer plans the details.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions that bind this work
+      description: >-
+        Product and architecture calls already made (copied from the spike, or made here), numbered.
+        The implementer follows them and lists any deviation in the PR.
+      placeholder: |
+        D1 — <decision> — <why>
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this issue must not do, including options the spike rejected.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Bullet list — when can we call this done? Each item checkable by a test or a stated observation.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: human-steps
+    attributes:
+      label: Human-only steps
+      description: >-
+        Anything an agent cannot do: a live probe or login-dependent test, an MFA-gated AWS change, a
+        CDK deploy, an SSM value, another team's approval. Write "None" when there are none.
+    validations:
+      required: true
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking change?
+      description: Removes an integration, changes what leaves the platform, alters auth, or must be easy to find if production misbehaves. "Yes" → add the breaking-change label.
+      options:
+        - 'No'
+        - 'Yes'
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+{{AREA_OPTIONS}}
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Links, screenshots, related issues (use #numbers to link them).

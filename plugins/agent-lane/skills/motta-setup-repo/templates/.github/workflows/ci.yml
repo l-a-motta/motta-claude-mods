@@ -1,0 +1,55 @@
+name: CI
+
+# PR gate. Runs on PRs into dev (where work collects) and into main (the periodic dev -> main
+# release PR). The agent lane's ship step (.github/scripts/ship-pr.mjs) waits for these checks and
+# refuses to merge while any is missing or red, so a PR with no check runs never ships.
+#
+# One job on purpose: GitHub bills each job a 1-minute minimum. Every check step uses
+# `if: ${{ !cancelled() }}` so one failure does not skip the others. No job name may start with
+# `agent-lane` — the ship step leaves those out of its CI gate.
+
+on:
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks (types · tests · agent-lane scripts · secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the secret scan reads the PR's commit range
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: {{NODE_PM}}
+      - run: {{INSTALL_CMD}}
+      - name: '[CUSTOM] Typecheck'
+        if: ${{ !cancelled() }}
+        run: {{TYPECHECK_CMD}}
+      - name: '[CUSTOM] Unit tests'
+        if: ${{ !cancelled() }}
+        run: {{TEST_CMD}}
+      - name: '[CUSTOM] Agent-lane script tests'
+        # .github/scripts sits outside the app's test glob; the ship gates are tested with node:test.
+        if: ${{ !cancelled() }}
+        run: node --test .github/scripts/*.test.mjs
+      - name: '[CUSTOM] Secret scan (.env tracked + gitleaks PR range)'
+        if: ${{ !cancelled() }}
+        run: |
+          if git ls-files --error-unmatch '.env' '**/.env' '*.env.local' 2>/dev/null; then
+            echo "::error::A .env file is tracked by git. Secrets must never be committed."
+            exit 1
+          fi
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar -xz gitleaks
+          # workflow_dispatch has no base ref — fall back to dev
+          ./gitleaks git --no-banner --redact --log-opts="origin/${GITHUB_BASE_REF:-dev}..HEAD"
