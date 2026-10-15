@@ -620,7 +620,7 @@ export function enhancerPane($: EngineInterface, elements: any, v: PaneView, lev
                     [n(spent.input), dim(' tokens in'), SEP, n(spent.output), dim(' out')],
                     [n(spent.cached), { t: ' cached', s: 'good' }, dim(` (${spent.input > 0 ? Math.round((100 * spent.cached) / spent.input) : 0}%)`), SEP, n(spent.input - spent.cached), dim(' uncached')],
                   ] as Line[]),
-              'Draft from /enhance',
+              current.via === 'box' ? 'Draft from the prompt box' : 'Draft from /enhance',
             ],
             'info',
             term,
