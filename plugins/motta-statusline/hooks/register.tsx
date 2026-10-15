@@ -870,7 +870,8 @@ type Ui = { Box: any; Text: any; Link: any; Button: any }
 // the file explorer there), the branch (GitHub, as a compare
 // view against origin's default), the file counts (the Changes pane), the
 // last commit once pushed (its page), the percentages (the Context and Usage
-// panes) and the last slot (cycles what it shows).
+// panes), the last slot (cycles what it shows) and the ✦ after it (the
+// Enhance pane, on what the prompt box holds).
 function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null, chips: RenderChildren[] = [], compact = false) {
   const { Box, Text, Link, Button } = ui
   const onDesktop = Svg !== null
@@ -968,6 +969,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     line2.push(seg(limit))
   }
   if (!compact) line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
+  line2.push(seg([press('enhance', '✦', () => void openEnhancer($))]))
 
   // Each line ends with its chip slot (`band-slot:`): a box that grows into
   // what the line's last row leaves, holding the chip at the line's right end.
@@ -1186,6 +1188,17 @@ async function openUsage($: EngineInterface) {
     if (!opened.isPlaced) $.ui.toast(`Usage pane waits: ${opened.reason ?? 'not placed'}`)
   } catch {
     $.ui.toast('Install usage-drill for the Usage pane')
+  }
+}
+
+// Opens prompt-enhancer's Enhance pane on what the prompt box holds, as
+// openContext does context-drill's.
+async function openEnhancer($: EngineInterface) {
+  try {
+    const opened = await $.promptEnhancer.open()
+    if (!opened.isPlaced) $.ui.toast(`Enhance pane waits: ${opened.reason ?? 'not placed'}`)
+  } catch {
+    $.ui.toast('Install prompt-enhancer for the Enhance pane')
   }
 }
 
