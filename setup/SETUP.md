@@ -56,6 +56,7 @@ claude plugin install emotive-spinner@motta-claude-mods --scope user
 claude plugin install tool-borders@motta-claude-mods --scope user
 claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
+claude plugin install turn-receipt@motta-claude-mods --scope user
 claude plugin enable cc-plugin-you-should-know@builtin
 ```
 

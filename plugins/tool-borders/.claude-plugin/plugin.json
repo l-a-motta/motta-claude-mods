@@ -1,10 +1,11 @@
 {
   "name": "tool-borders",
-  "version": "0.2.1",
-  "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet).",
+  "version": "0.3.0",
+  "description": "Marks each tool call with a color: the hue says what it does (read, change, delegate, run, bookkeeping) and the shade how far it reaches (project, elsewhere on this machine, internet). The stroke says how it got past the permission check: one bar (a round border) by a rule, two (a double border) by the auto-mode classifier, a note when you allowed it, red when refused.",
   "author": {
     "name": "l-a-motta"
   },
   "repository": "https://github.com/l-a-motta/motta-claude-mods",
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./types/index.d.ts"
 }

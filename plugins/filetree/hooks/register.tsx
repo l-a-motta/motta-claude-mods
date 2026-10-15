@@ -117,7 +117,7 @@ let nativeScroll = false
 let lastSync = 0
 let noDock = false
 // When the tree opens by itself at a session's start: desktop, always or never.
-let startOpen = 'desktop'
+let startOpen = 'never'
 let home = ''
 let platform: Promise<'linux' | 'darwin' | 'win32'> | null = null
 let dirty: { root: string; files: Record<string, Change> } = { root: '', files: {} }
@@ -1146,7 +1146,7 @@ function shortPath(path: string): string {
 
 export const register: Register = (on, options) => {
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
-  startOpen = typeof options?.startOpen === 'string' ? options.startOpen : 'desktop'
+  startOpen = typeof options?.startOpen === 'string' ? options.startOpen : 'never'
   base = {
     activity: typeof options?.activity === 'string' ? options.activity : 'reads and writes',
     followClaude: options?.follow !== 'off',

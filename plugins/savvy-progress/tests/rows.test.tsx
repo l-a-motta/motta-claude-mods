@@ -76,7 +76,7 @@ test("an Agent call's row draws its own agent's activity strip", async ($, on) =
   await spawn($, 't2')
   const drawing = await row($, 'terminal', 'Agent', 't1')
   expect(await drawing.find({ type: 'Text', text: 'Look around' })).toBeDefined()
-  expect(await drawing.find({ type: 'Text', text: '0:00' })).toBeDefined()
+  expect(await drawing.find({ type: 'Text', text: '0s' })).toBeDefined()
   const root = (await (await row($, 'desktop', 'Agent', 't2')).drawn()) as Node
   expect(root.props?.key).toBe('savvy-row')
   expect(root.children?.[0]?.type).toBe('engine')
@@ -89,7 +89,7 @@ test("a Workflow call's row counts its whole run", async ($, on) => {
   await spawn($, 't9')
   const drawing = await row($, 'terminal', 'Workflow', 'w1')
   expect(await drawing.find({ type: 'Text', text: 'Workflow' })).toBeDefined()
-  expect(await drawing.find({ type: 'Text', text: '0/2 · 0:00' })).toBeDefined()
+  expect(await drawing.find({ type: 'Text', text: '0/2 · 0s' })).toBeDefined()
 })
 
 test('other tools, and calls with no agents, are left as the engine draws them', async ($, on) => {

@@ -1332,8 +1332,8 @@ for (const os of ['linux', 'win32'] as const) {
   })
 }
 
-for (const [surface, startOpen, opened] of [['terminal', undefined, false], ['desktop', undefined, true], ['terminal', 'always', true], ['desktop', 'never', false]] as const) {
-  test(`at start the tree opens by itself: ${surface}, Open on start ${startOpen ?? 'desktop (default)'}`, { timeoutMs: 20_000, options: startOpen ? { startOpen } : {} }, async ($, on) => {
+for (const [surface, startOpen, opened] of [['terminal', undefined, false], ['desktop', undefined, false], ['desktop', 'desktop', true], ['terminal', 'desktop', false], ['terminal', 'always', true], ['desktop', 'never', false]] as const) {
+  test(`at start the tree opens by itself: ${surface}, Open on start ${startOpen ?? 'never (default)'}`, { timeoutMs: 20_000, options: startOpen ? { startOpen } : {} }, async ($, on) => {
     const root = '/Users/k/proj'
     const clock = world(on, { os: 'darwin', env: { HOME: '/Users/k' }, cwd: root, top: '', dirs: { [root]: [['a.ts', 'file']] }, status: '', numstat: '' }, [])
     on('session.surfaces', () => ({ value: [surface] }))

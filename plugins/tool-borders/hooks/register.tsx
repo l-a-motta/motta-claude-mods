@@ -1,4 +1,7 @@
+import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
+
+import type { Verdict } from '../types'
 
 // Each tool call's row in the transcript is marked with a color that says
 // what the call does (its family: the hue) and how far it reaches (the
@@ -359,31 +362,136 @@ export const colorOf = (tool: string, input: unknown, root: string) => {
   return COLORS[family][reach]
 }
 
+// --- How each call got past the permission check: the stroke of its mark.
+//
+// tool.check answers allow (a rule or the mode), deny, or ask. An ask goes to
+// the mode's decider: the auto-mode classifier, or the person at the dialog,
+// which the classic PermissionRequest hook announces just before it shows. The
+// call's tool.call settles it: it ran, or it was refused (and a classifier's
+// refusal raises PermissionDenied first).
+
+const verdicts = atom({ plugin: 'tool-borders', key: 'verdicts' } as const, {})
+const KEPT = 300
+const FAIL = '#ef5350'
+
+type Pending = { tool: string; input: string; isAsked: boolean; deniedBy?: Verdict['deniedBy'] }
+// Calls whose check answered ask, by tool_use_id, until their tool.call ends.
+const pending = new Map<string, Pending>()
+
+const keep = (all: Record<string, Verdict>, id: string, v: Verdict): Record<string, Verdict> => {
+  const next = { ...all, [id]: v }
+  const ids = Object.keys(next)
+  return ids.length > KEPT ? Object.fromEntries(ids.slice(-KEPT).map(k => [k, next[k]!])) : next
+}
+
+const inputKey = (input: unknown): string => {
+  try {
+    return JSON.stringify(input) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+// The pending ask a PermissionRequest is about: the same tool and input, the
+// latest not yet asked; or, with one ask of that tool open, that one.
+export const askedOf = (open: Map<string, Pending>, tool: string, input: unknown): string | undefined => {
+  const mine = [...open].filter(([, p]) => p.tool === tool && !p.isAsked)
+  const key = inputKey(input)
+  return mine.filter(([, p]) => p.input === key).at(-1)?.[0] ?? (mine.length === 1 ? mine[0]![0] : undefined)
+}
+
+// The verdict once the call ends: whoever decided the ask, or who refused it.
+export const settle = (p: Pending, didRun: boolean): Verdict =>
+  didRun ? { by: p.isAsked ? 'you' : 'classifier' } : { by: 'denied', deniedBy: p.deniedBy ?? (p.isAsked ? 'you' : 'classifier') }
+
+// The few words under a row that the stroke cannot say: who allowed it when
+// that was you, who refused it.
+export const verdictNote = (v: Verdict | undefined): string | null => {
+  if (v?.by === 'you') return 'you allowed it'
+  if (v?.by === 'denied') return v.deniedBy === 'you' ? '✗ you denied it' : `✗ denied by ${v.deniedBy ?? 'rule'}`
+  return null
+}
+
+// The terminal's border for a verdict: round by a rule, double by the
+// classifier, bold when you were asked.
+export const borderOf = (v: Verdict | undefined): string => (v?.by === 'classifier' ? 'double' : v?.by === 'you' ? 'bold' : 'round')
+
 export const register: Register = on => {
+  on('tool.check', async ($, e, next) => {
+    const v = await next(e)
+    const id = e.tool_use_id
+    if (!id) return v
+    if (v.decision === 'ask') pending.set(id, { tool: e.tool, input: inputKey(e.input), isAsked: false })
+    const now: Verdict = v.decision === 'allow' ? { by: 'rule' } : v.decision === 'deny' ? { by: 'denied', deniedBy: 'rule' } : { by: 'pending' }
+    await update($, verdicts, all => keep(all, id, now))
+    return v
+  })
+
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const id = askedOf(pending, e.tool_name, e.tool_input)
+    if (id) pending.set(id, { ...pending.get(id)!, isAsked: true })
+    return next(e)
+  })
+
+  on('classic.PermissionDenied', async ($, e, next) => {
+    const p = pending.get(e.tool_use_id)
+    if (p) pending.set(e.tool_use_id, { ...p, deniedBy: 'classifier' })
+    return next(e)
+  })
+
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    const p = pending.get(e.tool_use_id)
+    if (p) {
+      pending.delete(e.tool_use_id)
+      const v = settle(p, ran.deny === undefined)
+      await update($, verdicts, all => keep(all, e.tool_use_id, v))
+    }
+    return ran
+  })
+
   let root: Promise<string> | undefined
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    const { Box } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
     root ??= $.session.root().catch(() => '')
-    const color = colorOf(e.props.tool, e.props.input, await root)
+    const v: Verdict | undefined = (await read($, verdicts))[e.props.tool_use_id]
+    const color = v?.by === 'denied' ? FAIL : colorOf(e.props.tool, e.props.input, await root)
+    const note = verdictNote(v)
+    const noteText = note ? (
+      <Text color={v?.by === 'denied' ? FAIL : undefined} dimColor={v?.by !== 'denied'}>
+        {note}
+      </Text>
+    ) : null
     const row = await next(e)
     // The desktop folds some calls into a line of its own ("Ran a command")
     // and draws their row empty, so a border there would be an empty pill.
     // A thin bar beside the row (a quarter cell) is as tall as the row: nothing
-    // when it is empty.
+    // when it is empty. Two thinner bars when the classifier decided it.
     if (e.surface === 'desktop') {
+      const bars =
+        v?.by === 'classifier' ? (
+          <Box flexDirection="row" gap={0.12}>
+            <Box width={0.12} backgroundColor={color} />
+            <Box width={0.12} backgroundColor={color} />
+          </Box>
+        ) : (
+          <Box width={0.25} backgroundColor={color} />
+        )
       return (
         <Box flexDirection="row" gap={1}>
-          <Box width={0.25} backgroundColor={color} />
+          {bars}
           <Box flexDirection="column" flexGrow={1}>
             {row}
+            {noteText}
           </Box>
         </Box>
       )
     }
     return (
-      <Box borderStyle="round" borderColor={color} flexDirection="column">
+      <Box borderStyle={borderOf(v)} borderColor={color} flexDirection="column">
         {row}
+        {noteText}
       </Box>
     )
   })

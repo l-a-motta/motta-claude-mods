@@ -13,6 +13,17 @@ It is read from the tool's name and input, never from what the call touched:
 
 The colors are `COLORS` in `hooks/register.tsx`.
 
+## How the call got through
+
+The stroke says how the call got past the permission check:
+
+- **A rule or the mode allowed it:** one bar on the desktop, a round border in the CLI.
+- **The auto-mode classifier decided:** two thin bars, a double border.
+- **You were asked** (the dialog showed): a bold border, and `you allowed it` under the row.
+- **Refused:** red, with `✗ denied by rule`, `✗ denied by classifier` or `✗ you denied it` under the row.
+
+It reads `tool.check` (allow, ask or deny), the classic `PermissionRequest` hook, which fires just before the dialog shows, and `PermissionDenied`, which fires when the classifier refuses; the call's `tool.call` settles an ask. A call drawn before the mod loaded keeps the plain mark.
+
 ## Connected to savvy-progress
 
 [savvy-progress](../savvy-progress) colors its tool calls (its activity strips, tool mix, trail and the bubble over each agent's crab) with a copy of this classifier, `savvy-progress/hooks/tool-kinds.ts`, since a mod can import only its own files. **The two are connected: change them together.** Both mods carry the same `tests/tool-kinds.cases.ts`, the calls and colors they must agree on, so a change to one copy fails that mod's tests until the other copy and both case files follow.
