@@ -1,6 +1,6 @@
 ---
 name: motta-ship-pr
-description: Ship PRs the owner approved — for a PR into dev labelled `agent: human-approved`, run the ship script that checks the gates, squash-merges, closes its issues and updates the board and release PR. Use when asked to ship, merge or finish approved PRs, or why an approved PR did not ship.
+description: "Ship PRs the owner approved — for a PR into dev labelled `agent: human-approved`, run the ship script that checks the gates, squash-merges, closes its issues and updates the board and release PR. Use when asked to ship, merge or finish approved PRs, or why an approved PR did not ship."
 ---
 
 # Ship approved PRs
@@ -13,6 +13,10 @@ and to explain a stop.
 `.github/scripts/ship-pr.mjs` is the single implementation: the gates, the merge, the issues, the
 board and the release PR. Read its header for the gates and its `stop(...)` calls for each gate's
 fix. Never merge around it.
+
+**The repo is the current checkout.** Its `.github/BOARD.md` is the rulebook for everything below,
+and the scripts, issue forms and PR template named here are that checkout's own, under `.github/`.
+If the checkout has no `.github/BOARD.md`, stop and say this repo isn't set up for the agent lane.
 
 ## Steps
 

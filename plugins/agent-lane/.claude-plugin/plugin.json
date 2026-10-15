@@ -1,7 +1,7 @@
 {
   "name": "agent-lane",
-  "version": "0.2.0",
-  "description": "The agent-lane skills: motta-intake (notes to spike issues), motta-settle-spike (the owner's decisions to agent-ready issues), motta-dispatch (one worktree build session per ready issue), motta-build-issue (the unattended build playbook), motta-review (acting on and answering the comments on agent: review items) and motta-ship-pr (the gated merge of agent: human-approved PRs). They read vtex-copilot-fse's BOARD.md and run its scripts, so they work inside a checkout of that repo. Copied from vtex-copilot/vtex-copilot-fse@d1ab11c (dev).",
+  "version": "0.3.0",
+  "description": "The agent-lane skills: motta-intake (notes to spike issues), motta-settle-spike (the owner's decisions to agent-ready issues), motta-dispatch (one worktree build session per ready issue), motta-build-issue (the unattended build playbook), motta-review (acting on and answering the comments on agent: review items) and motta-ship-pr (the gated merge of agent: human-approved PRs). They target the repo they run in: its .github/BOARD.md is the rulebook and its .github/scripts do the board and the merge, so they work in any checkout set up for the agent lane and stop in one that is not.",
   "author": {
     "name": "l-a-motta"
   },

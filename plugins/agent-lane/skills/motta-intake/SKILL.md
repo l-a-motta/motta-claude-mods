@@ -1,6 +1,6 @@
 ---
 name: motta-intake
-description: Intake for the agent lane — turn the owner's stakeholder notes, meeting notes or a described merchant need into spike issues on the delivery board. Use when the owner hands over notes or requests and wants spikes opened from them.
+description: Intake for the agent lane — turn the owner's stakeholder notes, meeting notes or a described need of the users the product serves into spike issues on the delivery board. Use when the owner hands over notes or requests and wants spikes opened from them.
 ---
 
 # Intake: notes → spike issues
@@ -9,6 +9,10 @@ The first stage of the agent lane (`.github/BOARD.md`, "Agent lane"). The owner 
 output is one `spike:` issue per **need** — a question that must be decided before anyone builds —
 with the stakeholder's words preserved, so the settling session starts from the source, not from
 a paraphrase.
+
+**The repo is the current checkout.** Its `.github/BOARD.md` is the rulebook for everything below,
+and the scripts, issue forms and PR template named here are that checkout's own, under `.github/`.
+If the checkout has no `.github/BOARD.md`, stop and say this repo isn't set up for the agent lane.
 
 ## Steps
 

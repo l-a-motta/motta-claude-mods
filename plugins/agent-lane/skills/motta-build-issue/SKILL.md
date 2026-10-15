@@ -1,6 +1,6 @@
 ---
 name: motta-build-issue
-description: Build one agent-ready issue unattended, from claim to a PR into dev with CI green. Use when told to build, implement or run an issue labelled `agent: ready`, including from a dispatched session.
+description: "Build one agent-ready issue unattended, from claim to a PR into dev with CI green. Use when told to build, implement or run an issue labelled `agent: ready`, including from a dispatched session."
 ---
 
 # Build an agent-ready issue, unattended
@@ -9,6 +9,10 @@ The third stage of the agent lane (`.github/BOARD.md`, "Agent lane"). Nobody wat
 nobody answers mid-run: **the issue is the only source of decisions.** It ends in one of two
 states — a PR into `dev` with CI green, or a question on the issue with `agent: needs-human`.
 Both are good endings; a PR built on a guess is the bad one.
+
+**The repo is the current checkout.** Its `.github/BOARD.md` is the rulebook for everything below,
+and the scripts, issue forms and PR template named here are that checkout's own, under `.github/`.
+If the checkout has no `.github/BOARD.md`, stop and say this repo isn't set up for the agent lane.
 
 ## The settled line
 
@@ -27,22 +31,25 @@ issue" in the PR.
    or branch, clean (`git status`).
 2. **Read the contract.** `gh issue view <n> --comments`; the parent spike's body (its Settlement
    sections) and comments; BOARD.md "PR lifecycle" and "Agent lane"; the docs AGENTS.md's "Where to
-   find more" names for the layers you touch; the `mastra` skill for any Mastra API. Done when you
+   find more" names for the layers you touch; the skills AGENTS.md says to load. Done when you
    can list which `Dn` decisions and acceptance criteria each part of the work answers to.
 3. **Claim it.** `gh issue edit <n> --remove-label "agent: ready" --add-assignee @me` and
    `.github/scripts/board.sh set <n> Status "In Progress"`.
 4. **Plan, and test the plan against the settled line.** Write the plan: approach, layers and
-   files, tests, and what it touches — code only, CDK, env or SSM, migrations, prompts. Walk it
+   files, tests, and what it touches — code only, infra, env or secrets, migrations or storage
+   schema, prompts. Walk it
    against the settled line. Any unsettled owner's call → "Asking". Otherwise comment the plan on
    the issue (`gh issue comment <n> --body-file …`) so the owner can read what is coming.
 5. **Branch.** `gh issue develop <n> --base dev --name <type>/<n>-<slug>`, fetch, switch to it.
-   Run `pnpm install --frozen-lockfile` when `node_modules` is missing.
-6. **Implement** per AGENTS.md (layering, Zod, registration, comment style) and test per
-   `docs/TESTING.md`. Commits are conventional with a scope; the code commit and the test commit
-   are separate, formatting-only changes in a third (AGENTS.md, "Git & PRs"). A merchant-visible
-   capability gets its tip in `src/mastra/channels/tipCatalog.ts`.
-7. **Check locally, briefly.** `pnpm typecheck`, and `pnpm vitest run <the test files you added or
-   touched>`. The full suite, lint and build are CI's job.
+   Run the repo's install command from AGENTS.md when its dependencies are not installed.
+6. **Implement** per AGENTS.md (its architecture rules, comment style and the design docs it
+   names) and test per the repo's testing guidance, named in AGENTS.md. Commits are conventional
+   with a scope; the code commit and the test commit are separate, formatting-only changes in a
+   third (AGENTS.md, "Git & PRs"). Anything AGENTS.md, BOARD.md or the PR template says must
+   change together with the code (a doc, a catalog entry) changes in the same PR.
+7. **Check locally, briefly.** The repo's typecheck and test commands from AGENTS.md, the tests
+   narrowed to the files you added or touched when its runner allows. The full suite, lint and
+   build are CI's job.
 8. **Open the PR** into `dev` from `.github/pull_request_template.md`, every section filled:
    - **Product summary** in product terms, no file paths. "What a human must do" lists the issue's
      human-only steps plus any you found, each as `- [ ] (before merge) …` or
@@ -50,8 +57,8 @@ issue" in the PR.
      release; anything the merge itself depends on is before merge.
    - **Deviations from the issue**: every departure from the issue or spike, with its reason — or
      "None".
-   - `Closes #<n>`; the right capability-tip box ticked; the IMPORTANT block when the issue carries
-     `breaking-change`.
+   - `Closes #<n>`; every box the template asks you to tick, ticked truthfully; the IMPORTANT
+     block when the issue carries `breaking-change`.
    Then `board.sh set <n> Status "In Review"`.
 9. **Drive CI green.** `gh pr checks <pr> --watch`, run in the background — a queued CI outlasts a
    foreground command's timeout. On a failure read `gh run view <run> --log-failed`,
@@ -71,5 +78,5 @@ issue" in the PR.
 ## Boundaries
 
 The run's whole footprint is its issue branch, its PR and its issue. Merging, pushing to `dev` or
-`main`, applying `agent: human-approved`, the release PR, deploys, AWS and SSM, memory files, docs the
+`main`, applying `agent: human-approved`, the release PR, deploys, cloud consoles and secrets, memory files, docs the
 issue did not ask for, and the local `.env` all belong to people or to `motta-ship-pr`.

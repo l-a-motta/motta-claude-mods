@@ -10,14 +10,18 @@ issues this produces are built by runs nobody watches, so every product or archi
 need is made **here**, by the owner, and written down. A call left implicit becomes a stalled run
 (`agent: needs-human`) or a PR built on a guess.
 
+**The repo is the current checkout.** Its `.github/BOARD.md` is the rulebook for everything below,
+and the scripts, issue forms and PR template named here are that checkout's own, under `.github/`.
+If the checkout has no `.github/BOARD.md`, stop and say this repo isn't set up for the agent lane.
+
 ## Steps
 
 1. **Load the spike.** `gh issue view <n> --comments`, the issues it links, its parent epic if
    any, and the code and docs it touches — enough to know which options are real and what each
    costs. Read BOARD.md "Agent lane" and `.github/ISSUE_TEMPLATE/feature.yml`. Done when you can
    state the spike's answer, or what is still missing for one, in two sentences.
-2. **Draft the decisions.** Number every open call `D1, D2, …` — product calls first (what a
-   merchant, FSE or internal user sees or can do; channels; tone), then architecture (layers, new
+2. **Draft the decisions.** Number every open call `D1, D2, …` — product calls first (what the
+   users the product serves, or its internal users, see or can do; channels; tone), then architecture (layers, new
    dependencies, tables, infra, auth, model or routing changes). For each: 2–4 options, the
    consequence of each for users, and your recommendation. Add the proposed feature issues (each
    `XS`–`M`; split anything bigger), the human-only steps you foresee, and whether it is a breaking

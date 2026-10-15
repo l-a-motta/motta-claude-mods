@@ -70,7 +70,7 @@
     {
       "name": "agent-lane",
       "source": "./plugins/agent-lane",
-      "description": "Skills for the agent lane of vtex-copilot-fse: /motta-intake turns notes into spike issues, /motta-settle-spike turns the owner's decisions into agent-ready issues, /motta-dispatch starts a worktree build session per ready issue, motta-build-issue builds one unattended to a PR with CI green, /motta-review acts on and answers the comments on agent: review issues and PRs, and /motta-ship-pr merges agent: human-approved PRs through the repo's gate script. They work inside a vtex-copilot-fse checkout."
+      "description": "Skills for the agent lane: /motta-intake turns notes into spike issues, /motta-settle-spike turns the owner's decisions into agent-ready issues, /motta-dispatch starts a worktree build session per ready issue, motta-build-issue builds one unattended to a PR with CI green, /motta-review acts on and answers the comments on agent: review issues and PRs, and /motta-ship-pr merges agent: human-approved PRs through the repo's gate script. They work in whichever repo they run in, following its .github/BOARD.md, and stop in a checkout that has none."
     },
     {
       "name": "motta-heavydev",
