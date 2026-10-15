@@ -117,6 +117,17 @@ Copy-Item "$HOME\Documents\Coding\motta-heavydev\skill\agents\hd-*.md" "$HOME\.c
 
 Check: `Get-ChildItem "$HOME\.claude\agents\hd-*.md"` lists seven files. Its own `DESIGN.md` says the rest.
 
+The skill follows `git pull` through the junction; the agents are copies, so after a pull that changes `skill\agents`, copy them again and start a new session. The agents report progress through `savvy-progress` (step 3). Two more pieces are optional:
+
+```powershell
+claude plugin install mattpocock-skills@claude-plugins-official --scope user
+claude mcp add playwright --scope user -- cmd /c npx -y @playwright/mcp@latest
+```
+
+`mattpocock-skills` brings the `grilling` skill that runs the flow's interviews; without it the session runs them in the same format. The Playwright MCP server drives the browser for `--qa=full`. Settings that differ from `skill\defaults.json` go in `~/.claude/motta-heavydev.json`, which no repo carries; without it the defaults apply.
+
+Check: `claude plugin list` shows `mattpocock-skills` enabled, and `claude mcp list` shows `playwright` connected.
+
 ## 7. The desktop app's Code tab
 
 In the desktop app, Settings → Claude Code:
