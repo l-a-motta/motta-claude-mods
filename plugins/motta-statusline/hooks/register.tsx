@@ -80,8 +80,11 @@
 //   with it on a narrow band. The lines are keyed `band-lines:`, so a chip
 //   mod whose hook runs above this one finds the slots too (its withChip).
 //
+// On the desktop each segment is a tile that grows with the band, so the
+// lines fill it edge to edge; the branch and its files share one.
+//
 // Compact (a band or line under COMPACT_BELOW cells): the lines leave out
-// the repository a worktree belongs to, the last commit, the context's token
+// the name of the repository a worktree belongs to (its icon stays), the last commit, the context's token
 // counts and the last slot (`out` and the rest), and the chips draw their
 // glyph alone; what is left keeps to fewer rows instead of wrapping into many.
 //
@@ -884,11 +887,23 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   // segment wider than a row of its own wraps its items. In character cells:
   // the desktop takes fractions, the terminal whole cells.
   const space = onDesktop ? DESKTOP_SPACE : TERMINAL_SPACE
-  const seg = (parts: unknown[]) => (
-    <Box flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={space.inner}>
-      {parts}
-    </Box>
-  )
+  // On the desktop each segment is a tile, a faint ground that grows into what
+  // its row leaves, so the lines fill the band edge to edge whatever its
+  // width; `grow` is a tile's share of that room (the bars' tiles take the
+  // most, the ✦ none). A tile with room to spare centers what it holds, a
+  // bar's tile keeps it at the left. The terminal keeps plain segments.
+  const seg = (parts: unknown[], grow = 1, gap: number = space.inner) =>
+    onDesktop ? (
+      <Box flexDirection="row" flexWrap="wrap" flexGrow={grow} flexShrink={1} alignItems="center" justifyContent={grow > 1 ? 'flex-start' : 'center'} columnGap={gap} backgroundColor={TILE[scheme]} borderStyle="bold" borderColor={TILE[scheme]} paddingX={TILE_PAD.x} paddingY={TILE_PAD.y}>
+        {parts}
+      </Box>
+    ) : (
+      <Box flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={gap}>
+        {parts}
+      </Box>
+    )
+  // Items that stay together inside a segment that holds more than one group.
+  const group = (parts: unknown[]) => <Box flexDirection="row" alignItems="center" columnGap={space.inner}>{parts}</Box>
   // Pieces that read as one token, `@84/s` or a bar's runs: no gap inside.
   const tight = (parts: unknown[]) => <Box flexDirection="row" alignItems="center">{parts}</Box>
   // A 0-100 bar: squares on the desktop, its tick exactly at `share` (0-1),
@@ -921,25 +936,28 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   const w = d.where
   const drift = driftOf(w.path, d.cwd)
   // The root, then the shell's folder right after it when a `cd` has taken
-  // the shell away from it, then whether the root is a worktree.
+  // the shell away from it, then whether the root is a worktree (its icon
+  // alone when compact).
   const line1 = [
     seg([
       icon('folder', 'suggestion'),
       press('folder', w.label, () => void openFolder($, w.path)),
       ...(drift === null ? [] : [<Text color="suggestion">↳</Text>, press('cwd', drift, () => void openFolder($, d.cwd))]),
-      ...(w.worktreeOf && !compact ? [icon('worktree', 'subtle'), <Text color="subtle">{w.worktreeOf}</Text>] : []),
+      ...(w.worktreeOf ? [icon('worktree', 'subtle'), ...(compact ? [] : [<Text color="subtle">{w.worktreeOf}</Text>])] : []),
     ]),
   ]
   if (d.git) {
     const g = d.git
     const look = branchLook(g, d.pr, d.base)
     const branch = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale} underline={d.repoUrl !== null}>{g.branch}</Text>
-    line1.push(seg([icon(look.icon, look.color), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]))
     // `files changed` or `files clean`: the word in the branch's color, as part
-    // of how the branch stands.
+    // of how the branch stands, so it shares the branch's segment.
     const isChanged = g.staged + g.modified + g.untracked > 0
     const files = <Text color={look.color} dimColor={d.pr !== null && d.isPrStale}>{isChanged ? 'changed' : 'clean'}</Text>
-    line1.push(seg([press('changes', 'files', () => void openChanges($)), files, ...syncParts(Text, g, d.base)]))
+    line1.push(seg([
+      group([icon(look.icon, look.color), d.repoUrl ? <Link href={branchUrl(d.repoUrl, g.branch, d.base)}>{branch}</Link> : branch]),
+      group([press('changes', 'files', () => void openChanges($)), files, ...syncParts(Text, g, d.base)]),
+    ], 1, space.outer))
     if (d.commit && !compact) line1.push(seg(commitParts(Text, Link, d, d.commit, now)))
   }
   if (d.pr && !onDesktop) line1.push(seg([tight(prSegment(Text, Link, d.pr, d.isPrStale))]))
@@ -954,7 +972,7 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
       bar(`context ${d.ctxPercent}%`, d.ctxPercent, ctxColor, compactShare(d.compactAt, d.ctxWindow), compactMark(d.compactAt, d.ctxWindow)),
       <Text color={ctxColor} bold>{d.ctxPercent}%</Text>,
       ...(compact ? [] : [<Text color="subtle">{short(d.ctxTokens)}/{short(d.ctxWindow)}</Text>]),
-    ]),
+    ], BAR_GROW),
   ]
   for (const l of d.limits) {
     const pace = l.resetsAt === null ? null : elapsedShare(l.resetsAt, l.windowMs, now)
@@ -966,22 +984,23 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
     ]
     const left = l.resetsAt === null ? '' : resetIn(l.resetsAt - now)
     if (left) limit.push(<Text color="subtle">{left}</Text>)
-    line2.push(seg(limit))
+    line2.push(seg(limit, BAR_GROW))
   }
   if (!compact) line2.push(seg([press('slot', SLOT_LABELS[d.slot], () => void nextSlot($)), ...slotParts(Text, tight, d, now)]))
-  line2.push(seg([press('enhance', '✦', () => void openEnhancer($))]))
+  line2.push(seg([press('enhance', '✦', () => void openEnhancer($))], 0))
 
   // Each line ends with its chip slot (`band-slot:`): a box that grows into
   // what the line's last row leaves, holding the chip at the line's right end.
   // On a narrow band the slot wraps with the segments, so a chip takes no
   // width from the line, and lands right-aligned on a row of its own. The
   // first chip goes to line 1, the rest to line 2; a chip mod drawing above
-  // deals them out again (its withChip).
+  // deals them out again (its withChip). On the desktop the tiles take the
+  // room, so the slot only holds its chip.
   const slots = [chips.slice(0, 1), chips.slice(1)]
   const row = (i: number, segs: unknown[], marginTop: number) => (
-    <Box key={`line${i + 1}`} flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={space.outer} marginTop={marginTop}>
+    <Box key={`line${i + 1}`} flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={onDesktop ? TILE_GAP : space.outer} rowGap={onDesktop ? DESKTOP_LINE_GAP : 0} marginTop={marginTop}>
       {segs}
-      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={1} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
+      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={onDesktop ? 0 : 1} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
         {slots[i]}
       </Box>
     </Box>
@@ -996,6 +1015,15 @@ const DESKTOP_SPACE = { inner: 0.5, outer: 2 }
 // The extra room between the desktop's two lines, in rows; a terminal's rows
 // are whole, so it keeps none.
 const DESKTOP_LINE_GAP = 0.35
+// The desktop's tiles: the gap between two in a row, in cells (rows keep
+// DESKTOP_LINE_GAP); the padding inside one; a bar's share of a row's spare
+// room against 1 for the others; and the ground, a faint wash of the band's
+// text color, its border drawn in the same wash so only its corners show (the
+// desktop rounds `bold` less than `round`).
+const TILE_GAP = 0.75
+const TILE_PAD = { x: 1, y: 0.3 }
+const BAR_GROW = 3
+const TILE: Record<Scheme, string> = { dark: "#ffffff0d", light: "#0000000a" }
 const TERMINAL_SPACE = { inner: 1, outer: 3 }
 // The padding a desktop button puts on each side of its label, in cells:
 // measured from the band, about four fifths of a cell.
