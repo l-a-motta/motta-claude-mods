@@ -53,9 +53,12 @@ test('Cleaned up fixes only typos, fillers, voice-to-text artifacts and punctuat
   expect(cleanPrompt(DRAFT)).toBe(`<text>\n${DRAFT}\n</text>`)
 })
 
-test('Expanded asks for the shortest prompt and carries the conversation', () => {
-  expect(expandPrompt(DRAFT, { kind: 'none' })).toContain(`<draft>\n${DRAFT}\n</draft>`)
-  expect(expandPrompt(DRAFT, { kind: 'none' })).toContain('the shortest prompt that keeps everything that matters')
+test('Expanded works through the four lenses and carries the conversation', () => {
+  const prompt = expandPrompt(DRAFT, { kind: 'none' })
+  expect(prompt).toContain(`<draft>\n${DRAFT}\n</draft>`)
+  for (const lens of ['ALTITUDE:', 'DEPTH:', 'RANGE:', 'VERIFICATION:']) expect(prompt).toContain(lens)
+  expect(prompt).toContain('Then rewrite my task as a prompt that asks for exactly this.')
+  expect(prompt).toContain('Reply with the prompt alone, nothing before or after it.')
   expect(expandPrompt(DRAFT, { kind: 'fork' })).toContain('Our conversation so far is above')
   expect(expandPrompt(DRAFT, { kind: 'excerpt', text: 'Me: hi' })).toContain('<conversation>\nMe: hi\n</conversation>')
 })

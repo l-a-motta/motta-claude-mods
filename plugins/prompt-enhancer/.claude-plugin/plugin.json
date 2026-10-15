@@ -1,7 +1,7 @@
 {
   "name": "prompt-enhancer",
-  "version": "0.6.0",
-  "description": "/enhance <text> opens an Enhance pane that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (a short, clear prompt written with the conversation). Use it, send it or copy it.",
+  "version": "0.7.0",
+  "description": "/enhance <text> opens an Enhance pane that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (written with the conversation: the outcome behind the draft, what a top practitioner would do, the task as verbs with techniques from other fields and an adversary, and how to verify it, rewritten as a prompt that asks for exactly that). Use it, send it or copy it.",
   "author": {
     "name": "l-a-motta"
   },

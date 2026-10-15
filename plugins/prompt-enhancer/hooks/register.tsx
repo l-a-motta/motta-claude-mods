@@ -8,16 +8,22 @@
 //   Fix the flaky test in @tests/checkout.spec.ts ...
 //   [ Use it ] [ Send ] [ Copy ]                       retry  discard
 //
-// It is opened by /enhance <text> only; nothing is drawn above the prompt.
+// It is opened by /enhance <text>, or by motta-statusline's ✦ through the
+// noun this mod adds to `$` ($.promptEnhancer.open()), which offers what the
+// prompt box holds; nothing is drawn above the prompt.
 // The Enhance pane opens with the draft, and you pick one way; only that one
 // is written, in one model call:
 // - Cleaned up: a cheap model (the `cleanModel` option, haiku by default),
 //   no conversation, fixes typos, fillers ("uh", "ah"), other voice-to-text
 //   artifacts and punctuation, and leaves every other word, the wording, the
 //   language and the structure as written.
-// - Expanded: the shortest prompt that keeps everything that matters, task
-//   first, checkable success criteria, placeholders in [brackets] for facts
-//   it lacks, written with the conversation.
+// - Expanded: the draft worked through four lenses (altitude: the outcome
+//   behind it and the access to pursue it alone; depth: what a top
+//   practitioner would do, with a stretch target; range: the task as verbs,
+//   techniques from other fields and an adversary; verification: proof other
+//   than the model's judgment), then rewritten as a prompt that asks for
+//   exactly that, placeholders in [brackets] for facts it lacks, written with
+//   the conversation. Only the prompt comes back.
 // Paths, @mentions, /commands and code in backticks must come back verbatim:
 // the card names any the result changed or dropped.
 //
@@ -45,7 +51,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelEffort, ModelUsage, Register, RenderSurface } from 'claude-code'
 
-import type { BoxAccess, Job, Kind, Phase, Usage } from '../types'
+import type { BoxAccess, Job, Kind, Phase, PromptEnhancerOpened, Usage } from '../types'
 
 const TIMEOUT_MS = 120_000
 const MAX_TOKENS = 4_000
@@ -158,13 +164,22 @@ export function expandPrompt(draft: string, convo: Convo): string {
   return [
     `Rewrite the draft prompt below, which I am about to send to Claude Code, the AI coding agent working in my repository.${convoNote(convo)}`,
     '',
-    "Make it the shortest prompt that keeps everything that matters, following Anthropic's and OpenAI's prompting guidance:",
-    '- Be clear and direct. Lead with the task, then the context it needs.',
-    '- Say what to do rather than what not to do.',
-    '- Say how to check the work is done, when the draft or the conversation tells you.',
+    'Work through the draft with these four lenses:',
+    '',
+    "ALTITUDE: Tell me what outcome I'm really after beyond what I literally asked for. Propose a version of the task aimed at that outcome, and list what access or setup (logs, analytics, test devices, scripts) you'd need to pursue it on your own and verify your results without me.",
+    '',
+    "DEPTH: Describe what a top practitioner in this area would do that I haven't asked for: what raw material they'd start from, the specific tools and methods they'd use (profilers, test harnesses, telemetry, statistical analysis, etc.), and a target that sounds unreasonably high but is achievable.",
+    '',
+    "RANGE: Restate the task as verbs instead of nouns (what it must actually *do* for the user/player). Name 3–5 fields outside software that would see this differently, and for each, one concrete technique you'll actually apply, not a persona to imitate. Include one adversarial perspective that tries to break or disprove the work.",
+    '',
+    "VERIFICATION: Define how we'll know it worked using something other than your own judgment: tests, benchmarks, measurements, or real user data you can run and check.",
+    '',
+    'Then rewrite my task as a prompt that asks for exactly this.',
+    '',
+    'For the rewrite:',
     "- Use only facts from my draft and the conversation. Where the agent needs a fact you don't have, leave a placeholder in square brackets, like [link to the failing run]. Never invent file names, numbers or requirements.",
     '- Copy file paths, @mentions, /commands, code and anything in backticks exactly as I wrote them.',
-    "- Write in the language of my draft, as me speaking to the agent, in a few lines with no headings or tags. Don't address me and don't explain your changes.",
+    "- Write in the language of my draft, as me speaking to the agent. Don't address me and don't explain your changes.",
     '',
     'Reply with the prompt alone, nothing before or after it.',
     ...(convo.kind === 'excerpt' ? ['', '<conversation>', convo.text, '</conversation>'] : []),
@@ -284,12 +299,20 @@ async function closePane($: EngineInterface) {
 }
 
 // The draft is in hand: offer the two ways, in the pane.
-async function offer($: EngineInterface, original: string) {
+async function offer($: EngineInterface, original: string, via: 'box' | 'command') {
   ticket++
   await reset($)
-  await update($, job, () => ({ original, kind: null }))
+  await update($, job, () => ({ original, via, kind: null }))
   await update($, phase, () => 'choosing')
-  await openPane($)
+  return openPane($)
+}
+
+// The status line's ✦: offer what the box holds. An empty box, or a call
+// still running, opens the pane on what it already has.
+async function openFromBox($: EngineInterface): Promise<PromptEnhancerOpened> {
+  const { text } = await $.prompt.read().catch(() => ({ text: '' }))
+  const opened = text.trim() !== '' && (await read($, phase)) !== 'working' ? await offer($, text, 'box') : await openPane($)
+  return opened.isPlaced ? { isPlaced: true } : { isPlaced: false, reason: opened.reason }
 }
 
 async function run($: EngineInterface, kind: Kind) {
@@ -351,8 +374,11 @@ async function useIt($: EngineInterface, text: string) {
 }
 
 async function send($: EngineInterface, text: string) {
+  const current = await read($, job)
   ticket++
   await reset($)
+  // The draft the ✦ read is still in the box: clear it.
+  if (current?.via === 'box' && (await read($, boxAccess)) !== 'no') await $.prompt.fill({ text: '', mode: 'replace' })
   await closePane($)
   void $.prompt.submit({ text })
 }
@@ -449,18 +475,18 @@ export function enhancerPane($: EngineInterface, elements: any, v: PaneView, lev
   const expandTip: Line[] =
     settings.model === 'session'
       ? [
-          ['Rewrites it as a short, clear prompt ', kbd('e')],
+          ['Rewrites it through four lenses ', kbd('e')],
           ['Session model', dim(': a fork of this conversation')],
           'Reads the transcript from the prompt cache',
           [dim('Before the first reply: '), FALLBACK_MODEL, dim(', no context')],
-          'Task first, success checks, [placeholders]',
+          'Altitude, depth, range, verification',
         ]
       : [
-          ['Rewrites it as a short, clear prompt ', kbd('e')],
+          ['Rewrites it through four lenses ', kbd('e')],
           [settings.model, SEP, dim('effort '), settings.effort ?? 'the model default'],
           [dim('Sent the last '), `${EXCERPT_MESSAGES}`, dim(' messages as an excerpt')],
           [dim('Up to '), `${EXCERPT_CHARS / 1000}k`, dim(' chars, '), `${EXCERPT_MESSAGE_CHARS / 1000}k`, dim(' per message')],
-          'Task first, success checks, [placeholders]',
+          'Altitude, depth, range, verification',
         ]
 
   if (now === 'choosing') {
@@ -613,6 +639,15 @@ export const register: Register = (on, options) => {
     effort: EFFORTS.includes(effort as ModelEffort) ? (effort as ModelEffort) : undefined,
   }
 
+  // The noun's own answer is the bottom of its event; the hook on
+  // `promptEnhancer.open` below answers first with this mod's `$`.
+  on('engine.create', async (_, e, next) => {
+    const built = await next(e)
+    return { ...built, promptEnhancer: { open: async (): Promise<PromptEnhancerOpened> => ({ isPlaced: false, reason: 'prompt-enhancer did not answer the call' }) } }
+  })
+
+  on('promptEnhancer.open', async $ => ({ value: await openFromBox($) }))
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'enhance',
@@ -631,7 +666,7 @@ export const register: Register = (on, options) => {
     const text = e.args.trim()
     if (text === '') return { text: 'Put your prompt after the command: /enhance fix the flaky checkout test.' }
     if ((await read($, phase)) === 'working') return { text: 'An enhance is already running. Cancel it in the Enhance pane first.' }
-    await offer($, text)
+    await offer($, text, 'command')
     return { text: '✦ Pick Cleaned up or Expanded in the Enhance pane.' }
   })
 
@@ -650,7 +685,7 @@ export const register: Register = (on, options) => {
     const label = await read($, modelLabel)
 
     if (now === 'idle' || current === null) {
-      return <Text dimColor>Run /enhance followed by your prompt.</Text>
+      return <Text dimColor>Write a prompt in the box and press ✦ in the status line, or run /enhance followed by your prompt.</Text>
     }
     const view: PaneView = {
       surface: e.surface,
