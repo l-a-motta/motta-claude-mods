@@ -890,11 +890,11 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   // On the desktop each segment is a tile, a faint ground that grows into what
   // its row leaves, so the lines fill the band edge to edge whatever its
   // width; `grow` is a tile's share of that room (the bars' tiles take the
-  // most, the ✦ none). A tile with room to spare centers what it holds, a
-  // bar's tile keeps it at the left. The terminal keeps plain segments.
+  // most, the ✦ none). A tile centers what it holds. The terminal keeps plain
+  // segments.
   const seg = (parts: unknown[], grow = 1, gap: number = space.inner) =>
     onDesktop ? (
-      <Box flexDirection="row" flexWrap="wrap" flexGrow={grow} flexShrink={1} alignItems="center" justifyContent={grow > 1 ? 'flex-start' : 'center'} columnGap={gap} backgroundColor={TILE[scheme]} borderStyle="bold" borderColor={TILE[scheme]} paddingX={TILE_PAD.x} paddingY={TILE_PAD.y}>
+      <Box flexDirection="row" flexWrap="wrap" flexGrow={grow} flexShrink={1} alignItems="center" justifyContent="center" columnGap={gap} backgroundColor={TILE[scheme]} borderStyle="bold" borderColor={TILE[scheme]} paddingX={TILE_PAD.x} paddingY={TILE_PAD.y}>
         {parts}
       </Box>
     ) : (
@@ -995,12 +995,13 @@ function lines($: EngineInterface, ui: Ui, d: Data, now: number, Svg: any = null
   // width from the line, and lands right-aligned on a row of its own. The
   // first chip goes to line 1, the rest to line 2; a chip mod drawing above
   // deals them out again (its withChip). On the desktop the tiles take the
-  // room, so the slot only holds its chip.
+  // room, so the slot only holds its chip; an empty one takes back the gap
+  // before it, or the last row of a wrapped line ends a gap short of the rest.
   const slots = [chips.slice(0, 1), chips.slice(1)]
   const row = (i: number, segs: unknown[], marginTop: number) => (
     <Box key={`line${i + 1}`} flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={onDesktop ? TILE_GAP : space.outer} rowGap={onDesktop ? DESKTOP_LINE_GAP : 0} marginTop={marginTop}>
       {segs}
-      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={onDesktop ? 0 : 1} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
+      <Box key={`band-slot:${i + 1}`} flexDirection="row" flexGrow={onDesktop ? 0 : 1} marginLeft={onDesktop && slots[i].length === 0 ? -TILE_GAP : 0} justifyContent="flex-end" alignItems="center" columnGap={space.outer}>
         {slots[i]}
       </Box>
     </Box>
