@@ -63,6 +63,10 @@ export type AgentRun = {
   activeAt?: number
   /** Started by a workflow run, not an Agent call. */
   isWorkflow?: boolean
+  /** Which of your turns started it: its number in the session, counted from your first message; the turns your message's agents and tasks start after it count as the same. */
+  turn?: number
+  /** That turn's message, its first words. */
+  prompt?: string
 }
 
 /** What a call does and how far it reaches, as tool-borders classifies it (hooks/tool-kinds.ts). */
@@ -109,9 +113,30 @@ export type Panel = {
   since?: number
   /** The band's bar the person hid with its ✕, by bandBar's key, until another takes its place. */
   bandDismissed?: string
+  /** The timeline on top of the pane (every agent as a lane on one time axis): open unless false. */
+  isLanesOpen?: boolean
+  /** Batches of the timeline opened or folded by hand, by the id of their first agent; the newest is open otherwise. */
+  batchesOpen?: Record<string, boolean>
+  /** Your messages so far this session, and the latest one's first words: the turn new agents belong to. */
+  turnSeq?: number
+  turnText?: string
+}
+
+/** The noun savvy-progress adds to `$`, so another mod opens its agents pane: `$.savvyProgress.open()`. */
+export type SavvyProgress = {
+  /** Opens the agents pane, or leaves it open. */
+  open: () => Promise<SavvyProgressOpened>
+}
+
+export type SavvyProgressOpened = {
+  isPlaced: boolean
+  reason?: string
 }
 
 declare module 'claude-code' {
+  interface EngineInterface {
+    savvyProgress: SavvyProgress
+  }
   interface PluginState {
     'savvy-progress': {
       flow: Flow | null

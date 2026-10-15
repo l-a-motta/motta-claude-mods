@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
-import { actOf, BUDGET, CHAR_BUDGET, cardParts, charEm, countNodes, endCall, endStatus, firstLine, fit, foldFinished, groupsOf, idleNote, isOverdue, NO_CARDS, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
+import { actOf, BUDGET, batchesOf, batchTimes, busySpans, laneCells, lanesOf, rangeOf, rulerScale, CHAR_BUDGET, cardParts, charEm, countNodes, endCall, endStatus, firstLine, fit, foldFinished, groupsOf, idleNote, isOverdue, NO_CARDS, reconcile, saySlot, shortName, startCall, stripColor, toolColor } from '../hooks/register.tsx'
 import type { AgentRun } from '../types'
 
 type $ = Parameters<TestBody>[0]
@@ -102,8 +102,8 @@ describe('the card', () => {
   test('quiet for 45 s: waiting on a running tool, or just quiet', () => {
     const busy = startCall(run(), 'c1', 'Bash', { command: 'npm test' }, 0)
     expect(idleNote(busy, 30_000)).toBe('')
-    expect(idleNote(busy, 80_000)).toBe('waiting on Bash · 1:20')
-    expect(idleNote(endCall(busy, 'c1', true, 0), 50_000)).toBe('quiet 0:50')
+    expect(idleNote(busy, 80_000)).toBe('waiting on Bash · 1m20s')
+    expect(idleNote(endCall(busy, 'c1', true, 0), 50_000)).toBe('quiet 50s')
   })
 
   test('the crab acts out the running tool, its words or its thoughts', () => {
@@ -273,7 +273,8 @@ test('Failed folds under its header as Finished does, on each surface', { option
   for (const pane of panes) {
     const text = textOf(await pane.drawn())
     expect(text).toMatch(/Failed · 1/)
-    expect(text).not.toMatch(/Broken read/)
+    // Its lane stays in the timeline; its card is gone.
+    expect(text.match(/Broken read/g)?.length).toBe(1)
   }
 })
 
@@ -421,4 +422,124 @@ test('over the budget the desktop drops info cards first, keeping the action one
   expect(terminal).not.toMatch(/"borderColor":"#6f6d68"/)
   expect(terminal).not.toContain('"hover":{"backgroundColor":"#ffffff10"}')
   expect(textOf(terminalTree)).not.toMatch(/folded to fit/)
+})
+
+describe("the timeline", () => {
+  test("lanes run in order of start, each a share of one axis from the first start to the last end", () => {
+    const { lanes, span, hidden } = lanesOf([run({ id: "b", startedAt: 4_000, endedAt: 10_000, status: "done" }), run({ id: "a", startedAt: 0, endedAt: 2_000, status: "done" }), run({ id: "c", startedAt: 6_000 })], 8_000)
+    expect(span).toBe(10_000)
+    expect(lanes.map(l => [l.n, l.agent.id, l.from, l.to])).toEqual([[1, "a", 0, 0.2], [2, "b", 0.4, 1], [3, "c", 0.6, 0.8]])
+    expect(hidden).toBe(0)
+  })
+
+  test("past twenty, the earlier ones are counted, not drawn", () => {
+    const list = Array.from({ length: 23 }, (_, i) => run({ id: `a${i}`, startedAt: i * 1_000, endedAt: i * 1_000 + 500, status: "done" }))
+    const { lanes, hidden } = lanesOf(list, 30_000)
+    expect(hidden).toBe(3)
+    expect(lanes[0]?.n).toBe(4)
+  })
+
+  test("a text lane is dots outside its run and its ticks spread over it, a failed one red", () => {
+    const a = run({ ticks: [{ id: "t1", family: "read", reach: "project", state: "ok" }, { id: "t2", family: "run", reach: "project", state: "failed" }] })
+    const cells = laneCells({ n: 1, agent: a, from: 0.5, to: 1 }, 10)
+    expect(cells.map(c => c.ch).join("")).toBe("·····▮▮▮▮▮")
+    expect(cells[9]?.color).toBe("#E24B4A")
+    expect(cells[5]?.color).not.toBe(cells[9]?.color)
+  })
+})
+
+test("the timeline sits open on top of the pane, numbers each agent as its card does, and its press folds it", { options: { language: "en" } }, async ($, on) => {
+  const clock = engine(on)
+  await finishMany($, clock, 3)
+  const panes = await Promise.all((["terminal", "desktop"] as const).map(surface => mountPane($, surface)))
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/▾ agents · 0 running · 3 total/)
+    expect(text).toMatch(/Batch 1/)
+    expect(text).toMatch(/· 3 agents/)
+    expect(text.indexOf("agents · 0 running")).toBeLessThan(text.indexOf("Finished · 3"))
+    // Once in its lane, once on its card.
+    expect(text.match(/#1 ?Survey part 1/g)?.length).toBe(2)
+    expect(text).toMatch(/#3 ?Survey part 3/)
+  }
+  await panes[1]!.press({ key: "lanes" })
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/▸ agents · 0 running · 3 total/)
+    expect(text).not.toMatch(/Batch 1/)
+    expect(text.match(/#1 ?Survey part 1/g)?.length).toBe(1)
+  }
+})
+
+describe("batches and the ruler", () => {
+  const at = (s: number) => s * 1000
+  const list = [
+    run({ id: "a", anchor: "t1", startedAt: at(0), endedAt: at(29), status: "done" }),
+    run({ id: "b", anchor: "t2", startedAt: at(1), endedAt: at(12), status: "done" }),
+    run({ id: "c", anchor: "t3", startedAt: at(1095), endedAt: at(1102), status: "failed" }),
+    run({ id: "d", anchor: "w1", startedAt: at(1200) }),
+    run({ id: "e", anchor: "w1", startedAt: at(1230) }),
+  ]
+
+  test("agents started together, or by one call, make a batch; numbered in order of start", () => {
+    const bs = batchesOf(list, at(1300))
+    expect(bs.map(b => [b.n, b.agents.map(a => a.id).join(""), b.failed, b.running])).toEqual([[1, "ab", 0, 0], [2, "c", 1, 0], [3, "de", 0, 2]])
+    expect([bs[0]!.start, bs[0]!.end, bs[2]!.end]).toEqual([0, at(29), at(1300)])
+  })
+
+  test("idle time longer than ten seconds splits the ruler; each stretch gets room by how long it ran", () => {
+    const spans = busySpans(batchesOf(list, at(1300)))
+    expect(spans.length).toBe(3)
+    const { boxes, at: x } = rulerScale(spans, 400, 22, 36)
+    expect(boxes.map(b => Math.round(b.x))).toEqual([0, Math.round(boxes[0]!.w + 22), Math.round(boxes[0]!.w + boxes[1]!.w + 44)])
+    expect(Math.round(boxes.at(-1)!.x + boxes.at(-1)!.w)).toBe(400)
+    expect(boxes[1]!.w).toBeGreaterThanOrEqual(36)
+    expect(Math.round(x(at(1095)))).toBe(Math.round(boxes[1]!.x))
+  })
+
+  test("times read on the clock, without seconds; a second line says when a batch started, ended, ran and idled before", () => {
+    const t = new Date(2026, 9, 15, 14, 2, 10).getTime()
+    expect(rangeOf(t, t + 3 * 60_000, false)).toBe("14:02–14:05")
+    expect(rangeOf(t, t + 20_000, true)).toBe("14:02–now")
+    const bs = batchesOf([run({ id: "a", startedAt: t, endedAt: t + 172_000, status: "done" }), run({ id: "b", startedAt: t + 782_000, endedAt: t + 873_000, status: "done" })], t + 900_000)
+    expect(batchTimes(bs[1]!, bs[0])).toBe("started 14:15 · ended 14:16 · ran 1m31s · 10m idle before")
+    // Begun and ended within one minute: one clock time.
+    const quick = batchesOf([run({ id: "q", startedAt: t, endedAt: t + 29_000, status: "done" })], t + 30_000)
+    expect(batchTimes(quick[0]!, undefined)).toBe("at 14:02 · ran 29s")
+    expect(batchTimes({ ...bs[1]!, running: 1 }, bs[0])).toMatch(/^started 14:15 · running · ran/)
+  })
+
+  test("agents your turn set going are one batch, named by the turn, however far apart they start", () => {
+    const bs = batchesOf(
+      [
+        run({ id: "a", turn: 3, prompt: "spawn some agents", startedAt: 0, endedAt: 5_000, status: "done" }),
+        run({ id: "b", turn: 3, prompt: "spawn some agents", startedAt: 90_000, endedAt: 95_000, status: "done" }),
+        run({ id: "c", turn: 4, prompt: "and another", startedAt: 92_000 }),
+      ],
+      100_000,
+    )
+    expect(bs.map(b => [b.label, b.key, b.agents.map(a => a.id).join(""), b.prompt])).toEqual([
+      ["Turn 3", "turn-3", "ab", "spawn some agents"],
+      ["Turn 4", "turn-4", "c", "and another"],
+    ])
+  })
+})
+
+test("the newest batch is open as lanes, older ones fold to a strip until pressed", { options: { language: "en" } }, async ($, on) => {
+  const clock = engine(on)
+  await finishMany($, clock, 2)
+  await clock.advance(60_000)
+  await spawn($, "t9", "Late survey")
+  const panes = await Promise.all((["terminal", "desktop"] as const).map(surface => mountPane($, surface)))
+  for (const pane of panes) {
+    const text = textOf(await pane.drawn())
+    expect(text).toMatch(/Batch 1/)
+    expect(text).toMatch(/Batch 2/)
+    // Batch 2 is open: its lane and its card; batch 1 folded: its agents on their cards alone.
+    expect(text.match(/#3 ?Late survey/g)?.length).toBe(2)
+    expect(text.match(/#1 ?Survey part 1/g)?.length).toBe(1)
+  }
+  const batch1 = (await panes[1]!.findAll({ type: "Button" })).find(b => String(b.props.key).startsWith("batch-") && String(b.props.label).includes("Batch 1"))
+  await panes[1]!.press({ key: String(batch1?.props.key) })
+  for (const pane of panes) expect(textOf(await pane.drawn()).match(/#1 ?Survey part 1/g)?.length).toBe(2)
 })

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, ToolSpec } from 'claude-code'
 
-import type { AgentRun, Flow, Panel, Phase, PlannedTask, ToolFamily, ToolReach, TouchedFile, TrailEntry } from '../types'
+import type { AgentRun, Flow, Panel, Phase, PlannedTask, SavvyProgressOpened, Tick, ToolFamily, ToolReach, TouchedFile, TrailEntry } from '../types'
 import { classify, COLORS as TOOL_COLORS, judgeCommand, reachOfPath } from './tool-kinds.ts'
 
 const flow = atom({ plugin: 'savvy-progress', key: 'flow' } as const, null)
@@ -126,6 +126,20 @@ const STRINGS = {
     toCompact: 'Folds the pane to one strip of crabs',
     costNote: 'Cost ≈: tokens × the price table, per model',
     timeNote: (sum: string): TipPiece[] => [dim('Time: first start to last end'), SEP, sum, dim(' summed')],
+    lanes: (running: number, total: number) => `agents · ${running} running · ${total} total`,
+    earlierLanes: (n: number) => `+${n} earlier`,
+    batch: 'Batch',
+    at: 'at',
+    units: { s: 's', m: 'm', h: 'h' },
+    turn: 'Turn',
+    started: 'started',
+    ended: 'ended',
+    ran: 'ran',
+    runningNow: 'running',
+    idleBefore: (d: string) => `${d} idle before`,
+    now: 'now',
+    agentsN: (n: number) => `${n} ${n === 1 ? 'agent' : 'agents'}`,
+    runningN: (n: number) => `${n} running`,
   },
   ru: {
     pane: 'Агенты',
@@ -190,6 +204,20 @@ const STRINGS = {
     toCompact: 'Сворачивает панель в полосу крабов',
     costNote: 'Стоимость ≈: токены × таблица цен моделей',
     timeNote: (sum: string): TipPiece[] => [dim('Время: от первого старта до конца'), SEP, dim('всего '), sum],
+    lanes: (running: number, total: number) => `агенты · работают ${running} · всего ${total}`,
+    earlierLanes: (n: number) => `+${n} ранее`,
+    batch: 'Пакет',
+    at: 'в',
+    units: { s: 'с', m: 'м', h: 'ч' },
+    turn: 'Ход',
+    started: 'начат',
+    ended: 'завершён',
+    ran: 'шёл',
+    runningNow: 'идёт',
+    idleBefore: (d: string) => `${d} простоя до него`,
+    now: 'сейчас',
+    agentsN: (n: number) => `агентов: ${n}`,
+    runningN: (n: number) => `работают: ${n}`,
   },
 } as const
 
@@ -690,12 +718,15 @@ const fmtTokens = (n: number): string =>
 
 const fmtCost = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`
 
+// A length of time with its units, `29s`, `2m52s`, `1h04m`: a colon is
+// left to clock times alone.
 const fmtTime = (ms: number): string => {
+  const u = tr().units
   const s = Math.max(0, Math.round(ms / 1000))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
+  if (s < 60) return `${s}${u.s}`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}${u.m}${String(s % 60).padStart(2, '0')}${u.s}`
+  return `${Math.floor(m / 60)}${u.h}${String(m % 60).padStart(2, '0')}${u.m}`
 }
 
 const elapsed = (a: AgentRun, at: number): number => (a.endedAt ?? Math.max(at, a.startedAt)) - a.startedAt
@@ -1053,7 +1084,7 @@ export const groupsOf = (list: AgentRun[], at: number): { failed: AgentRun[]; ru
   }
 }
 
-const agentSvg = (W: number, a: AgentRun, at: number): string => {
+const agentSvg = (W: number, a: AgentRun, at: number, n?: number): string => {
   const s = tr()
   const { costume, color, label: role } = roleOf(a)
   const parts = cardParts(a, at)
@@ -1141,7 +1172,7 @@ const agentSvg = (W: number, a: AgentRun, at: number): string => {
     W,
     H,
     `${a.status === 'running' ? actBubble(22, 1, a.trail?.at(-1)) : ''}${agentCrab(a, 0, 14, at, a.status === 'stopped')}
-<text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${xml(fitText(a.description || a.type, 13, titleW))}</text>
+<text class="t" x="42" y="18" font-family="${FONT}" font-size="13" font-weight="600">${n ? `<tspan class="s" font-weight="400">#${n}</tspan><tspan dx="${NUM_GAP}">` : ''}${xml(fitText(a.description || a.type, 13, titleW - (n ? textWidth(`#${n}`, 13) + NUM_GAP : 0)))}${n ? '</tspan>' : ''}</text>
 <text x="42" y="34" font-family="${FONT}" font-size="11"><tspan class="t" font-weight="600">${xml(role)}</tspan><tspan fill="${color}">  ${xml(modelName(a.model))}</tspan>${a.effort ? `<tspan class="s"> ${xml(a.effort)}</tspan>` : ''}${meta.length ? `<tspan class="s">  ·  ${xml(meta.join('  ·  '))}</tspan>` : ''}${overdue ? `<tspan fill="${WARN}">  ·  ${s.overdue}</tspan>` : ''}</text>
 ${isChipsUp ? chips(38, stepsW + 30) : ''}${steps && stepsW > 30 ? `<text class="t" x="42" y="49" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(fitText(steps, 11, stepsW))}</text>` : ''}
 <text class="s" x="${42 + barW}" y="49" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${stats}</text>
@@ -1617,6 +1648,306 @@ ${stats && `<text class="s" x="${W}" y="33" text-anchor="end" font-family="${FON
   )
 }
 
+// --- the timeline, on top of the pane: a ruler of the session, then the
+// agents in batches. A batch is the agents started together: by one call, or
+// within BATCH_WINDOW of the batch's first start. The ruler puts every batch on
+// one axis of clock time, where a stretch with no agent at work longer than
+// IDLE_MIN folds into a small dashed box, so batches far apart stay readable.
+// Under it each batch has a header with its clock range and run time; the
+// newest is open as lanes (each agent's run on the batch's own axis, its ticks
+// spread evenly over it: a tick keeps no time of its own, so their spacing
+// says nothing), the older ones folded to one strip of their runs overlaid.
+
+export const LANES_MAX = 20
+export const BATCH_WINDOW = 10_000
+export const IDLE_MIN = 10_000
+const LANE_H = 22
+// Room over the first lane, and under the last one.
+const LANES_TOP = 4
+const LANES_FOOT = 4
+// One size for every word and figure in a lane; the number column starts
+// after the status mark, the name a fixed gap after the number.
+const LANE_FONT = 12.5
+const NUM_X = 16
+const NUM_GAP = 7
+// The ruler: a dashed box where idle time folds, a least width per stretch of
+// work, and its height (batch numbers over the track, clock times under it).
+const GAP_W = 22
+const SPAN_MIN = 36
+const RULER_H = 50
+// A folded batch's strip, and the rule that ends the timeline.
+const STRIP_H = 12
+const RULE_H = 12
+const BATCH_DONE = '#5b8fcc'
+
+export type Lane = { n: number; agent: AgentRun; from: number; to: number }
+
+// Each listed agent's number: its place in order of start, from 1. The lanes
+// and the cards both show it, so a lane and its card read as one agent.
+export const agentNumbers = (list: AgentRun[]): Map<string, number> =>
+  new Map([...list].sort((x, y) => x.startedAt - y.startedAt).map((a, i) => [a.id, i + 1]))
+
+const endOf = (a: AgentRun, at: number): number => a.endedAt ?? Math.max(at, a.startedAt)
+
+// The lanes in order of start, the latest LANES_MAX of them, numbered as the
+// pane numbers them; `from` and `to` are shares of the span, first start to
+// last end (or now).
+export const lanesOf = (list: AgentRun[], at: number, numbers?: Map<string, number>): { lanes: Lane[]; span: number; hidden: number } => {
+  const byStart = [...list].sort((x, y) => x.startedAt - y.startedAt)
+  if (byStart.length === 0) return { lanes: [], span: 0, hidden: 0 }
+  const start = byStart[0]!.startedAt
+  const span = Math.max(1, ...byStart.map(a => endOf(a, at) - start))
+  const share = (t: number) => Math.min(1, Math.max(0, (t - start) / span))
+  const all = byStart.map((a, i) => ({ n: numbers?.get(a.id) ?? i + 1, agent: a, from: share(a.startedAt), to: share(endOf(a, at)) }))
+  const lanes = all.slice(-LANES_MAX)
+  return { lanes, span, hidden: all.length - lanes.length }
+}
+
+export type Batch = { key: string; n: number; label: string; prompt?: string; agents: AgentRun[]; start: number; end: number; running: number; failed: number }
+
+// The agents in batches, in order of start: one per turn of yours, the agents
+// your message set going (its own turn's and those of the turns its agents'
+// reports start). An agent recorded before turns were kept joins the batch its
+// call started, or the latest such batch when it starts within BATCH_WINDOW of
+// its first start. A turn's batch is keyed by the turn, any other by its first
+// agent's id, so one folded or opened stays so as it grows.
+export const batchesOf = (list: AgentRun[], at: number): Batch[] => {
+  const groups: { turn?: number; anchors: Set<string>; agents: AgentRun[] }[] = []
+  for (const a of [...list].sort((x, y) => x.startedAt - y.startedAt)) {
+    const anchor = a.anchor ?? a.id
+    const last = groups.filter(g => g.turn === undefined).at(-1)
+    const home =
+      a.turn !== undefined
+        ? groups.find(g => g.turn === a.turn)
+        : (groups.find(g => g.turn === undefined && g.anchors.has(anchor)) ?? (last && a.startedAt - last.agents[0]!.startedAt <= BATCH_WINDOW ? last : undefined))
+    if (home) {
+      home.anchors.add(anchor)
+      home.agents.push(a)
+    } else groups.push({ turn: a.turn, anchors: new Set([anchor]), agents: [a] })
+  }
+  return groups.map((g, i) => ({
+    key: g.turn !== undefined ? `turn-${g.turn}` : g.agents[0]!.id,
+    n: i + 1,
+    label: g.turn !== undefined ? `${tr().turn} ${g.turn}` : `${tr().batch} ${i + 1}`,
+    prompt: g.agents[0]!.prompt,
+    agents: g.agents,
+    start: g.agents[0]!.startedAt,
+    end: Math.max(...g.agents.map(a => endOf(a, at))),
+    running: g.agents.filter(a => a.status === 'running').length,
+    failed: g.agents.filter(a => a.status === 'failed').length,
+  }))
+}
+
+export type Span = { start: number; end: number }
+
+// The stretches of work: the batches' runs merged where less than IDLE_MIN
+// of idle time lies between them.
+export const busySpans = (batches: Batch[]): Span[] => {
+  const spans: Span[] = []
+  for (const b of [...batches].sort((x, y) => x.start - y.start)) {
+    const last = spans.at(-1)
+    if (last && b.start - last.end <= IDLE_MIN) last.end = Math.max(last.end, b.end)
+    else spans.push({ start: b.start, end: b.end })
+  }
+  return spans
+}
+
+// Where the ruler draws each stretch across `width`: a gap of `gap` between
+// stretches (the folded idle time), each at least `least` wide, the rest of the
+// width shared by how long each ran; `x(t)` places a moment of work on it.
+export const rulerScale = (spans: Span[], width: number, gap = GAP_W, least = SPAN_MIN) => {
+  const k = Math.max(1, spans.length)
+  const room = Math.max(k, width - gap * (k - 1))
+  const floor = Math.min(least, room / k)
+  const busy = spans.reduce((t, s) => t + Math.max(1, s.end - s.start), 0) || 1
+  let x = 0
+  const boxes = spans.map(s => {
+    const w = floor + ((room - floor * k) * Math.max(1, s.end - s.start)) / busy
+    const box = { ...s, x, w }
+    x += w + gap
+    return box
+  })
+  const at = (t: number): number => {
+    const box = boxes.find(b => t <= b.end) ?? boxes.at(-1)
+    if (!box) return 0
+    return box.x + Math.min(1, Math.max(0, (t - box.start) / Math.max(1, box.end - box.start))) * box.w
+  }
+  return { boxes, at }
+}
+
+const two = (n: number) => String(n).padStart(2, '0')
+
+// A moment as the clock read it, `14:02`, with seconds when asked.
+export const clockOf = (ms: number, seconds = false): string => {
+  const d = new Date(ms)
+  return `${two(d.getHours())}:${two(d.getMinutes())}${seconds ? `:${two(d.getSeconds())}` : ''}`
+}
+
+// When something ran, `14:02–14:05`; `14:33–now` while it runs.
+export const rangeOf = (start: number, end: number, isRunning: boolean): string => `${clockOf(start)}–${isRunning ? tr().now : clockOf(end)}`
+
+// A stretch of idle time, by the minute: `<1m`, `10m`, `1h05m`.
+export const idleOf = (ms: number): string => {
+  const m = Math.floor(ms / 60_000)
+  return m < 1 ? '<1m' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
+}
+
+// A batch's second line: when it started and ended, how long it ran, and the
+// idle time since the batch before it ended.
+export const batchTimes = (b: Batch, before: Batch | undefined): string => {
+  const s = tr()
+  const isOneMinute = !b.running && clockOf(b.start) === clockOf(b.end)
+  return [
+    ...(isOneMinute ? [`${s.at} ${clockOf(b.start)}`] : [`${s.started} ${clockOf(b.start)}`, b.running ? s.runningNow : `${s.ended} ${clockOf(b.end)}`]),
+    `${s.ran} ${fmtTime(b.end - b.start)}`,
+    ...(before && b.start > before.end ? [s.idleBefore(idleOf(b.start - before.end))] : []),
+  ].join(' · ')
+}
+
+// A lane's mark, as the agent's card draws it: ✓ ✗ ■, ● in its model's color
+// while it runs, an amber ◷ once overdue.
+export const laneMark = (a: AgentRun, at: number): { glyph: string; color: string } => {
+  if (a.status === 'running' && isOverdue(a, at)) return { glyph: '◷', color: WARN }
+  const color = a.status === 'failed' ? FAIL : a.status === 'done' ? OK : a.status === 'stopped' ? STOPPED : roleOf(a).color
+  return { glyph: STATUS_GLYPH[a.status] ?? '●', color }
+}
+
+// A batch on the ruler and in its strip: clay while it runs, red with a
+// failure, blue once done.
+const batchColor = (b: Batch): string => (b.running ? CLAY : b.failed ? FAIL : BATCH_DONE)
+
+const tickFill = (t: Tick): string => (t.state === 'failed' ? FAIL : toolColor(t.family, t.reach))
+
+export const lanesHeight = (lanes: Lane[], hidden: number): number => LANES_TOP + (lanes.length + (hidden ? 1 : 0)) * LANE_H + LANES_FOOT
+
+const lanesSvg = (W: number, lanes: Lane[], hidden: number, at: number): string => {
+  const nameW = Math.min(240, Math.round(W * 0.36))
+  // Numbers in a column of their own, as wide as the widest, then the names
+  // all starting at one edge.
+  const nameX = NUM_X + textWidth(`#${Math.max(...lanes.map(l => l.n), 1)}`, LANE_FONT) + NUM_GAP
+  const timeW = 42
+  const x0 = nameW + 8
+  const x1 = W - timeW
+  const top = LANES_TOP
+  const more = hidden ? `<text class="m" x="${NUM_X}" y="${top + lanes.length * LANE_H + 14}" font-family="${FONT}" font-size="11">${xml(tr().earlierLanes(hidden))}</text>` : ''
+  const rows = [...lanes].reverse().map((l, i) => {
+    const a = l.agent
+    const y = top + i * LANE_H
+    const m = laneMark(a, at)
+    const left = x0 + l.from * (x1 - x0)
+    const width = Math.max(3, (l.to - l.from) * (x1 - x0))
+    // As many of its latest ticks as fit a pixel apart, spread over its run.
+    const ticks = (a.ticks ?? []).slice(-Math.max(1, Math.floor((width + 1) / 2.5)))
+    const step = ticks.length ? width / ticks.length : width
+    const run = ticks.length
+      ? ticks.map((t, k) => `<rect x="${(left + k * step).toFixed(1)}" y="${y + 7}" width="${Math.max(1, step - 1).toFixed(1)}" height="8" rx="1" fill="${tickFill(t)}"/>`).join('')
+      : `<rect class="m" x="${left.toFixed(1)}" y="${y + 7}" width="${width.toFixed(1)}" height="8" rx="1"/>`
+    return `<text x="0" y="${y + 14.5}" font-family="${FONT}" font-size="${LANE_FONT}" fill="${m.color}">${m.glyph}</text>
+<text class="s" x="${NUM_X}" y="${y + 14.5}" font-family="${FONT}" font-size="${LANE_FONT}" font-variant-numeric="tabular-nums">#${l.n}</text>
+<text class="t" x="${nameX}" y="${y + 14.5}" font-family="${FONT}" font-size="${LANE_FONT}">${xml(fitText(a.description || a.type, LANE_FONT, nameW - nameX))}</text>
+<line class="ln" x1="${x0}" y1="${y + 11}" x2="${x1}" y2="${y + 11}" stroke-width="1" stroke-dasharray="1 4"/>
+<g${a.status === 'running' ? ' class="live"' : ''}>${run}</g>
+<text class="s" x="${W}" y="${y + 14.5}" text-anchor="end" font-family="${FONT}" font-size="${LANE_FONT}" font-variant-numeric="tabular-nums">${fmtTime(elapsed(a, at))}</text>`
+  })
+  return svg(W, lanesHeight(lanes, hidden), more + rows.join('\n'))
+}
+
+// The session's ruler: each batch a bar on the axis of clock time, its number
+// over it while there is room, the folded idle time a dashed box, and the clock
+// time each stretch of work began and ended under it.
+const rulerSvg = (W: number, batches: Batch[], at: number): string => {
+  const spans = busySpans(batches)
+  const { boxes, at: xOf } = rulerScale(spans, W)
+  const TRACK = 20
+  const parts: string[] = []
+  for (const [i, b] of batches.entries()) {
+    const x0 = xOf(b.start)
+    const x1 = Math.max(x0 + 3, xOf(b.end))
+    parts.push(`<rect${b.running ? ' class="live"' : ''} x="${x0.toFixed(1)}" y="${TRACK}" width="${(x1 - x0).toFixed(1)}" height="10" rx="2" fill="${batchColor(b)}" opacity=".85"/>`)
+    // Its name while it fits before the next batch, else its number alone.
+    const room = (i + 1 < batches.length ? xOf(batches[i + 1]!.start) : W) - x0 - 4
+    const name = b.label
+    const short = name.split(' ').at(-1) ?? ''
+    const label = textWidth(name, 11) <= room ? name : textWidth(short, 11) <= room ? short : ''
+    if (label) parts.push(`<text class="s" x="${x0.toFixed(1)}" y="${TRACK - 6}" font-family="${FONT}" font-size="11">${xml(label)}</text>`)
+  }
+  const isRunning = batches.some(b => b.running)
+  for (const [i, box] of boxes.entries()) {
+    if (i > 0) parts.push(`<rect class="gap" x="${(box.x - GAP_W + 3).toFixed(1)}" y="${TRACK - 4}" width="${GAP_W - 6}" height="18" rx="3" fill="none" stroke-width="1" stroke-dasharray="3 2"/>`)
+    const isLast = i === boxes.length - 1
+    const from = clockOf(box.start)
+    const to = isLast && isRunning ? tr().now : clockOf(box.end)
+    const both = textWidth(from, 11) + textWidth(to, 11) + 8 <= box.w
+    const y = TRACK + 25
+    if (textWidth(from, 11) <= box.w + GAP_W - 4) parts.push(`<text class="s" x="${box.x.toFixed(1)}" y="${y}" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${from}</text>`)
+    if (both) parts.push(`<text class="s" x="${(box.x + box.w).toFixed(1)}" y="${y}" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${to}</text>`)
+  }
+  const css = '<style>.gap{stroke:#9a9a96}@media (prefers-color-scheme: dark){.gap{stroke:#5f5f5b}}</style>'
+  return svg(W, RULER_H, css + parts.join(''))
+}
+
+// A folded batch: its agents' runs on the batch's own axis, one over another.
+const stripOfSvg = (W: number, b: Batch, at: number): string => {
+  const span = Math.max(1, b.end - b.start)
+  const x0 = NUM_X
+  const w = W - x0
+  const runs = b.agents
+    .map(a => {
+      const from = x0 + ((a.startedAt - b.start) / span) * w
+      const to = x0 + ((endOf(a, at) - b.start) / span) * w
+      const fill = a.status === 'failed' ? FAIL : a.status === 'running' ? roleOf(a).color : BATCH_DONE
+      return `<rect x="${from.toFixed(1)}" y="2" width="${Math.max(2, to - from).toFixed(1)}" height="7" rx="1" fill="${fill}" opacity=".45"/>`
+    })
+    .join('')
+  return svg(W, STRIP_H, `<line class="ln" x1="${x0}" y1="5.5" x2="${W}" y2="5.5" stroke-width="1" stroke-dasharray="1 4"/>${runs}`)
+}
+
+const ruleSvg = (W: number): string => svg(W, RULE_H, `<line class="ln" x1="0" y1="${RULE_H / 2}" x2="${W}" y2="${RULE_H / 2}" stroke-width="1"/>`)
+
+// The terminal's lane track: `·` outside the run, inside it the ticks as `▮`
+// spread over its cells, gray where it made no call.
+export const laneCells = (l: Lane, width: number): { ch: string; color?: string }[] => {
+  const a = l.agent
+  const from = Math.min(width - 1, Math.floor(l.from * width))
+  const to = Math.max(from + 1, Math.min(width, Math.ceil(l.to * width)))
+  const shown = (a.ticks ?? []).slice(-(to - from))
+  return Array.from({ length: width }, (_, i) => {
+    if (i < from || i >= to) return { ch: '·' }
+    if (shown.length === 0) return { ch: '▮', color: RUNNING }
+    return { ch: '▮', color: tickFill(shown[Math.floor(((i - from) * shown.length) / (to - from))]!) }
+  })
+}
+
+// The terminal's ruler, `width` cells: each batch `━` in its color, the folded
+// idle time ` ┆ `, `·` where a stretch has no batch at that moment.
+export const rulerCells = (batches: Batch[], width: number): { ch: string; color?: string }[] => {
+  const { boxes, at: xOf } = rulerScale(busySpans(batches), width, 3, 4)
+  const cells: { ch: string; color?: string }[] = Array.from({ length: width }, () => ({ ch: ' ' }))
+  for (const box of boxes) for (let i = Math.floor(box.x); i < Math.min(width, Math.ceil(box.x + box.w)); i++) cells[i] = { ch: '·' }
+  for (const box of boxes.slice(1)) {
+    const mid = Math.round(box.x - 2)
+    if (mid >= 0 && mid < width) cells[mid] = { ch: '┆' }
+  }
+  for (const b of batches) {
+    const from = Math.min(width - 1, Math.floor(xOf(b.start)))
+    const to = Math.max(from + 1, Math.min(width, Math.ceil(xOf(b.end))))
+    for (let i = from; i < to; i++) cells[i] = { ch: '━', color: batchColor(b) }
+  }
+  return cells
+}
+
+// A folded batch's strip in text: `▮` where any of its agents ran, in the
+// color of the latest that did.
+export const stripCells = (b: Batch, width: number, at: number): { ch: string; color?: string }[] => {
+  const span = Math.max(1, b.end - b.start)
+  return Array.from({ length: width }, (_, i) => {
+    const t = b.start + ((i + 0.5) / width) * span
+    const on = b.agents.filter(a => a.startedAt <= t && endOf(a, at) >= t).at(-1)
+    if (!on) return { ch: '·' }
+    return { ch: '▮', color: on.status === 'failed' ? FAIL : on.status === 'running' ? roleOf(on).color : BATCH_DONE }
+  })
+}
+
 // --- terminal drawing: the same rows in text.
 
 const ctxBar = (pct: number, width: number): string => {
@@ -1786,6 +2117,8 @@ export const firstLine = (answer: string): string => {
 type Pending = { text: string; thinking: string; slot: string; say?: { kind: 'say' | 'think'; text: string }; isActive: boolean; seen: number }
 // Module scope on purpose: a reload loses at most a second of it.
 const pending = new Map<string, Pending>()
+// Whether a message you typed came in since the last turn started.
+let isFreshPrompt = false
 
 // Writes the phrases that came in since the last tick to the agents they belong
 // to, and that they were active: any chunk counts, a tool call's arguments too. An agent not in the list yet keeps its phrase for a later tick; one never
@@ -1826,6 +2159,15 @@ async function togglePane($: EngineInterface): Promise<boolean> {
   await update($, now, () => at)
   await $.ui.open({ id: PANE, title: tr().pane })
   return true
+}
+
+// Opens the agents pane for another mod (turn-receipt's `agents`), or leaves it open.
+async function openPane($: EngineInterface): Promise<SavvyProgressOpened> {
+  if ((await $.ui.panes()).some(p => p.id === PANE)) return { isPlaced: true }
+  const at = await $.clock.now()
+  await update($, now, () => at)
+  const opened = await $.ui.open({ id: PANE, title: tr().pane })
+  return { isPlaced: opened.isPlaced, reason: opened.isPlaced ? undefined : opened.reason }
 }
 
 async function autoOpen($: EngineInterface, key: string): Promise<void> {
@@ -1888,6 +2230,15 @@ export const stepTool = (isAsked: boolean): ToolSpec =>
       }
 
 export const register: Register = (on, options) => {
+  // A mod opens only its own panes: others ask through this noun. Its own
+  // answer is the bottom of the event; the hook below answers first.
+  on('engine.create', async (_, e, next) => {
+    const built = await next(e)
+    return { ...built, savvyProgress: { open: async (): Promise<SavvyProgressOpened> => ({ isPlaced: false, reason: 'savvy-progress did not answer the call' }) } }
+  })
+
+  on('savvyProgress.open', async $ => ({ value: await openPane($) }))
+
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     lang = await detectLang($, options.language)
@@ -2041,11 +2392,28 @@ export const register: Register = (on, options) => {
     }
   })
 
+  // A message you typed starts your next turn: new agents belong to it, and to
+  // it still when your message's agents' reports start turns of their own.
+  on('session.append', async ($, e, next) => {
+    if (!e.agentId && e.message.type === 'user' && e.door === 'prompt' && e.origin.kind === 'composer') isFreshPrompt = true
+    return next(e)
+  })
+
+  on('turn.start', async ($, e, next) => {
+    if (isFreshPrompt) {
+      isFreshPrompt = false
+      const text = e.text.replace(/\s+/g, ' ').trim().slice(0, 120)
+      await update($, panel, prev => ({ ...prev, turnSeq: (prev.turnSeq ?? 0) + 1, turnText: text }))
+    }
+    return next(e)
+  })
+
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
     if (started.deny !== undefined) return started
 
     const at = await $.clock.now()
+    const p = await read($, panel)
     await update($, agents, list => {
       const round = 1 + list.filter(a => norm(a.description) === norm(e.description) && e.description).length
       const run: AgentRun = {
@@ -2065,6 +2433,7 @@ export const register: Register = (on, options) => {
         round,
         activeAt: at,
         ...(e.workflow ? { isWorkflow: true } : {}),
+        ...(p.turnSeq ? { turn: p.turnSeq, prompt: p.turnText } : {}),
       }
       return [...list.filter(a => a.id !== run.id), run].slice(-300)
     })
@@ -2260,7 +2629,51 @@ export const register: Register = (on, options) => {
         </Box>
       )
       const isEmpty = list.length === 0 && planned.length === 0
-      const summary = `≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
+      // The timeline's toggle, on top of the pane once an agent is listed; open,
+      // the axis's span on its right.
+      const isLanesOpen = p.isLanesOpen !== false && list.length > 0
+      const numbers = agentNumbers(list)
+      const batches = batchesOf(list, at)
+      // The newest batch opens by itself, the older ones fold, until pressed.
+      const isBatchOpen = (b: Batch) => p.batchesOpen?.[b.key] ?? b.n === batches.length
+      const lanesToggle =
+        list.length > 0 ? (
+          <Box key="lanes-head" flexDirection="row" justifyContent="space-between" alignItems="center">
+            <Button
+              key="lanes"
+              label={`${isLanesOpen ? '▾' : '▸'} ${s.lanes(runningCount, list.length)}`}
+              plain
+              onPress={() => update($, panel, prev => ({ ...prev, isLanesOpen: prev.isLanesOpen === false }))}
+            />
+            {batches.length > 0 && <Text dimColor>{rangeOf(batches[0]!.start, Math.max(...batches.map(b => b.end)), batches.some(b => b.running > 0))}</Text>}
+          </Box>
+        ) : null
+      // A batch's header: its toggle, how many agents and how they stand, then
+      // when it ran and for how long.
+      const batchHead = (b: Batch) => (
+        <Box key={`bh-${b.key}`} flexDirection="column">
+          <Box flexDirection="row" alignItems="center" columnGap={0.5}>
+            <Button
+              key={`batch-${b.key}`}
+              label={`${isBatchOpen(b) ? '▾' : '▸'} ${b.label}`}
+              plain
+              onPress={() => update($, panel, prev => ({ ...prev, batchesOpen: { ...(prev.batchesOpen ?? {}), [b.key]: !isBatchOpen(b) } }))}
+            />
+            <Text dimColor>{`· ${s.agentsN(b.agents.length)}`}</Text>
+            {b.failed > 0 && <Text color={FAIL}>{`· ✗ ${b.failed}`}</Text>}
+            {b.running > 0 && <Text color={CLAY}>{`· ${s.runningN(b.running)}`}</Text>}
+            {b.prompt ? (
+              <Box flexShrink={1}>
+                <Text dimColor wrap="truncate-end">{`· “${b.prompt}”`}</Text>
+              </Box>
+            ) : null}
+          </Box>
+          <Box paddingLeft={2}>
+            <Text dimColor wrap="truncate-end">{batchTimes(b, batches[b.n - 2])}</Text>
+          </Box>
+        </Box>
+      )
+      const summary =`≈${fmtCost(t.cost)}, ${fmtTokens(t.tokens)} ${s.tokensWord}, ${fmtTime(t.time)}`
       // A group of two or more gets a header line; a lone agent is its own card.
       const groupHead = (g: AgentGroup) => (g.agents.length > 1 ? <Text key={`g-${g.key}`} dimColor>{`${g.title} · ${g.agents.length} · ${fmtTime(g.span)}`}</Text> : null)
 
@@ -2370,9 +2783,48 @@ export const register: Register = (on, options) => {
             {text}
           </Text>
         )
-        // Heights in rows: the cards' Svgs are px tall.
+        // Heights in rows: the cards' Svgs are px tall. The timeline's toggle and
+        // lanes sit over everything, so every card's room counts them.
         const rowsOf = (a: AgentRun) => agentHeight(a, at) / ROW_PX
-        const stripRows = isEmpty ? 0 : (COMPACT_H + STRIP_GAP) / ROW_PX
+        const batchLanes = (b: Batch) => lanesOf(b.agents, at, numbers)
+        const batchPx = (b: Batch) => {
+          const { lanes, hidden } = batchLanes(b)
+          return isBatchOpen(b) ? lanesHeight(lanes, hidden) : STRIP_H
+        }
+        const lanesRows =
+          list.length === 0
+            ? 0
+            : BUTTON_ROWS + 1.5 + (isLanesOpen ? (RULER_H + RULE_H + batches.reduce((n, b) => n + batchPx(b), 0)) / ROW_PX + batches.length * (BUTTON_ROWS + 1) : 0)
+        const batchBody = (b: Batch) => {
+          if (!isBatchOpen(b)) return <Svg key={`strip-${b.key}`} source={stripOfSvg(W, b, at)} alt={`${b.label}: ${s.agentsN(b.agents.length)}`} width={W} height={STRIP_H} />
+          const { lanes, hidden } = batchLanes(b)
+          return (
+            <Svg
+              key={`lanes-${b.key}`}
+              source={lanesSvg(W, lanes, hidden, at)}
+              alt={lanes.map(l => `#${l.n} ${l.agent.description || l.agent.type}: ${fmtTime(elapsed(l.agent, at))}`).join(', ')}
+              width={W}
+              height={lanesHeight(lanes, hidden)}
+            />
+          )
+        }
+        const timeline = list.length > 0 && (
+          <Box key="timeline" flexDirection="column" paddingTop={0.5} marginBottom={1}>
+            {lanesToggle}
+            {isLanesOpen && (
+              <Svg
+                key="ruler"
+                source={rulerSvg(W, batches, at)}
+                alt={batches.map(b => `${b.label} ${rangeOf(b.start, b.end, b.running > 0)}`).join(', ')}
+                width={W}
+                height={RULER_H}
+              />
+            )}
+            {isLanesOpen && [...batches].reverse().flatMap(b => [batchHead(b), batchBody(b)])}
+            {isLanesOpen && <Svg key="timeline-rule" source={ruleSvg(W)} alt="" width={W} height={RULE_H} />}
+          </Box>
+        )
+        const stripRows = lanesRows + (isEmpty ? 0 : (COMPACT_H + STRIP_GAP) / ROW_PX)
         const headRows = Math.ceil(stripRows + headerHeight(title) / ROW_PX)
         const { room, doneAbove, total } = roomOf(1, headRows + BUTTON_ROWS + 1, 0, BUTTON_ROWS, rowsOf, 46 / ROW_PX)
         // A desktop pane is only as tall as its tree: room under the last row for
@@ -2387,7 +2839,7 @@ export const register: Register = (on, options) => {
         const card = (a: AgentRun) => (
           <Box key={a.id} flexDirection="column" {...lit(hasCard(agentTone(a)))}>
             <Svg
-              source={agentSvg(W, a, at)}
+              source={agentSvg(W, a, at, numbers.get(a.id))}
               alt={`${a.description}: ${modelName(a.model)}, ${a.status === 'running' ? s.isRunning : s.isFinished}${a.trail?.length ? `: ${entryText(a.trail[a.trail.length - 1]!)}` : ''}`}
               width={W}
               height={agentHeight(a, at)}
@@ -2400,12 +2852,13 @@ export const register: Register = (on, options) => {
         if (p.isCompact) {
           return (
             <Box flexDirection="column" gap={1}>
+              {timeline}
               <Box {...lit(hasCard('info'), 'tip:strip')}>
                 <Svg source={compactSvg(W, all, planned, t, at)} alt={`${list.length} ${s.agentsCount}, ${summary}`} width={W} height={COMPACT_H} />
               </Box>
               {toggleCompact}
-              {tip(ui, e.surface, stripTip, { top: Math.ceil(COMPACT_H / ROW_PX), scope: 'tip:strip' }, downW)}
-              {tip(ui, e.surface, compactTip, { top: Math.ceil(COMPACT_H / ROW_PX) + 1 + BUTTON_ROWS, scope: 'tip:compact' }, downW, 'action')}
+              {tip(ui, e.surface, stripTip, { top: Math.ceil(lanesRows + (lanesRows ? 1 : 0) + COMPACT_H / ROW_PX), scope: 'tip:strip' }, downW)}
+              {tip(ui, e.surface, compactTip, { top: Math.ceil(lanesRows + (lanesRows ? 1 : 0) + COMPACT_H / ROW_PX) + 1 + BUTTON_ROWS, scope: 'tip:compact' }, downW, 'action')}
               {/* Past the button: the strip's card overhangs it by its lines less the button, the button's by all of its own and a row of padding. */}
               {spacer(Math.max(hasCard('info') ? stripTip.length - BUTTON_ROWS : 0, hasCard('action') ? compactTip.length + 1 : 0))}
             </Box>
@@ -2413,6 +2866,7 @@ export const register: Register = (on, options) => {
         }
         return (
           <Box flexDirection="column">
+            {timeline}
             {!isEmpty && (
               <Box {...lit(hasCard('info'), 'tip:strip')}>
                 <Svg key="strip" source={compactSvg(W, all, planned, t, at, false, STRIP_GAP)} alt={`${list.length} ${s.agentsCount}`} width={W} height={COMPACT_H + STRIP_GAP} />
@@ -2439,8 +2893,7 @@ export const register: Register = (on, options) => {
                 {hover(`plan-${pl.n}`, 46 / ROW_PX, planTip(pl))}
               </Box>
             ))}
-            {!isEmpty && tip(ui, e.surface, stripTip, { top: Math.ceil(stripRows), scope: 'tip:strip' }, downW)}
-            {tip(ui, e.surface, tilesTip, { top: headRows, scope: 'tip:tiles' }, downW)}
+            {!isEmpty && tip(ui, e.surface, stripTip, { top: Math.ceil(stripRows), scope: 'tip:strip' }, downW)}            {tip(ui, e.surface, tilesTip, { top: headRows, scope: 'tip:tiles' }, downW)}
             {tip(ui, e.surface, compactTip, { top: headRows + BUTTON_ROWS, scope: 'tip:compact' }, downW, 'action')}
             {failed.length > 0 && tip(ui, e.surface, failedTip, { top: failedTop, scope: 'tip:failed' }, downW, 'action')}
             {failed.length > 0 && hasCard('action') && spacer(failedTop + failedTip.length + 1 - total)}
@@ -2473,6 +2926,7 @@ export const register: Register = (on, options) => {
             <Box flexDirection="row" gap={1}>
               <Text color={color}>▣</Text>
               <Text bold wrap="truncate-end">
+                {numbers.has(a.id) ? <Text dimColor>{`#${numbers.get(a.id)} `}</Text> : null}
                 {a.description || a.type}
               </Text>
               <Text color={a.status === 'failed' ? FAIL : a.status === 'done' ? OK : a.status === 'stopped' ? STOPPED : isOverdue(a, at) ? WARN : color}>{isOverdue(a, at) ? '◷' : STATUS_GLYPH[a.status]}</Text>
@@ -2550,9 +3004,68 @@ export const register: Register = (on, options) => {
         )
       }
       const group = (g: AgentGroup) => [groupHead(g), ...g.agents.map(row)]
+      // A lane in text: mark, number and name, the track (a run of same-colored
+      // cells is one Text), its time.
+      const nameW = Math.min(26, Math.floor(cols / 3))
+      const trackW = Math.max(8, cols - nameW - 9)
+      // Cells as Text runs, one per stretch of one color.
+      const cellRuns = (cells: { ch: string; color?: string }[], key: string) => {
+        const runs: { ch: string; color?: string }[] = []
+        for (const c of cells) {
+          const last = runs.at(-1)
+          if (last && last.color === c.color) last.ch += c.ch
+          else runs.push({ ...c })
+        }
+        return runs.map((r, i) => (
+          <Text key={`${key}-${i}`} color={r.color} dimColor={!r.color}>
+            {r.ch}
+          </Text>
+        ))
+      }
+      const lane = (l: Lane) => {
+        const m = laneMark(l.agent, at)
+        const runs: { ch: string; color?: string }[] = []
+        for (const c of laneCells(l, trackW)) {
+          const last = runs.at(-1)
+          if (last && last.color === c.color) last.ch += c.ch
+          else runs.push({ ...c })
+        }
+        return (
+          <Box key={`lane-${l.agent.id}`} flexDirection="row" gap={1}>
+            <Box width={nameW} flexShrink={0}>
+              <Text wrap="truncate-end">
+                <Text color={m.color}>{m.glyph}</Text>
+                <Text dimColor>{` #${l.n}`}</Text>
+                {` ${l.agent.description || l.agent.type}`}
+              </Text>
+            </Box>
+            <Text wrap="truncate-end">
+              {runs.map((r, i) => (
+                <Text key={`r${i}`} color={r.color} dimColor={!r.color}>
+                  {r.ch}
+                </Text>
+              ))}
+            </Text>
+            <Text dimColor>{fmtTime(elapsed(l.agent, at))}</Text>
+          </Box>
+        )
+      }
 
       return (
         <Box flexDirection="column">
+          {list.length > 0 && (
+            <Box key="timeline" flexDirection="column" marginBottom={1}>
+              {lanesToggle}
+              {isLanesOpen && <Text wrap="truncate-end">{cellRuns(rulerCells(batches, cols), 'ruler')}</Text>}
+              {isLanesOpen &&
+                [...batches].reverse().flatMap(b => {
+                  if (!isBatchOpen(b)) return [batchHead(b), <Text key={`strip-${b.key}`} wrap="truncate-end">{cellRuns(stripCells(b, cols, at), b.key)}</Text>]
+                  const { lanes, hidden } = lanesOf(b.agents, at, numbers)
+                  return [batchHead(b), ...[...lanes].reverse().map(lane), ...(hidden > 0 ? [<Text key={`more-${b.key}`} dimColor>{s.earlierLanes(hidden)}</Text>] : [])]
+                })}
+              <Text dimColor wrap="truncate-end">{'─'.repeat(cols)}</Text>
+            </Box>
+          )}
           <Box flexDirection="row" justifyContent="space-between">
             <Text bold wrap="truncate-end">
               {title}

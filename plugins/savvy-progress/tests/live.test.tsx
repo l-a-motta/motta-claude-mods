@@ -176,5 +176,5 @@ test('an agent streaming no text is still active: no quiet warning', EN, async (
   await clock.advance(1_000)
   for (const surface of ['terminal', 'desktop'] as const) expect(await says(surface, /quiet/)).toBe(false)
   await clock.advance(50_000)
-  for (const surface of ['terminal', 'desktop'] as const) expect(await says(surface, /quiet 0:5\d/)).toBe(true)
+  for (const surface of ['terminal', 'desktop'] as const) expect(await says(surface, /quiet 5\ds/)).toBe(true)
 })
