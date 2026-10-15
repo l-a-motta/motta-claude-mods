@@ -57,12 +57,13 @@ claude plugin install tool-borders@motta-claude-mods --scope user
 claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
 claude plugin install turn-receipt@motta-claude-mods --scope user
+claude plugin install agent-lane@motta-claude-mods --scope user
 claude plugin enable cc-plugin-you-should-know@builtin
 ```
 
 `cc-plugin-you-should-know` is off by default: a side agent that flags things in a reply worth knowing.
 
-Check: `claude plugin list` shows the eleven mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
+Check: `claude plugin list` shows the twelve mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
 
 ## 4. Settings
 

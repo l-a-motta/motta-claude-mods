@@ -66,6 +66,11 @@
       "name": "savvy-progress",
       "source": "./plugins/savvy-progress",
       "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time, under a timeline of your turns: a session ruler in clock time with idle time folded, and one batch of lanes per turn. Vendored from JohnnyVizz/claude-kit@272a877 (MIT)."
+    },
+    {
+      "name": "agent-lane",
+      "source": "./plugins/agent-lane",
+      "description": "Skills for the agent lane of vtex-copilot-fse: /motta-intake turns notes into spike issues, /motta-settle-spike turns the owner's decisions into agent-ready issues, /motta-dispatch starts a worktree build session per ready issue, motta-build-issue builds one unattended to a PR with CI green, and /motta-ship-pr merges human-approved PRs through the repo's gate script. They work inside a vtex-copilot-fse checkout."
     }
   ]
 }
