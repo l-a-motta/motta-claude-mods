@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { RenderPropsOf } from 'claude-code'
 
-import { classify, COLORS } from '../hooks/register'
+import { askedOf, borderOf, classify, COLORS, settle, verdictNote } from '../hooks/register'
 
 const ROOT = 'C:\\Users\\me\\repo'
 const k = (tool: string, input: Record<string, unknown> = {}) => {
@@ -124,4 +124,32 @@ test('the desktop draws a thin bar of its color beside the row, no border', asyn
   expect(boxes.some(b => b.props.backgroundColor === COLORS.read.internet && b.props.width === 0.25)).toBe(true)
   expect(boxes.some(b => b.props.borderStyle !== undefined)).toBe(false)
   await ui.unmount()
+})
+
+describe("how a call got past the permission check", () => {
+  const ask = (tool: string, input: unknown, isAsked = false) => ({ tool, input: JSON.stringify(input), isAsked })
+
+  test("an ask that ran: you, when the dialog was shown; else the classifier", () => {
+    expect(settle(ask("Bash", { command: "npm test" }, true), true)).toEqual({ by: "you" })
+    expect(settle(ask("Bash", { command: "npm test" }), true)).toEqual({ by: "classifier" })
+  })
+
+  test("an ask that was refused names who refused it", () => {
+    expect(settle(ask("Bash", { command: "rm -rf /" }), false)).toEqual({ by: "denied", deniedBy: "classifier" })
+    expect(settle(ask("Bash", { command: "rm -rf /" }, true), false)).toEqual({ by: "denied", deniedBy: "you" })
+  })
+
+  test("a dialog is matched to its ask by tool and input, or to the one open ask of that tool", () => {
+    const open = new Map([["t1", ask("Bash", { command: "ls" })], ["t2", ask("Bash", { command: "git push" })], ["t3", ask("Edit", { file_path: "a" })]])
+    expect(askedOf(open, "Bash", { command: "git push" })).toBe("t2")
+    expect(askedOf(open, "Bash", { command: "other" })).toBeUndefined()
+    expect(askedOf(open, "Edit", { file_path: "a", old_string: "x" })).toBe("t3")
+  })
+
+  test("the stroke: round by a rule, double by the classifier, bold when you were asked", () => {
+    expect([borderOf(undefined), borderOf({ by: "rule" }), borderOf({ by: "classifier" }), borderOf({ by: "you" })]).toEqual(["round", "round", "double", "bold"])
+    expect(verdictNote({ by: "rule" })).toBeNull()
+    expect(verdictNote({ by: "you" })).toBe("you allowed it")
+    expect(verdictNote({ by: "denied", deniedBy: "rule" })).toBe("✗ denied by rule")
+  })
 })
