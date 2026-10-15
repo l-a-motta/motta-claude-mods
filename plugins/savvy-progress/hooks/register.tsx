@@ -2649,27 +2649,36 @@ export const register: Register = (on, options) => {
           </Box>
         ) : null
       // A batch's header: its toggle, how many agents and how they stand, then
-      // when it ran and for how long.
+      // when it ran and for how long, with the prompt last. The counts never
+      // shrink, so they don't wrap; the prompt gives way first, one line at most.
       const batchHead = (b: Batch) => (
         <Box key={`bh-${b.key}`} flexDirection="column">
           <Box flexDirection="row" alignItems="center" columnGap={0.5}>
-            <Button
-              key={`batch-${b.key}`}
-              label={`${isBatchOpen(b) ? '▾' : '▸'} ${b.label}`}
-              plain
-              onPress={() => update($, panel, prev => ({ ...prev, batchesOpen: { ...(prev.batchesOpen ?? {}), [b.key]: !isBatchOpen(b) } }))}
-            />
-            <Text dimColor>{`· ${s.agentsN(b.agents.length)}`}</Text>
-            {b.failed > 0 && <Text color={FAIL}>{`· ✗ ${b.failed}`}</Text>}
-            {b.running > 0 && <Text color={CLAY}>{`· ${s.runningN(b.running)}`}</Text>}
+            <Box flexShrink={0}>
+              <Button
+                key={`batch-${b.key}`}
+                label={`${isBatchOpen(b) ? '▾' : '▸'} ${b.label}`}
+                plain
+                onPress={() => update($, panel, prev => ({ ...prev, batchesOpen: { ...(prev.batchesOpen ?? {}), [b.key]: !isBatchOpen(b) } }))}
+              />
+            </Box>
+            <Box flexShrink={0}>
+              <Text wrap="truncate-end">
+                <Text dimColor>{`· ${s.agentsN(b.agents.length)}`}</Text>
+                {b.failed > 0 && <Text color={FAIL}>{` · ✗ ${b.failed}`}</Text>}
+                {b.running > 0 && <Text color={CLAY}>{` · ${s.runningN(b.running)}`}</Text>}
+              </Text>
+            </Box>
+          </Box>
+          <Box paddingLeft={2} flexDirection="row">
+            <Box flexShrink={0}>
+              <Text dimColor wrap="truncate-end">{batchTimes(b, batches[b.n - 2])}</Text>
+            </Box>
             {b.prompt ? (
-              <Box flexShrink={1}>
-                <Text dimColor wrap="truncate-end">{`· “${b.prompt}”`}</Text>
+              <Box flexShrink={1} flexGrow={1}>
+                <Text dimColor italic wrap="truncate-end">{` · “${b.prompt.replace(/\s+/g, ' ')}”`}</Text>
               </Box>
             ) : null}
-          </Box>
-          <Box paddingLeft={2}>
-            <Text dimColor wrap="truncate-end">{batchTimes(b, batches[b.n - 2])}</Text>
           </Box>
         </Box>
       )
