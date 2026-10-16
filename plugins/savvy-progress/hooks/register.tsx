@@ -1323,8 +1323,70 @@ const ROLL_MAX = 10
 // takes back so the word sits where text would.
 const BAND_SPACE = { desktop: { inner: 0.5, outer: 2 }, terminal: { inner: 1, outer: 3 } }
 const BAND_BUTTON_PAD = 0.75
+// On the desktop the status line draws each segment as a tile, a faint wash of
+// the band's text color with its border in the same wash (only its rounded
+// corners show). The band's row is one tile the width of the band, its own
+// thing under the status line's, divided into sections by thin rules. The
+// wash, padding and line gap are copied from motta-statusline (`TILE`,
+// `TILE_PAD`, `DESKTOP_LINE_GAP`): change the two together.
+export type Scheme = 'dark' | 'light'
+export const BAND_TILE: Record<Scheme, string> = { dark: '#ffffff0d', light: '#0000000a' }
+// A rule between two sections: the wash a step stronger, about a pixel wide.
+const BAND_RULE: Record<Scheme, string> = { dark: '#ffffff1f', light: '#0000001a' }
+const BAND_RULE_W = 0.125
+const BAND_TILE_PAD = { x: 1, y: 0.3 }
+const BAND_LINE_GAP = 0.35
+// The name's section takes this share of the row's spare room against 1 for
+// the others, as the status line's bars do; the ✕'s takes none, as its ✦ does.
+const BAND_NAME_GROW = 3
+
+// The app's theme, read as the status line reads it: from the `theme` setting.
+// An image has no theme keys, nor a Box's ground, so the tiles follow it.
+let bandScheme: Scheme = 'dark'
+let bandSchemeFor = ''
+async function readScheme($: EngineInterface): Promise<Scheme> {
+  try {
+    const row = (await $.config.list()).find(r => r.key === 'theme')
+    return String(row?.value ?? '').includes('light') ? 'light' : 'dark'
+  } catch {
+    return bandScheme
+  }
+}
 
 const bandSpace = (surface: string) => (surface === 'terminal' ? BAND_SPACE.terminal : BAND_SPACE.desktop)
+
+// A plain segment, as the terminal draws the status line's.
+function bandSeg(ui: any, surface: string, parts: unknown[], k: string) {
+  const { Box } = ui
+  return (
+    <Box key={k} flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={bandSpace(surface).inner}>
+      {parts}
+    </Box>
+  )
+}
+
+// One section of the desktop's tile: its parts centered in what it takes of
+// the row (`grow`), `gap` cells apart.
+export type BandSection = { key: string; parts: unknown[]; grow: number; gap?: number }
+
+// The desktop's row: one tile the width of the band, its sections side by
+// side, a rule between each two, stretched (the tile's `alignItems`) to its
+// height inside its padding.
+function bandTile(ui: any, sections: BandSection[], key: string) {
+  const { Box } = ui
+  const ground = BAND_TILE[bandScheme]
+  const items = sections.flatMap((s, i) => [
+    ...(i === 0 ? [] : [<Box key={`${key}-rule-${i}`} width={BAND_RULE_W} flexShrink={0} backgroundColor={BAND_RULE[bandScheme]} />]),
+    <Box key={s.key} flexDirection="row" flexWrap="wrap" flexGrow={s.grow} flexShrink={1} alignItems="center" justifyContent="center" columnGap={s.gap ?? BAND_SPACE.desktop.inner} paddingX={BAND_TILE_PAD.x}>
+      {s.parts}
+    </Box>,
+  ])
+  return (
+    <Box key={key} flexDirection="row" alignItems="stretch" backgroundColor={ground} borderStyle="bold" borderColor={ground} paddingY={BAND_TILE_PAD.y}>
+      {items}
+    </Box>
+  )
+}
 
 export function bandPress(ui: any, surface: string, key: string, label: string, onPress: () => void, role?: 'dismiss') {
   const { Box, Button } = ui
@@ -1344,10 +1406,14 @@ export const bandTime = (ms: number): string => {
 // One piece of a segment: a figure at full strength, its word subtle, or a
 // failure in the error color, as the status line draws `12 turns`.
 export type RollPart = { text: string; tone: 'figure' | 'word' | 'error' }
+// The tile a segment goes in on the desktop: the one agent's name and steps,
+// the work (running, tools, failures), or the time and cost.
+export type RollTile = 'name' | 'work' | 'time'
+const ROLL_TILES: readonly RollTile[] = ['name', 'work', 'time']
 
 // The roll call's segments: the one agent's name and steps, how many run, the
 // tool calls, failures, the time since the first started, and the cost.
-export const rollParts = (mine: AgentRun[], at: number): RollPart[][] => {
+export const rollParts = (mine: AgentRun[], at: number): { tile: RollTile; parts: RollPart[] }[] => {
   const s = tr()
   const running = mine.filter(a => a.status === 'running').length
   const calls = mine.reduce((n, a) => n + (a.toolCalls ?? 0), 0)
@@ -1357,20 +1423,22 @@ export const rollParts = (mine: AgentRun[], at: number): RollPart[][] => {
   const end = Math.max(...mine.map(a => a.endedAt ?? at))
   // One agent (its transcript open, or a batch of one) is named, with its steps.
   const only = mine.length === 1 ? mine[0] : undefined
-  const segs: RollPart[][] = []
-  if (only) segs.push([{ text: only.description || only.type, tone: 'figure' }])
-  if (only?.stepTotal) segs.push([{ text: `${only.stepDone ?? 0}/${only.stepTotal}`, tone: 'figure' }, { text: s.steps.toLowerCase(), tone: 'word' }])
-  segs.push(running ? [{ text: String(running), tone: 'figure' }, { text: s.busy, tone: 'word' }] : [{ text: s.done.toLowerCase(), tone: 'word' }])
-  if (calls) segs.push([{ text: String(calls), tone: 'figure' }, { text: s.toolCalls(calls).replace(/^\d+ /, ''), tone: 'word' }])
-  if (failed) segs.push([{ text: `✗ ${failed}`, tone: 'error' }])
-  segs.push([{ text: bandTime(end - start), tone: 'figure' }])
-  segs.push([{ text: `$${cost.toFixed(2)}`, tone: 'figure' }])
+  const segs: { tile: RollTile; parts: RollPart[] }[] = []
+  const add = (tile: RollTile, ...parts: RollPart[]) => void segs.push({ tile, parts })
+  if (only) add('name', { text: only.description || only.type, tone: 'figure' })
+  if (only?.stepTotal) add('name', { text: `${only.stepDone ?? 0}/${only.stepTotal}`, tone: 'figure' }, { text: s.steps.toLowerCase(), tone: 'word' })
+  if (running) add('work', { text: String(running), tone: 'figure' }, { text: s.busy, tone: 'word' })
+  else add('work', { text: s.done.toLowerCase(), tone: 'word' })
+  if (calls) add('work', { text: String(calls), tone: 'figure' }, { text: s.toolCalls(calls).replace(/^\d+ /, ''), tone: 'word' })
+  if (failed) add('work', { text: `✗ ${failed}`, tone: 'error' })
+  add('time', { text: bandTime(end - start), tone: 'figure' })
+  add('time', { text: `$${cost.toFixed(2)}`, tone: 'figure' })
   return segs
 }
 
 export const rollStats = (mine: AgentRun[], at: number): string =>
   rollParts(mine, at)
-    .map(seg => seg.map(p => p.text).join(' '))
+    .map(seg => seg.parts.map(p => p.text).join(' '))
     .join(' · ')
 
 // The crabs alone, a pitch of 25 apart, the figures being the band's own text.
@@ -1392,16 +1460,13 @@ const rollCrabsWidth = (n: number): number => Math.max(1, n * 25 - 2)
 
 // The roll call as the status line lays out a line: `agents` (pressed, it
 // opens the panel) and the crabs, then the figures, wrapping between segments;
-// the dismiss at the band's right edge, under the chips.
+// the dismiss at the band's right edge, under the chips. On the desktop it is
+// one tile divided into sections: the crabs, the one agent's name and steps,
+// the work, the time and cost, and the ✕.
 function rollRow(ui: any, surface: string, mine: AgentRun[], at: number, onAgents: () => void, onDismiss: () => void, key: string) {
   const { Box, Text } = ui
   const space = bandSpace(surface)
   const shown = mine.slice(0, ROLL_MAX)
-  const seg = (parts: unknown[], k: string) => (
-    <Box key={k} flexDirection="row" flexWrap="wrap" flexShrink={1} alignItems="center" columnGap={space.inner}>
-      {parts}
-    </Box>
-  )
   const crabs =
     surface !== 'terminal' && 'Svg' in ui ? (
       <ui.Svg source={rollCrabsSvg(shown, at)} alt={rollStats(mine, at)} width={rollCrabsWidth(shown.length)} height={H} />
@@ -1416,16 +1481,37 @@ function rollRow(ui: any, surface: string, mine: AgentRun[], at: number, onAgent
     )
   const lead = [bandPress(ui, surface, 'savvy-band-agents', tr().agentsCount, onAgents), crabs]
   if (mine.length > ROLL_MAX) lead.push(<Text color="subtle">+{mine.length - ROLL_MAX}</Text>)
-  const figures = rollParts(mine, at).map((parts, i) =>
-    seg(
-      parts.map(p => (p.tone === 'word' ? <Text color="subtle">{p.text}</Text> : p.tone === 'error' ? <Text color={FAIL}>{p.text}</Text> : <Text>{p.text}</Text>)),
-      `roll-${i}`,
-    ),
-  )
+  const draw = (parts: RollPart[]) =>
+    parts.map(p => (p.tone === 'word' ? <Text color="subtle">{p.text}</Text> : p.tone === 'error' ? <Text color={FAIL}>{p.text}</Text> : <Text>{p.text}</Text>))
+  const segs = rollParts(mine, at)
+  if (surface !== 'terminal') {
+    // A section holds its segments as the status line's branch tile holds its
+    // groups: a segment's items together, a segment's width between them.
+    const sections = ROLL_TILES.flatMap((tile): BandSection[] => {
+      const here = segs.filter(x => x.tile === tile)
+      if (here.length === 0) return []
+      const groups = here.map((x, i) => (
+        <Box key={`${tile}-${i}`} flexDirection="row" alignItems="center" columnGap={space.inner}>
+          {draw(x.parts)}
+        </Box>
+      ))
+      return [{ key: `roll-${tile}`, parts: groups, grow: tile === 'name' ? BAND_NAME_GROW : 1, gap: space.outer }]
+    })
+    return bandTile(
+      ui,
+      [
+        { key: 'roll-lead', parts: lead, grow: 1 },
+        ...sections,
+        { key: 'roll-dismiss', parts: [bandPress(ui, surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')], grow: 0 },
+      ],
+      key,
+    )
+  }
+  const figures = segs.map((x, i) => bandSeg(ui, surface, draw(x.parts), `roll-${i}`))
   return (
     <Box key={key} flexDirection="row" alignItems="center" columnGap={space.outer}>
       <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} alignItems="center" columnGap={space.outer}>
-        {seg(lead, 'roll-lead')}
+        {bandSeg(ui, surface, lead, 'roll-lead')}
         {figures}
       </Box>
       {bandPress(ui, surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')}
@@ -3193,12 +3279,33 @@ export const register: Register = (on, options) => {
     const onDismiss = () => void update($, panel, q => ({ ...q, bandDismissed: key }))
     const columns = e.props.bodyColumns || e.viewport?.columns || 100
     const crewAt = shown.crew ? Math.max(await read($, now), ...shown.crew.map(a => a.startedAt), 0) : 0
-    // Inset a cell, as the status line's lines and the chips are.
+    const isTerminal = e.surface === 'terminal'
+    // The theme is read once a bar, not on every redraw: the band redraws
+    // twice a second while a response streams.
+    if (!isTerminal && bandSchemeFor !== key) {
+      bandScheme = await readScheme($)
+      bandSchemeFor = key
+    }
+    const crewPress = bandPress(ui, e.surface, 'savvy-band-agents', `×${crew}`, onAgents)
+    const dismiss = bandPress(ui, e.surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')
+    // A flow's bar on the desktop: one tile, the bar's section growing, the
+    // crew's and the ✕'s not, as the roll call's.
+    const flowRow = isTerminal
+      ? barRow(ui, e.surface, columns, bar, isWorking, [crewPress, dismiss], 'savvy-band-bar')
+      : bandTile(
+          ui,
+          [
+            { key: 'flow-bar', parts: [barRow(ui, e.surface, columns, bar, isWorking, null, 'flow-bar-row')], grow: 1 },
+            { key: 'flow-crew', parts: [crewPress], grow: 0 },
+            { key: 'flow-dismiss', parts: [dismiss], grow: 0 },
+          ],
+          'savvy-band-bar',
+        )
+    // Inset a cell, as the status line's lines and the chips are; on the
+    // desktop a line's gap under them, as between its own two.
     const card = (
-      <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1} paddingX={1}>
-        {shown.crew
-          ? rollRow(ui, e.surface, shown.crew, crewAt, onAgents, onDismiss, 'savvy-band-bar')
-          : barRow(ui, e.surface, columns, bar, isWorking, [bandPress(ui, e.surface, 'savvy-band-agents', `×${crew}`, onAgents), bandPress(ui, e.surface, 'savvy-band-dismiss', '✕', onDismiss, 'dismiss')], 'savvy-band-bar')}
+      <Box key="savvy-card" flexDirection="column" flexGrow={1} flexShrink={1} paddingX={1} marginTop={isTerminal ? 0 : BAND_LINE_GAP}>
+        {shown.crew ? rollRow(ui, e.surface, shown.crew, crewAt, onAgents, onDismiss, 'savvy-band-bar') : flowRow}
       </Box>
     )
     return shareBand(Box, below, card)
