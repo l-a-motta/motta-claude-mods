@@ -139,6 +139,28 @@ test("with an agent's transcript open, the band names that agent alone, done or 
   expect(await words(await band($, 'terminal', { view: { agentId: 'a2' } }))).toMatch(/ Count tests 1\/4 steps done /)
 })
 
+test('on the desktop the roll call is one tile divided into sections; the terminal keeps plain segments', async ($, on) => {
+  engine(on)
+  await spawn($, 't1', 'Map the repo')
+  await $.tool.call({ tool: 'mcp__savvy-progress__step', agentId: 'a1', done: 1, total: 4 } as never)
+  const desktop = await band($, 'desktop')
+  type Props = { props?: { backgroundColor?: string; flexGrow?: number; width?: number }; children?: Props[] }
+  const tile = (await desktop.find({ key: 'savvy-band-bar' })) as Props
+  expect(tile.props?.backgroundColor).toBeDefined()
+  // Sections and the rules between them alternate: five sections, four rules.
+  const kids = tile.children ?? []
+  expect(kids.length).toBe(9)
+  expect(kids.filter((_, i) => i % 2 === 1).every(k => k.props?.width !== undefined && k.props?.backgroundColor !== undefined)).toBe(true)
+  expect(kids.filter((_, i) => i % 2 === 0).every(k => k.props?.backgroundColor === undefined)).toBe(true)
+  expect(((await desktop.find({ key: 'roll-name' })) as Props).props?.flexGrow).toBe(3)
+  expect(((await desktop.find({ key: 'roll-dismiss' })) as Props).props?.flexGrow).toBe(0)
+  expect(await words(desktop)).toMatch(/^agents Map the repo 1\/4 steps 1 running .* \$0\.00 ✕$/)
+
+  const terminal = await band($, 'terminal')
+  expect(((await terminal.find({ key: 'savvy-band-bar' })) as Props).props?.backgroundColor).toBeUndefined()
+  expect(await terminal.find({ key: 'roll-name' })).toBeUndefined()
+})
+
 test('the ✕ hides the bar until the next batch', async ($, on) => {
   const clock = engine(on)
   await spawn($, 't1')
