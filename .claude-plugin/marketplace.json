@@ -33,11 +33,6 @@
       "description": "A Usage pane: each rate limit (5h, 7d) as motta-statusline's bar with a verdict; its readings, burn rate, budget, cost per turn, past windows, a GitHub-style activity grid and the spend by model. Toasts at thresholds. No request sent. motta-statusline's 5h and 7d open it; so does /usage-drill."
     },
     {
-      "name": "assumption-check",
-      "source": "./plugins/assumption-check",
-      "description": "A side pane of the assumptions Claude makes, one dropdown per prompt, with counts that filter: mark one right, or wrong (type the fix or let Claude ask), ask why, open its source, or delete it. On from the start, /assumption-check off to stop; nothing in the pane reaches Claude unless you press wrong or why."
-    },
-    {
       "name": "prompt-enhancer",
       "source": "./plugins/prompt-enhancer",
       "description": "/enhance <text> opens an Enhance pane that rewrites your draft one of two ways, in one model call: Cleaned up (a cheap model fixes typos, fillers, voice-to-text artifacts and punctuation, nothing else) or Expanded (written with the conversation: the outcome behind the draft, what a top practitioner would do, the task as verbs with techniques from other fields and an adversary, and how to verify it, rewritten as a prompt that asks for exactly that). Use it, send it or copy it."
