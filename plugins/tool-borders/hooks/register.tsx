@@ -133,7 +133,7 @@ export const familyOfWords = (words: string[]): Family | undefined => {
 }
 
 // MCP servers that act on this machine rather than a service on the internet.
-const LOCAL_SERVERS = ['desktop-commander', 'terminal', 'pdf-viewer', 'pdf', 'ccd_', 'savvy-progress', 'assumption-check', 'visualize']
+const LOCAL_SERVERS = ['desktop-commander', 'terminal', 'pdf-viewer', 'pdf', 'ccd_', 'savvy-progress', 'visualize']
 
 // `mcp__plugin_x_server__action` → its server and action.
 export const mcpParts = (tool: string) => {
