@@ -12,8 +12,8 @@ work in the repo. The owner is present. **The repo is the current checkout**; it
 
 Everything this skill installs comes from this folder:
 
-- `templates/` — the repo files, with `{{PLACEHOLDERS}}` (listed in step 2). `gitattributes` and `mcp.json`
-  install as `.gitattributes` and `.mcp.json`.
+- `templates/` — the repo files, with `{{PLACEHOLDERS}}` (listed in step 2). `gitattributes` installs
+  as `.gitattributes`.
 - `board/board.json` — the board's fields, views and automations, for when no board can be copied;
   `board/labels.json` — the 14 labels; `board/README.md` — the board's readme.
 - `references/lessons.md` — the traps of a setup. **Read it before step 3.**
@@ -63,10 +63,10 @@ Templates are the source for new repos only. Repos already set up don't sync fro
    and "Maintaining this file" sections. If the repo already has an `AGENTS.md`, merge the template's sections
    into it instead. Add `.claude/worktrees/` to `.gitignore`. Run `node --test .github/scripts/*.test.mjs` and the
    repo's typecheck and tests: CI must pass on the setup PR.
-5. **Skills and plugins.** For a Mastra repo, install the `mastra` skill with the skills CLI (`npx skills add
-   mastra-ai/skills`, picking `mastra`; it writes `skills-lock.json` — see the `find-skills` skill for the CLI) and
-   keep `mcp.json`; otherwise drop the Mastra section of `AGENTS.md` and `mcp.json`. Add any domain MCP servers the
-   repo needs to `.mcp.json`. The lane's own skills are this plugin: never copy them into the repo.
+5. **Skills and plugins.** What only this repo's stack needs stays in the repo: a framework's docs skill goes in
+   `.claude/skills/` (the `find-skills` skill finds and installs one), and its MCP servers go in `.mcp.json`. When the
+   agent must load such a skill before any work, say so in `AGENTS.md` (the template's note shows where). The lane's
+   own skills are this plugin: never copy them into the repo.
 6. **Ship the setup through the lane.** File `chore: set up the delivery board, templates and agent lane` with the
    CLI recipe in the new `BOARD.md` (label `type: chore`, Type `Task`, assignee, on the board), and set its fields
    with the new `board.sh` — the first real test of it. Create the branch with `gh issue develop <n> --base dev`,
