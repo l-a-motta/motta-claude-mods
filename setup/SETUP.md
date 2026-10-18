@@ -10,6 +10,7 @@ Commands are PowerShell unless they say otherwise.
 | --- | --- | --- |
 | Logging into your Claude account | claude.ai connectors (Gmail, Calendar, Drive, Slack and the rest), the plugins synced from claude.ai (pdf-viewer, desktop-commander, enterprise-search, cowork-plugin-management), synced skills, and the Code tab's account settings (branch prefix, auto-archive when a PR closes) | Log in (step 1) |
 | This repo | The mods, the agent-lane skills, `settings.json`, the preferences in `~/.claude.json`, the find-skills skill | Steps 2 to 6 |
+| A cloud environment's setup script | `agent-lane` and `mattpocock-skills` in claude.ai/code sessions | "Cloud sessions" below |
 | Nowhere | Logins to other tools (`gh`, Codex), session history, file history, memories, the Code tab's per-machine settings (notifications, keep-awake, worktree location, browser tools) | Log in to tools as you need them; Code tab settings in step 7 |
 
 Claude Code's `settings.json` does not sync with your account. The `remote-settings.json` file it keeps is for settings an organization pushes.
@@ -29,7 +30,7 @@ Check: `claude --version` prints a version, and `claude plugin list` shows plugi
 
 ## 2. Tools and the repository
 
-Install Git for Windows (it brings Git Bash), Node.js 18 or newer, and the GitHub CLI. Then sign in to GitHub and clone this private repository to the same place as on the other machines:
+Install Git for Windows (it brings Git Bash), Node.js 18 or newer, and the GitHub CLI. Then sign in to GitHub and clone this repository to the same place as on the other machines:
 
 ```powershell
 gh auth login
@@ -61,7 +62,9 @@ claude plugin enable cc-plugin-you-should-know@builtin
 
 `cc-plugin-you-should-know` is off by default: a side agent that flags things in a reply worth knowing.
 
-Check: `claude plugin list` shows the ten mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout.
+On a machine where you won't edit the mods, skip the clone and add the marketplace from GitHub instead: `claude plugin marketplace add l-a-motta/motta-claude-mods`, then the same installs. It moves to the latest `main` with `claude plugin marketplace update motta-claude-mods` and `claude plugin update <mod>@motta-claude-mods`.
+
+Check: `claude plugin list` shows the ten mods and `cc-plugin-you-should-know` as enabled, and `motta-statusline` reads `Read from:` this checkout (or the GitHub clone).
 
 ## 4. Settings
 
@@ -145,6 +148,18 @@ In VS Code's `settings.json`:
 ## 9. The last check
 
 Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar. `/filetree` opens the file tree, `/agents-info` the agents panel, `/enhance <text>` the prompt enhancer, and `/context-drill`, `/changes-drill` and `/usage-drill` (or the status line's `ctx`, `files`, `5h` and `7d`) their panes.
+
+## Cloud sessions (claude.ai/code)
+
+A cloud session doesn't read this machine's `~/.claude`, and it doesn't install the plugins a repository turns on in its `.claude/settings.json`. What reaches it is the cloud environment's setup script, which runs before Claude Code starts. In claude.ai/code, open the environment's settings and set its setup script to:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/l-a-motta/motta-claude-mods/main/setup/cloud-setup.sh | bash
+```
+
+[cloud-setup.sh](cloud-setup.sh) installs `agent-lane` and `mattpocock-skills` at user scope. The UI mods stay out, because cloud sessions don't draw mods. It always exits 0, since a failing setup script fails the session, and it prints one line per plugin in the setup log.
+
+Check: in a new cloud session, `/plugin` lists both plugins; if they are installed but missing from the skill list, run `/reload-plugins`.
 
 ## Keeping this in step
 

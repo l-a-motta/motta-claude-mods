@@ -1,2 +1,5 @@
 # The setup templates are copied into new repos; board.sh must stay LF there.
 plugins/agent-lane/skills/motta-setup-repo/** text eol=lf
+
+# The cloud setup script runs on Linux.
+setup/*.sh text eol=lf
