@@ -158,8 +158,8 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: {
 
 > ⚠️ **Never rewrite a single-select field's option list via the API.** `updateProjectV2Field` with
 > `singleSelectOptions` REGENERATES every option ID and silently WIPES that field's value on all
-> items (no name-matching — confirmed the hard way on the FSE board on 2026-06-24: adding one
-> `Status` option blanked all 81 items). **To add/rename/reorder an option, use the Projects UI** (Project → ⋯ → Settings →
+> items (no name-matching: adding one
+> `Status` option blanks that field on every item). **To add/rename/reorder an option, use the Projects UI** (Project → ⋯ → Settings →
 > the field → **+ Add option**), which preserves existing options and item values. If you _must_ use
 > the API, snapshot every item's value first (`fieldValueByName`) and restore each afterward.
 
@@ -222,8 +222,8 @@ branch.** Feature branches merge into `dev`; `main` only receives a periodic, te
    the accumulated work, and merges **with "Create a merge commit" — NEVER "Squash and merge"**.
    `dev` and `main` both live forever: squashing a release creates a commit on `main` that `dev`
    has no ancestry link to, so the branches silently diverge and the **next** release PR re-lists
-   every already-released commit and reports phantom conflicts (this bit vtex-copilot-fse on its #330
-   after the #317 release was squashed, and took an ancestry-only back-merge to repair). A merge commit makes
+   every already-released commit and reports phantom conflicts (repairing that takes an ancestry-only back-merge; see
+   "Recovering from a squashed release or a deleted `dev`"). A merge commit makes
    `main`'s tip a shared ancestor of both branches automatically — nothing to remember afterwards.
    GitHub's merge-method settings are repo-wide, not per-branch, so this rule is enforced here, by
    the tech lead's click. It carries **no `Closes #`** lines (those issues already closed
@@ -315,7 +315,7 @@ creating a duplicate — in **both** directions:
   the `Closes #<n>` keyword in the PR body is what ties them together. On a PR targeting `dev` it
   registers as a **timeline cross-reference**, not a closing link: GitHub creates the closing
   reference (and the _Development_-section entry) only for PRs targeting the default branch
-  (`main`) — measured on vtex-copilot-fse#290 and #297, both of which show `closingIssuesReferences: 0` with the
+  (`main`), so such a PR shows `closingIssuesReferences: 0` even with the
   keyword present and correct. So do **not** treat an empty _Development_ section as a malformed
   keyword on a `dev` PR; verify the link by finding the PR in the issue's timeline instead.
   Whenever you open a PR, determine which issue it solves (see "Finding which issue a PR solves"

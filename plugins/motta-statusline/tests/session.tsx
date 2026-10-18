@@ -8,7 +8,7 @@ import type { TestBody } from 'claude-code/testing'
 // external commit status.
 export const PR_JSON = JSON.stringify({
   number: 482,
-  url: 'https://github.com/o/vtex-copilot-fse/pull/482',
+  url: 'https://github.com/o/sample-app/pull/482',
   state: 'OPEN',
   isDraft: false,
   baseRefName: 'main',
@@ -45,10 +45,10 @@ export const runs: { argv: string[]; cwd?: string }[] = []
 
 export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing', worktree: Worktree | null = null) {
   const clock = mock.clock(on)
-  on('session.cwd', () => ({ value: worktree?.cwd ?? 'C:/code/vtex-copilot-fse' }))
-  on('session.root', () => ({ value: worktree?.root ?? worktree?.cwd ?? 'C:/code/vtex-copilot-fse' }))
+  on('session.cwd', () => ({ value: worktree?.cwd ?? 'C:/code/sample-app' }))
+  on('session.root', () => ({ value: worktree?.root ?? worktree?.cwd ?? 'C:/code/sample-app' }))
   on('session.repo', () => ({
-    value: { root: 'C:/code/vtex-copilot-fse', remote: 'git@github.com:o/vtex-copilot-fse.git', internal: false, name: null },
+    value: { root: 'C:/code/sample-app', remote: 'git@github.com:o/sample-app.git', internal: false, name: null },
   }))
   on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
   // Asked for the breakdown, it says auto-compact fires at 835k.
@@ -134,7 +134,7 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
 // last commit, made 12 minutes before the mock clock's start, origin's
 // default branch, the lines changed, and the status.
 function gitAnswer(argv: readonly string[], cwd: string | undefined, worktree: Worktree | null) {
-  if (argv.includes('rev-parse')) return `${cwd ?? 'C:/code/vtex-copilot-fse'}\n`
+  if (argv.includes('rev-parse')) return `${cwd ?? 'C:/code/sample-app'}\n`
   if (argv.includes('log')) return `abc1234def\x1f${-12 * 60}\x1fFix the band\n`
   if (argv.includes('symbolic-ref')) return 'origin/main\n'
   if (argv.includes('--numstat')) return '3\t1\tmanifest.json\n'

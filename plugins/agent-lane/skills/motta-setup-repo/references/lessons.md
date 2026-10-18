@@ -1,7 +1,7 @@
 # Lessons from setting up a repo for the agent lane
 
-Learned setting up vtex-copilot/copilot-sentinel from vtex-copilot/vtex-copilot-fse (2026-10-15). Each one cost
-a detour; the templates cannot enforce them, so the setup run must.
+Each one cost a detour when a repo was set up from another's rules; the templates cannot enforce them, so the
+setup run must.
 
 ## GitHub reads some files only from `main`
 
@@ -51,7 +51,7 @@ a detour; the templates cannot enforce them, so the setup run must.
 - `config.yml`'s Discussions contact link was dead in both repos. Keep `blank_issues_enabled: false` only, unless
   Discussions is on.
 - History cited in BOARD.md (issue numbers, commits) belongs to the repo it happened in. Qualify it
-  (`vtex-copilot-fse#330`) or drop it; a bare `#330` points at the wrong issue in the new repo.
+  (`owner/repo#123`) or drop it; a bare `#123` points at the wrong issue in the new repo.
 - The Area list is the new repo's own vocabulary (from its design doc), never the source repo's. It appears in the
   board field, `BOARD.md` and all five forms, and they must agree.
 - Line endings: add `.gitattributes` (`* text=auto eol=lf`) before committing scripts, so `board.sh` keeps LF

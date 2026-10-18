@@ -1,11 +1,8 @@
 # AGENTS.md
 
-<!-- setup: one line on who the agent is for this stack, e.g. "You are a TypeScript developer experienced with the Mastra framework." -->
+<!-- setup: one line on who the agent is for this stack, e.g. "You are a TypeScript developer experienced with <the main framework>." -->
 
-<!-- setup: for a Mastra repo, keep this section; otherwise delete it. -->
-## CRITICAL: Load `mastra` skill
-
-**BEFORE doing ANYTHING with Mastra, load the `mastra` skill FIRST.** Never rely on cached knowledge as Mastra's APIs change frequently between versions. Use the skill to read up-to-date documentation from `node_modules`.
+<!-- setup: if the stack has a docs skill the agent must load before any work (installed in step 5), add a short "CRITICAL: load `<skill>`" section here naming it and why; otherwise add nothing. -->
 
 ## What this project is
 
@@ -13,10 +10,7 @@
 
 ### Architecture rules
 
-<!-- setup: the rules every change must respect (layering, determinism, where policy lives), taken from `{{DESIGN_DOC}}`. For a Mastra repo, keep the two below. -->
-
-- **`src/mastra/index.ts`** registers the Mastra agents, workflows and storage. Anything that must run in production is wired through an explicit exported call from there: `mastra build` drops side-effect-only imports (`import './x'`), so a module that is only imported for its side effects never reaches the bundle.
-- **Mastra exports the entire request context on every span.** Once tracing or an observability exporter is added, anything put on the request context (tokens, channel adapters, user data) is persisted in plaintext unless a scrubbing span processor is registered **first**. Keep secrets off the request context, and add the scrubber in the same change as the exporter.
+<!-- setup: the rules every change must respect (layering, determinism, where policy lives), taken from `{{DESIGN_DOC}}`, plus the framework's traps that bite every change (what its build drops, what it logs or exports). -->
 
 ## Commands
 

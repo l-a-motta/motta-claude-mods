@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { answerSession } from './session.tsx'
 
 const HOUR = 3_600_000
-const WORKTREE = { cwd: 'C:/code/vtex-copilot-fse/.claude/worktrees/ui-tweaks', status: '## feat/ui-tweaks...origin/feat/ui-tweaks [ahead 2]\n M manifest.json\n?? notes.md\n' }
+const WORKTREE = { cwd: 'C:/code/sample-app/.claude/worktrees/ui-tweaks', status: '## feat/ui-tweaks...origin/feat/ui-tweaks [ahead 2]\n M manifest.json\n?? notes.md\n' }
 
 // files, ctx, 5h and 7d ask changes-drill, context-drill and usage-drill for
 // their panes, and the ✦ asks prompt-enhancer for its Enhance pane, through the nouns those mods add to `$`; this mod has no panes

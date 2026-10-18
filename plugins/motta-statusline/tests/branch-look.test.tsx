@@ -44,8 +44,8 @@ test('draws the branch in its PR color with its icon, and no repo link', async (
   expect((await terminal.find({ type: 'Text', text: '⇄' }))?.props).toMatchObject({ color: 'error' })
   expect(await terminal.find({ type: 'Text', text: '⎇' })).toBeUndefined()
   const drawn = JSON.stringify(await terminal.drawn())
-  expect(drawn).not.toContain('"href":"https://github.com/o/vtex-copilot-fse"')
-  expect(drawn).toContain('https://github.com/o/vtex-copilot-fse/compare/main...dev')
+  expect(drawn).not.toContain('"href":"https://github.com/o/sample-app"')
+  expect(drawn).toContain('https://github.com/o/sample-app/compare/main...dev')
   await terminal.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })

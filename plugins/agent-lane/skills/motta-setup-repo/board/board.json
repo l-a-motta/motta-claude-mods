@@ -1,5 +1,5 @@
 {
-  "_source": "vtex-copilot org project 11 (vtex-copilot-fse delivery board), 2026-10-15",
+  "_source": "The fields, views and automations of a working delivery board; setup builds a new board from them when none can be copied.",
   "fields": [
     {
       "name": "Status",
