@@ -4,7 +4,7 @@ import { folderOpeners, projection, turnsToCompact } from '../hooks/register.tsx
 import { answerSession, BAND_PROPS, runs } from './session.tsx'
 
 const HOUR = 3_600_000
-const WORKTREE = { cwd: 'C:/code/vtex-copilot-fse/.claude/worktrees/ui-tweaks', status: '## feat/ui-tweaks...origin/feat/ui-tweaks [ahead 2]\n M manifest.json\n?? notes.md\n' }
+const WORKTREE = { cwd: 'C:/code/sample-app/.claude/worktrees/ui-tweaks', status: '## feat/ui-tweaks...origin/feat/ui-tweaks [ahead 2]\n M manifest.json\n?? notes.md\n' }
 
 describe('projection', () => {
   test('says where the pace so far ends, and when it is too early to tell', () => {
@@ -41,9 +41,9 @@ test('names the worktree, links the branch as a compare view, and opens the fold
   expect(JSON.stringify(await band.drawn())).toContain('"alt":"folder"')
   // The repository it is a worktree of: a two-folder icon, then its name.
   expect(JSON.stringify(await band.drawn())).toContain('"alt":"worktree"')
-  expect(await band.find({ type: 'Text', text: 'vtex-copilot-fse' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'sample-app' })).toBeDefined()
   const drawn = JSON.stringify(await band.drawn())
-  expect(drawn).toContain('https://github.com/o/vtex-copilot-fse/compare/main...feat/ui-tweaks')
+  expect(drawn).toContain('https://github.com/o/sample-app/compare/main...feat/ui-tweaks')
   // Two commits to push, so the last one has no page yet: plain text, no link.
   expect(drawn).not.toContain('/commit/abc1234def')
   expect(await band.find({ type: 'Text', text: '↑2' })).toBeDefined()
@@ -57,14 +57,14 @@ test('names the worktree, links the branch as a compare view, and opens the fold
 })
 
 test('marks a shell that a cd took below the root, and opens that folder', async ($, on) => {
-  const root = 'C:/code/vtex-copilot-fse'
+  const root = 'C:/code/sample-app'
   answerSession(on, null, 'nothing', { root, cwd: `${root}/plugins/ui`, status: '## dev\n' })
   const band = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
-  expect((await band.find({ key: 'folder' }))?.props.label).toBe('vtex-copilot-fse')
+  expect((await band.find({ key: 'folder' }))?.props.label).toBe('sample-app')
   expect(await band.find({ type: 'Text', text: '↳' })).toBeDefined()
   expect((await band.find({ key: 'cwd' }))?.props.label).toBe('plugins/ui')
   await band.press({ key: 'cwd' })
-  expect(runs.some(r => r.argv[2] === 'start' && r.argv.at(-1) === 'C:\\code\\vtex-copilot-fse\\plugins\\ui')).toBe(true)
+  expect(runs.some(r => r.argv[2] === 'start' && r.argv.at(-1) === 'C:\\code\\sample-app\\plugins\\ui')).toBe(true)
   await band.unmount()
 })
 

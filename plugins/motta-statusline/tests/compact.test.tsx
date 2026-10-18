@@ -14,7 +14,7 @@ test('isCompact: under 80 cells, and never on an unknown width', () => {
 // leaves out the worktree's repository name (its icon stays), the last commit, the context's token
 // counts and the last slot.
 test('a narrow band draws compact, a wide one in full', async ($, on) => {
-  const cwd = 'C:/code/vtex-copilot-fse/.claude/worktrees/ui-tweaks'
+  const cwd = 'C:/code/sample-app/.claude/worktrees/ui-tweaks'
   const clock = answerSession(on, null, 'nothing', { cwd, status: '## feat/ui-tweaks\n M manifest.json\n' })
   // The worktree's icon stays when its name goes, so both draw the same images.
   const svgs: number[] = []
@@ -25,7 +25,7 @@ test('a narrow band draws compact, a wide one in full', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /feat\/ui-tweaks/ })).toBeDefined()
     expect(await ui.find({ key: 'context' })).toBeDefined()
     const has = async (q: object) => (await ui.find(q as never)) !== undefined
-    expect(await has({ type: 'Text', text: 'vtex-copilot-fse' })).toBe(!isNarrow)
+    expect(await has({ type: 'Text', text: 'sample-app' })).toBe(!isNarrow)
     svgs.push((await ui.findAll({ type: 'Svg' })).length)
     expect(await has({ type: 'Text', text: /^committed / })).toBe(!isNarrow)
     expect(await has({ type: 'Text', text: '360k/1M' })).toBe(!isNarrow)
