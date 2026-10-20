@@ -68,6 +68,9 @@ const ACTIVITY_CYCLE = ['reads and writes', 'writes', 'reads', 'none']
 const ACTIVITY_CHIP: Record<string, string> = { 'reads and writes': 'reads + writes', writes: 'writes only', reads: 'reads only', none: 'none' }
 const THEME_FILE = '.local/state/omarchy/current/theme/colors.toml'
 const THEME_POLL_MS = 2000
+const GIT_POLL_MS = 2000
+// The last messages scanned for a background task's notification at a turn's end.
+const NOTICE_SCAN = 50
 const FONT_SCRIPT =
   'if command -v fc-list >/dev/null 2>&1; then f=$(fc-list ":charset=$1" file | head -n1 | cut -d: -f1); ' +
   'else f=$(ls "$HOME"/Library/Fonts/*Nerd* /Library/Fonts/*Nerd* 2>/dev/null | head -n1); fi; ' +
@@ -93,6 +96,8 @@ let outsideBlink: Timer | null = null
 let outsideGen = 0
 let themePoll: Timer | null = null
 let themeMtime: number | null = null
+let gitPoll: Timer | null = null
+let gitSeen = { root: '', dir: '', stamp: '' }
 let generation = 0
 let lastPress = { key: '', at: 0 }
 let noNerd = false
@@ -713,6 +718,38 @@ async function gitDir($: EngineInterface, cwd: string): Promise<string> {
   return ''
 }
 
+// Claude Code's built-in security plugin passes classic.SessionStart on past
+// the user's plugins, so a watch path returned there never reaches the file
+// watcher: the index and HEAD are polled instead, and a commit, a stage or a
+// checkout made outside Claude re-reads the tree's git marks.
+async function pollGit($: EngineInterface): Promise<void> {
+  try {
+    const root = (await get($)).root || (await cwdOf($))
+    if (root !== gitSeen.root) gitSeen = { root, dir: await gitDir($, root), stamp: '' }
+    if (!gitSeen.dir) return
+    const dir = gitSeen.dir
+    const times = await Promise.all(['index', 'HEAD'].map(f => $.fs.stat(join(dir, f)).then(s => s.mtimeMs, () => 0)))
+    const stamp = times.join('|')
+    if (gitSeen.stamp && stamp !== gitSeen.stamp) void sync($, true)
+    gitSeen = { ...gitSeen, stamp }
+  } catch {
+    // The next tick tries again.
+  }
+}
+
+// A background task's notification delivered into a running turn is an
+// attachment, which the same plugin passes on past the user's plugins: at a
+// turn's end the last messages are read for it instead.
+async function settleFromMessages($: EngineInterface): Promise<void> {
+  if (background.size === 0) return
+  try {
+    const messages = await $.session.messages({ as: 'api' })
+    await settleBackground($, JSON.stringify(messages.slice(-NOTICE_SCAN)))
+  } catch {
+    // The next prompt's notification, if any, settles it.
+  }
+}
+
 async function sync($: EngineInterface, force = false): Promise<void> {
   const now = await $.clock.now()
   if (!force && now - lastSync < 2_000) return
@@ -1176,6 +1213,8 @@ export const register: Register = (on, options) => {
       await loadTheme($)
       themePoll?.cancel()
       themePoll = themeMtime ? $.clock.every(THEME_POLL_MS, () => void loadTheme($)) : null
+      gitPoll?.cancel()
+      gitPoll = $.clock.every(GIT_POLL_MS, () => void pollGit($))
       const t = await get($)
       if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {}, flashVerbs: {} }))
       if (t.preview) await patch($, () => ({ preview: '', previewTop: 0 }))
@@ -1327,9 +1366,12 @@ export const register: Register = (on, options) => {
     return {}
   })
 
-  on('classic.SessionStart', async ($, e, next) => {
+  // A /clear or a /resume goes on in this process, which raises no
+  // session.start for it: the tree settles its root once the old one ends.
+  // (classic.SessionStart would say so, but the user's plugins never hear it.)
+  on('session.end', async ($, e, next) => {
     const result = await next(e)
-    if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
+    if (e.reason === 'clear' || e.reason === 'resume') {
       void (async () => {
         await loadTheme($)
         const t = await get($)
@@ -1339,19 +1381,17 @@ export const register: Register = (on, options) => {
         if (t.root !== root || t.nodes.length === 0) await reset($, root)
       })()
     }
-    const gd = await gitDir($, posix(e.cwd))
-    return gd ? { ...result, watchPaths: [...(result.watchPaths ?? []), join(gd, 'index'), join(gd, 'HEAD')] } : result
-  })
-
-  on('classic.CwdChanged', async ($, e, next) => {
-    const result = await next(e)
-    void followCwd($)
     return result
   })
 
-  on('classic.FileChanged', async ($, e, next) => {
+  // A turn's end stands in for classic.CwdChanged (a worktree entered or left
+  // mid-turn) and for a background task's notification delivered mid-turn.
+  on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (/[\\/]\.git[\\/]|[\\/](index|HEAD)$/.test(e.file_path)) $.clock.after(300, () => void sync($, true))
+    if (e.agentId === undefined) {
+      void followCwd($)
+      void settleFromMessages($)
+    }
     return result
   })
 
@@ -1400,11 +1440,6 @@ export const register: Register = (on, options) => {
       })()
     }
     return next(context.length ? { ...e, context } : e)
-  })
-
-  on('prompt.attachment', async ($, e, next) => {
-    void settleBackground($, e.text)
-    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {

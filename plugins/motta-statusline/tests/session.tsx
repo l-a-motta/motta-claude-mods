@@ -31,17 +31,20 @@ export const PR_JSON = JSON.stringify({
 // its hint line, and the opaque reference it hands back for an empty band;
 // with `beneath`, what a plugin beneath draws in the band instead:
 // prompt-enhancer's chip or card, savvy-progress's card with the chips
-// beside it (their hooks ran beneath it), or a tree that takes the band. With `worktree`, the session runs in a worktree of
+// beside it (their hooks ran beneath it), or an unkeyed card, as Claude Code's own. With `worktree`, the session runs in a worktree of
 // the repository, on its own branch, while the repository's root is the main
 // checkout. Every process run is recorded in `runs`.
 type GhAnswer = string | null | { stderr: string }
 
-export type Beneath = 'nothing' | 'chip' | 'card' | 'card-with-chips' | 'taken'
+export type Beneath = 'nothing' | 'chip' | 'card' | 'card-with-chips' | 'unkeyed'
 
 // `root`, the session's root when the shell has gone elsewhere (`cwd`).
 export type Worktree = { cwd: string; status: string; root?: string }
 
 export const runs: { argv: string[]; cwd?: string }[] = []
+
+// The session's model; a test switches it by assigning.
+export const session = { model: 'claude-opus-5-5[1m]' }
 
 export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | (() => GhAnswer) = null, beneath: Beneath = 'nothing', worktree: Worktree | null = null) {
   const clock = mock.clock(on)
@@ -50,7 +53,7 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
   on('session.repo', () => ({
     value: { root: 'C:/code/sample-app', remote: 'git@github.com:o/sample-app.git', internal: false, name: null },
   }))
-  on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
+  on('session.model', () => ({ value: session.model }))
   // Asked for the breakdown, it says auto-compact fires at 835k.
   on('session.usage', ($, e) => ({
     value: {
@@ -123,7 +126,7 @@ export function answerSession(on: Parameters<TestBody>[1], prJson: GhAnswer | ((
     }
     return (
       <Box flexDirection="column">
-        <Text>Edit 1 of 3</Text>
+        <Text>Are you sure?</Text>
       </Box>
     )
   })

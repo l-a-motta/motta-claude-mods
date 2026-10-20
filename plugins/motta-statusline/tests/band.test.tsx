@@ -10,8 +10,8 @@ describe('bandShare', () => {
     expect(bandShare({ type: 'engine', ref: 1 })).toBe('free')
     expect(bandShare({ type: 'Box', props: { key: 'band-beside:prompt-enhancer' } })).toBe('beside')
     expect(bandShare({ type: 'Box', props: { key: 'band-under:prompt-enhancer' } })).toBe('under')
-    expect(bandShare({ type: 'Box', props: { flexDirection: 'column' } })).toBe('taken')
-    expect(bandShare({ type: 'Text', props: { key: 'band-beside:x' } })).toBe('taken')
+    expect(bandShare({ type: 'Box', props: { flexDirection: 'column' } })).toBe('under')
+    expect(bandShare({ type: 'Text', props: { key: 'band-beside:x' } })).toBe('under')
   })
 })
 
@@ -83,9 +83,11 @@ describe('liftBeside', () => {
   })
 })
 
-test('gives the band to a tree that takes it', async ($, on) => {
-  answerSession(on, null, 'taken')
+test("keeps the lines above an unkeyed tree, as a built-in's card", async ($, on) => {
+  answerSession(on, null, 'unkeyed')
   const band = await desktopBand($)
-  expect(await band.find({ type: 'Text', text: 'Edit 1 of 3' })).toBeDefined()
-  expect(await band.find({ key: 'folder' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'Are you sure?' })).toBeDefined()
+  expect(await band.find({ key: 'folder' })).toBeDefined()
+  const root = (await band.drawn()) as Node
+  expect(root.children?.[0]?.props?.key).toBe('band-lines:motta-statusline')
 })

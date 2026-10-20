@@ -75,7 +75,8 @@
 //   chip) is drawn at the right of the lines, one
 //   keyed `band-under:<mod>` (a card) under them, a chip column inside the
 //   card lifted back to the right of the lines (liftBeside), and any other
-//   tree takes the band. The chips are dealt one to a line, into a slot that
+//   tree is a card too: a built-in's (Claude Code's own cards draw there on
+//   the desktop) keeps the lines above it. The chips are dealt one to a line, into a slot that
 //   ends the line (`band-slot:`), so each lines up with its line and wraps
 //   with it on a narrow band. The lines are keyed `band-lines:`, so a chip
 //   mod whose hook runs above this one finds the slots too (its withChip).
@@ -205,8 +206,6 @@ let placement: 'above' | 'below' = 'below'
 let slot: Slot = 'rate'
 let cache: Cache | null = null
 let cacheTtl: 'auto' | '5m' | '1h' = 'auto'
-// The TTL the engine said on a model switch, null before one.
-let engineTtl: '5m' | '1h' | null = null
 // The theme's side, read on the full refreshes; the terminal's bars fade toward its ground.
 let scheme: Scheme = 'dark'
 
@@ -299,13 +298,6 @@ export const register: Register = (on, options) => {
     return forked
   }).catch(($, e, next) => next(e))
 
-  // The one place the engine says the TTL. A switch forfeits the cache.
-  on('classic.PostModelSwitch', async ($, e, next) => {
-    engineTtl = e.cache_ttl
-    await markCacheCold($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
   // A compaction rewrites the conversation and a /clear starts a new one:
   // nothing of the old prefix is read again. A precompute installs nothing.
   on('session.compact', async ($, e, next) => {
@@ -349,7 +341,7 @@ export const register: Register = (on, options) => {
     if (!isBand || e.props.hasSurvey) return next(e)
     const below = await next(e)
     const share = bandShare(below)
-    if (share === 'taken' || data === null) return below
+    if (data === null) return below
     const table = $.ui.resolve(e)
     const { Box, Text, Link, Button } = table
     const Svg = e.surface === 'desktop' && 'Svg' in table ? table.Svg : null
@@ -407,14 +399,12 @@ function isFree(node: unknown): boolean {
 }
 
 // How a tree a plugin beneath drew shares the band, read from its root Box's
-// key: `band-beside:` at the right of the lines, `band-under:` under them.
-export function bandShare(node: unknown): 'free' | 'beside' | 'under' | 'taken' {
+// key: `band-beside:` at the right of the lines, anything else under them.
+export function bandShare(node: unknown): 'free' | 'beside' | 'under' {
   if (isFree(node)) return 'free'
   const root = node as { type?: unknown; props?: { key?: unknown } }
   const key = root.type === 'Box' && typeof root.props?.key === 'string' ? root.props.key : ''
-  if (key.startsWith('band-beside:')) return 'beside'
-  if (key.startsWith('band-under:')) return 'under'
-  return 'taken'
+  return key.startsWith('band-beside:') ? 'beside' : 'under'
 }
 
 type Node = { type?: unknown; props?: { key?: unknown }; children?: RenderChildren[] }
@@ -452,7 +442,7 @@ export function liftBeside(node: RenderChildren, depth = 0): { beside?: RenderCh
 async function refreshAll($: EngineInterface, withGit = true) {
   if (!isTicking) {
     isTicking = true
-    $.clock.every(GIT_REFRESH_MS, () => void refreshGit($))
+    $.clock.every(GIT_REFRESH_MS, () => void refreshOnTimer($))
     // Drops the pinned notice an earlier version of this mod left behind.
     $.ui.status(undefined)
   }
@@ -468,9 +458,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
     if (data === null) slot = await readSlot($)
     if (withGit) scheme = await readScheme($)
     const limits = limitsOf(usage.rateLimits)
-    const model = await $.session.model()
-    // A model switch the hook did not see still forfeits the cache.
-    if (cache !== null && cache.at !== null && cache.model !== model) cache = { ...cache, at: null, model }
+    const model = await readModel($)
     data = {
       where: withGit || data === null ? await readWhere($, await $.session.root().catch(() => cwd), repo?.root ?? null) : data.where,
       cwd,
@@ -542,11 +530,11 @@ export function isCacheHit(usage: Pick<ModelUsage, 'cache_read_input_tokens' | '
   return usage != null && usage.cache_read_input_tokens + usage.cache_creation_input_tokens > 0
 }
 
-// The cache's TTL: as `cacheTtl` sets it; under `auto` as the engine said,
-// else an hour on a subscription (the one session that reports rate limits)
-// and five minutes on anything else.
-export function cacheTtlMs(setting: 'auto' | '5m' | '1h', said: '5m' | '1h' | null, isSubscription: boolean) {
-  const ttl = setting !== 'auto' ? setting : (said ?? (isSubscription ? '1h' : '5m'))
+// The cache's TTL: as `cacheTtl` sets it; under `auto` an hour on a
+// subscription (the one session that reports rate limits) and five minutes
+// on anything else.
+export function cacheTtlMs(setting: 'auto' | '5m' | '1h', isSubscription: boolean) {
+  const ttl = setting !== 'auto' ? setting : isSubscription ? '1h' : '5m'
   return ttl === '1h' ? 3_600_000 : 5 * 60_000
 }
 
@@ -561,7 +549,7 @@ export function cacheLeft(c: Cache | null, now: number): { label: string; isLow:
 
 async function markCacheHit($: EngineInterface) {
   const usage = await $.session.usage()
-  cache = { at: await $.clock.now(), model: await $.session.model(), ttlMs: cacheTtlMs(cacheTtl, engineTtl, usage.rateLimits.length > 0) }
+  cache = { at: await $.clock.now(), model: await $.session.model(), ttlMs: cacheTtlMs(cacheTtl, usage.rateLimits.length > 0) }
   if (data !== null) data = { ...data, cache }
 }
 
@@ -607,6 +595,28 @@ export function chunkChars(chunk: TurnStepChunk): number {
 export function exactRate(tokens: number, firstAt: number | null, endAt: number): Rate | null {
   if (firstAt === null || tokens <= 0 || endAt - firstAt < 50) return null
   return { kind: 'exact', perSec: tokens / ((endAt - firstAt) / 1_000) }
+}
+
+// A model switch forfeits the cache. No hook hears one (Claude Code's
+// security plugin passes classic.PostModelSwitch on past the user's
+// plugins), so each refresh compares the session's model with the cache's.
+async function readModel($: EngineInterface): Promise<string> {
+  const model = await $.session.model()
+  if (cache !== null && cache.at !== null && cache.model !== model) cache = { ...cache, at: null, model }
+  return model
+}
+
+// The timer's refresh: the model, then git.
+async function refreshOnTimer($: EngineInterface) {
+  if (data !== null) {
+    try {
+      const model = await readModel($)
+      data = { ...data, model: modelLabel(model), cache }
+    } catch {
+      // Keep the last reading.
+    }
+  }
+  await refreshGit($)
 }
 
 async function refreshGit($: EngineInterface) {
