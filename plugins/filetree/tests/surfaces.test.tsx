@@ -22,6 +22,7 @@ type World = {
   duDelays?: number[]
   links?: string[]
   files?: Record<string, string>
+  mtimes?: Record<string, number>
 }
 type Ran = string[][]
 const opens: unknown[] = []
@@ -74,7 +75,7 @@ function world(on: any, w: World, ran: Ran) {
     const name = p.slice(p.lastIndexOf('/') + 1)
     const hit = dirOf(p) ? 'dir' : dirOf(parent)?.find(([n]) => n === name)?.[1]
     if (!hit) throw new Error(`ENOENT ${e.path}`)
-    return { value: { kind: hit, size: 1, mtimeMs: name === 'a.ts' ? 1_800_000_000_500 : 1_700_000_000_000, isLink: false } }
+    return { value: { kind: hit, size: 1, mtimeMs: w.mtimes?.[p.replace(/^[A-Za-z]:/, '')] ?? (name === 'a.ts' ? 1_800_000_000_500 : 1_700_000_000_000), isLink: false } }
   })
   on('process.run', async (_$: any, e: any) => {
     const argv: string[] = [...e.argv]
@@ -673,19 +674,16 @@ test('follow off: reads, writes and folders Claude opens above the view never mo
   await ui.unmount()
 })
 
-test('watches only git metadata, copies paths, clears search, Home and End', { timeoutMs: 20_000 }, async ($, on) => {
+test('polls only git metadata, copies paths, clears search, Home and End', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
   const root = '/home/k/proj'
-  const clock = world(on, { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: root, dirs: { [root]: [['.git', 'dir'], ['a.txt', 'file'], ['b.txt', 'file'], ['c.txt', 'file']], [`${root}/.git`]: [['index', 'file'], ['HEAD', 'file']] }, status: '## main\0', numstat: '' }, ran)
+  const mtimes: Record<string, number> = {}
+  const clock = world(on, { mtimes, os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: root, dirs: { [root]: [['.git', 'dir'], ['a.txt', 'file'], ['b.txt', 'file'], ['c.txt', 'file']], [`${root}/.git`]: [['index', 'file'], ['HEAD', 'file']] }, status: '## main\0', numstat: '' }, ran)
   const copied: string[] = []
   on('ui.copy', (_$: any, e: any) => {
     copied.push(e.text)
     return { value: { isCopied: true } }
   })
-  on('classic.SessionStart', () => ({}))
-  on('classic.FileChanged', () => ({}))
-  const started = await $.classic.SessionStart({ source: 'startup', cwd: root } as any)
-  expect((started as any).watchPaths).toEqual([`${root}/.git/index`, `${root}/.git/HEAD`])
   await $.session.start({ cwd: root, surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
@@ -707,9 +705,12 @@ test('watches only git metadata, copies paths, clears search, Home and End', { t
   await ui.post({ key: 'home' }, { in: 'rows' })
   await clock.settle()
   expect((await rowsOf()).active).toBe(`${root}/.git`)
+  await clock.advance(2_000)
   const before = ran.filter(a => a.includes('status')).length
-  await $.classic.FileChanged({ file_path: `${root}/.git/index`, event: 'change' } as any)
-  await clock.advance(400)
+  await clock.advance(2_000)
+  expect(ran.filter(a => a.includes('status')).length).toBe(before)
+  mtimes[`${root}/.git/index`] = 1_800_000_001_000
+  await clock.advance(2_000)
   expect(ran.filter(a => a.includes('status')).length).toBeGreaterThan(before)
   await ui.unmount()
 })
@@ -761,18 +762,19 @@ test('after /clear the tree rebuilds itself, keeps a pinned folder, and an empty
   const ran: Ran = []
   const root = '/home/k/proj'
   const clock = world(on, { os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: '', dirs: { [root]: [['a.ts', 'file'], ['sub', 'dir']], [`${root}/sub`]: [['b.ts', 'file']] }, status: '', numstat: '' }, ran)
-  on('classic.SessionStart', () => ({}))
+  on('session.end', () => ({ sessionId: 'test-session' }))
+  const clear = { reason: 'clear', sessionId: 'test-session' } as any
   expect(ancestorsOf('/repo/a.ts', '')).toEqual([])
   expect(ancestorsOf('/repo2/a.ts', '/repo')).toEqual([])
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
   await $.tool.call({ tool: 'Read', file_path: `${root}/a.ts` } as any)
   await clock.settle()
-  await $.classic.SessionStart({ source: 'clear', cwd: root } as any)
+  await $.session.end(clear)
   await clock.settle()
   expect(await texts(ui)).toContain(`"id":"${root}/a.ts"`)
   await $.command.run(fullscreen(`${root}/sub`))
   await clock.settle()
-  await $.classic.SessionStart({ source: 'clear', cwd: root } as any)
+  await $.session.end(clear)
   await clock.settle()
   const shown = await texts(ui)
   expect(shown).toContain(`"id":"${root}/sub/b.ts"`)
@@ -1007,7 +1009,7 @@ test('a cwd change moves the tree and drops the old selection before the next pr
   const c = '/home/k/repo-c'
   const w: World = { os: 'linux', env: { HOME: '/home/k' }, cwd: a, top: '', dirs: { [a]: [['a.txt', 'file']], [b]: [['b.txt', 'file']], [c]: [['c.txt', 'file']] }, status: '', numstat: '' }
   const clock = world(on, w, ran)
-  on('classic.CwdChanged', () => ({}))
+  on('turn.complete', () => ({ text: '' }))
   await $.session.start({ cwd: a, surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ plugin: 'filetree', surface: 'terminal', component: 'Pane', requestId: 'filetree', props: paneProps(60) })
@@ -1019,7 +1021,7 @@ test('a cwd change moves the tree and drops the old selection before the next pr
   await clock.settle()
   expect(await texts(ui)).toContain('b.txt')
   w.cwd = c
-  await $.classic.CwdChanged({ old_cwd: b, new_cwd: c } as any)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'end_turn', text: '' } as any)
   await clock.settle()
   expect(await texts(ui)).toContain('c.txt')
   await ui.unmount()
@@ -1027,6 +1029,9 @@ test('a cwd change moves the tree and drops the old selection before the next pr
 
 test('a background git push stays running until its task notification arrives', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: Ran = []
+  const notes: any[] = []
+  on('session.messages', () => ({ value: notes }))
+  on('turn.complete', () => ({ text: '' }))
   const root = '/home/k/proj'
   const clock = world(on, {
     os: 'linux', env: { HOME: '/home/k' }, cwd: root, top: root, dirs: { [root]: [['a.txt', 'file']] }, status: '## main\0', numstat: '',
@@ -1047,6 +1052,14 @@ test('a background git push stays running until its task notification arrives', 
   await $.prompt.submit({ text: '<task-notification>\n<task-id>b2</task-id>\n<status>failed</status>\n<summary>Background command "git pull" failed with exit code 1</summary>\n</task-notification>', wait: false } as any)
   await clock.settle()
   expect(await texts(ui)).toContain('pull failed')
+  // Delivered into a running turn, the notification is read back at its end.
+  await $.tool.call({ tool: 'Bash', command: 'git push', run_in_background: true } as any)
+  await clock.settle()
+  expect(await texts(ui)).toContain('pushing…')
+  notes.push({ role: 'user', content: [{ type: 'text', text: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>' }] })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'end_turn', text: '' } as any)
+  await clock.settle()
+  expect(await texts(ui)).not.toContain('pushing…')
   await ui.unmount()
 })
 

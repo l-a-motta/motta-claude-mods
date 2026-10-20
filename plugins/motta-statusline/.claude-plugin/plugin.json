@@ -1,6 +1,6 @@
 {
   "name": "motta-statusline",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "Two-line status line: where the session runs (and the worktree's repo), the branch with an icon and color for where it stands (its PR merged, closed, draft, failing, running or green; else changed, unpushed or in step), whether files changed, push state and the last commit, the branch's PR with CI, conflicts and review, model and effort, a context bar with the auto-compact point, rate-limit bars with a pace tick, files, ctx, 5h and 7d opening the Changes, Context and Usage panes of changes-drill, context-drill and usage-drill, a slot that cycles rate, cost, session, runway and how long the prompt cache stays warm, a ✦ after it opening prompt-enhancer's Enhance pane on what the prompt box holds, tokens and the generation rate (tokens per second, live while a request streams). Below the prompt (always visible) or as a band above it.",
   "author": {
     "name": "l-a-motta"

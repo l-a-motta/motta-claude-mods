@@ -2480,9 +2480,12 @@ export const register: Register = (on, options) => {
 
   // A message you typed starts your next turn: new agents belong to it, and to
   // it still when your message's agents' reports start turns of their own.
-  on('session.append', async ($, e, next) => {
-    if (!e.agentId && e.message.type === 'user' && e.door === 'prompt' && e.origin.kind === 'composer') isFreshPrompt = true
-    return next(e)
+  // Read at prompt.submit: Claude Code's built-in security plugin passes
+  // session.append on past the user's plugins.
+  on('prompt.submit', async ($, e, next) => {
+    const sent = await next(e)
+    if (e.origin.kind === 'composer' && !e.command && sent.drop === undefined) isFreshPrompt = true
+    return sent
   })
 
   on('turn.start', async ($, e, next) => {

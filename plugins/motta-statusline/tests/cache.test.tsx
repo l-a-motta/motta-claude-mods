@@ -3,7 +3,7 @@ import type { TestBody } from 'claude-code/testing'
 import type { TurnStepInput, TurnStepResult } from 'claude-code'
 
 import { cacheLeft, cacheTtlMs, isCacheHit } from '../hooks/register.tsx'
-import { answerSession } from './session.tsx'
+import { answerSession, session } from './session.tsx'
 
 const HOUR = 3_600_000
 const MIN = 60_000
@@ -30,11 +30,11 @@ describe('cacheLeft', () => {
     expect(cacheLeft({ ...c, at: null }, 0).isCold).toBe(true)
   })
 
-  test("the TTL: as set, else the engine's word, else an hour on a subscription", () => {
-    expect(cacheTtlMs('5m', '1h', true)).toBe(5 * MIN)
-    expect(cacheTtlMs('auto', '5m', true)).toBe(5 * MIN)
-    expect(cacheTtlMs('auto', null, true)).toBe(HOUR)
-    expect(cacheTtlMs('auto', null, false)).toBe(5 * MIN)
+  test('the TTL: as set, else an hour on a subscription', () => {
+    expect(cacheTtlMs('5m', true)).toBe(5 * MIN)
+    expect(cacheTtlMs('1h', false)).toBe(HOUR)
+    expect(cacheTtlMs('auto', true)).toBe(HOUR)
+    expect(cacheTtlMs('auto', false)).toBe(5 * MIN)
   })
 
   test('a request that read or wrote the cache holds it warm', () => {
@@ -82,27 +82,18 @@ test('the cache slot counts down from the last step that read the cache, and goe
   await ui.unmount()
 })
 
-test("a model switch leaves the cache cold and takes the engine's TTL", async ($, on) => {
-  answerSession(on)
-  on('classic.PostModelSwitch', () => ({}))
+test('a model switch leaves the cache cold by the next refresh, until a request warms it', async ($, on) => {
+  const clock = answerSession(on)
   on('turn.step', async function* () {
     return result(50_000)
   })
   const ui = await mountOnCache($)
   await step($)
-  await $.classic.PostModelSwitch({
-    from_model: 'claude-opus-5-5',
-    to_model: 'claude-sonnet-5-5',
-    requested_model: 'sonnet',
-    source: 'command',
-    context_tokens: 50_000,
-    prompt_cache_warm: true,
-    cache_ttl: '5m',
-    estimated_cache_write_usd: 0.1,
-    pricing: 'catalog',
-  })
+  expect(await ui.find({ type: 'Text', text: '1h00m' })).toBeDefined()
+  session.model = 'claude-sonnet-5-5'
+  await clock.advance(10_000)
   expect(await ui.find({ type: 'Text', text: 'cold' })).toBeDefined()
   await step($)
-  expect(await ui.find({ type: 'Text', text: '5m' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '1h00m' })).toBeDefined()
   await ui.unmount()
 })
