@@ -56,13 +56,25 @@
 // subscription (rate limits reported) is read as an hour and anything else as
 // five minutes, unless `cacheTtl` sets it.
 //
+// Git is read sparingly: every session runs its own copy of the mod, and each
+// git or gh run is a process of its own. Every 10 s the mod looks at git's
+// own files (HEAD, the index, the branch's ref and its upstream's, FETCH_HEAD,
+// packed-refs) and runs `git status` only when one moved, when one of this
+// session's tool calls may have written, or when the last run is a minute old
+// (five once the session is idle): an editor's save outside Claude moves none
+// of git's files. `git log` runs only when HEAD or a ref moved. The session
+// is idle after five minutes with no turn and no tool call. Out of sight
+// (the desktop app draws only the session on screen) it runs no git or gh at
+// all, and reads git the moment it is drawn again.
+//
 // The PR segment is the current branch's PR as `gh pr view` reads it: CI
 // checks, conflicts or behind its base, review decision. It refreshes every
-// 30 s while checks run and every 2 min once they settle, at once after
-// Claude pushes or runs `gh pr ...`, and on a GitHub event the session
-// receives. A change worth knowing (CI failed or passed, a new conflict, a
-// review, merged) raises a toast. No gh, or no PR for the branch: no segment.
-// A refresh that fails keeps the last reading, drawn dim until one succeeds.
+// 30 s while checks run and every 2 min once they settle (2 and 10 min in an
+// idle session), at once after Claude pushes or runs `gh pr ...`, and on a
+// GitHub event the session receives. A change worth knowing (CI failed or
+// passed, a new conflict, a review, merged) raises a toast. No gh, or no PR
+// for the branch: no segment. A refresh that fails keeps the last reading,
+// drawn dim until one succeeds.
 //
 // `placement` picks where it draws:
 // - below (default): drawn in the hint line under the prompt (PromptHint),
@@ -95,6 +107,12 @@
 import type { EngineInterface, ModelUsage, Register, RenderChildren, SessionContextUsage, SessionRateLimit, TurnStepChunk } from 'claude-code'
 
 const GIT_REFRESH_MS = 10_000
+// How old the last git run may grow while git's own files stand still, in an
+// active session and in an idle one, and how long without a turn or a tool
+// call makes a session idle.
+const GIT_FALLBACK_MS = 60_000
+const GIT_IDLE_FALLBACK_MS = 5 * 60_000
+const IDLE_AFTER_MS = 5 * 60_000
 // How often a streaming request's rate is redrawn, how long a request waits
 // for its first token before the wait is shown, and the characters per token
 // the live estimate assumes.
@@ -103,6 +121,8 @@ const WAIT_SHOWN_MS = 1_000
 const CHARS_PER_TOKEN = 4
 const PR_PENDING_MS = 30_000
 const PR_SETTLED_MS = 120_000
+const PR_IDLE_PENDING_MS = 120_000
+const PR_IDLE_SETTLED_MS = 600_000
 // GitHub takes a few seconds to start the checks of a pushed commit.
 const PR_AFTER_PUSH_MS = 20_000
 const PR_FIELDS = 'number,url,state,isDraft,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup'
@@ -202,6 +222,23 @@ let isTicking = false
 let prBranch: string | null = null
 let prAskedAt = 0
 let isAskingPr = false
+// Git's own files as the last git run found them (their mtimes, the refs
+// apart, null to run git on the next tick), when that run was, whether a tool
+// call may have changed the working tree since, and when the session last
+// had a turn or a tool call.
+let gitStamp: string | null = null
+let refStamp: string | null = null
+let gitRanAt = 0
+let isTreeDirty = false
+let lastActiveAt = 0
+// When a surface last drew the line, when the timer last asked for a redraw,
+// and whether the session sleeps out of sight (refreshOnTimer).
+let drawnAt = 0
+let tickPaintedAt = 0
+let isAsleep = false
+// origin's default branch and the root as shown, read once per folder.
+let baseRead: { dir: string; base: string } | null = null
+let whereRead: { key: string; where: Where } | null = null
 let placement: 'above' | 'below' = 'below'
 let slot: Slot = 'rate'
 let cache: Cache | null = null
@@ -219,6 +256,7 @@ export const register: Register = (on, options) => {
     liveEffort = null
     rate = null
     lastExact = null
+    lastActiveAt = await $.clock.now()
     await refreshAll($)
     return started
   })
@@ -231,6 +269,7 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined) return yield* next(e)
     if (e.effort !== undefined) liveEffort = String(e.effort)
     const step: Step = { sentAt: await $.clock.now(), firstAt: null, chars: 0, isDone: false }
+    lastActiveAt = step.sentAt
     const tick = $.clock.every(RATE_TICK_MS, () => void tickRate($, step))
     // Runs once, when the stream ends or the dispatch is abandoned (esc), so
     // no tick outlives its request. An interrupted request has no result:
@@ -325,6 +364,16 @@ export const register: Register = (on, options) => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // Any tool call keeps the session active. An edit, or a command that may
+  // write, changes the working tree, which git's own files do not show: the
+  // next tick runs git.
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    lastActiveAt = await $.clock.now()
+    if (ran.deny === undefined && ran.isError !== true && mayWrite(e.tool, ran.isReadOnly)) isTreeDirty = true
+    return ran
+  }).catch(($, e, next) => next(e))
+
   // The relay's events for a subscribed PR (checks, reviews, merges).
   on('session.receive', async ($, e, next) => {
     const received = await next(e)
@@ -336,6 +385,7 @@ export const register: Register = (on, options) => {
   // fire session.start, but the band is drawn as soon as the plugin loads.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
+    await markSeen($)
     // The desktop app never raises PromptHint, so `below` draws in the band there.
     const isBand = placement === 'above' || e.surface === 'desktop'
     if (!isBand || e.props.hasSurvey) return next(e)
@@ -370,6 +420,7 @@ export const register: Register = (on, options) => {
   // line (mode pills, `esc to interrupt`) is kept under ours.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
+    await markSeen($)
     const hint = await next(e)
     if (placement !== 'below' || data === null) return hint
     const { Box, Text, Link, Button } = $.ui.resolve(e)
@@ -447,6 +498,7 @@ async function refreshAll($: EngineInterface, withGit = true) {
     $.ui.status(undefined)
   }
   try {
+    if (data === null) lastActiveAt = await $.clock.now()
     const cwd = await $.session.cwd()
     const repo = await $.session.repo().catch(() => null)
     gitDir = repo ? cwd : null
@@ -606,8 +658,28 @@ async function readModel($: EngineInterface): Promise<string> {
   return model
 }
 
-// The timer's refresh: the model, then git.
+// A draw: the session is on screen. One after the session slept reads git at
+// once, so what it shows is current when it comes back.
+async function markSeen($: EngineInterface) {
+  drawnAt = await $.clock.now()
+  if (!isAsleep) return
+  isAsleep = false
+  void refreshGit($)
+}
+
+// The timer's refresh: the model, then git. The desktop app draws only the
+// session on screen, so a tick whose last redraw nobody drew finds it out of
+// sight: it sleeps, running no git or gh, and asks for a redraw each tick,
+// which the app answers once the session is shown again (markSeen).
 async function refreshOnTimer($: EngineInterface) {
+  const now = await $.clock.now()
+  const isUnseen = tickPaintedAt > 0 && drawnAt < tickPaintedAt
+  tickPaintedAt = now
+  if (isUnseen) {
+    isAsleep = true
+    await paint($)
+    return
+  }
   if (data !== null) {
     try {
       const model = await readModel($)
@@ -619,6 +691,10 @@ async function refreshOnTimer($: EngineInterface) {
   await refreshGit($)
 }
 
+// Runs `git status` when git's own files moved, a tool call may have written,
+// or the last run is older than the fallback; else keeps the last reading.
+// `git log` runs only when HEAD or a ref moved. Where git's folder cannot be
+// read (stamp null), git runs on every tick.
 async function refreshGit($: EngineInterface) {
   if (data === null) return
   if (gitDir === null) {
@@ -626,23 +702,120 @@ async function refreshGit($: EngineInterface) {
     await paint($)
     return
   }
-  try {
-    const run = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], {
-      cwd: gitDir,
-      timeoutMs: 5_000,
-    })
-    if (run.exitCode === 0) {
-      const git = parseStatus(run.stdout)
-      const log = await $.process.run(['git', '--no-optional-locks', 'log', '-1', '--format=%H%x1f%ct%x1f%s'], { cwd: gitDir, timeoutMs: 5_000 })
-      const commit = log.exitCode === 0 ? parseCommit(log.stdout) : null
-      const cwd = await $.session.cwd().catch(() => data?.cwd ?? '')
-      if (data !== null) data = { ...data, git, commit, cwd: cwd || data.cwd }
+  const now = await $.clock.now()
+  const before = data.git
+  const stamp = await readGitStamp($, gitDir, before)
+  const fallback = now - lastActiveAt > IDLE_AFTER_MS ? GIT_IDLE_FALLBACK_MS : GIT_FALLBACK_MS
+  if (shouldRunGit({ stamp: stamp?.all ?? null, lastStamp: gitStamp, isTreeDirty, sinceRun: now - gitRanAt, fallback })) {
+    isTreeDirty = false
+    gitRanAt = now
+    try {
+      const run = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], {
+        cwd: gitDir,
+        timeoutMs: 5_000,
+      })
+      if (run.exitCode === 0) {
+        const git = parseStatus(run.stdout)
+        let commit = data?.commit ?? null
+        if (stamp === null || stamp.refs !== refStamp || commit === null) {
+          const log = await $.process.run(['git', '--no-optional-locks', 'log', '-1', '--format=%H%x1f%ct%x1f%s'], { cwd: gitDir, timeoutMs: 5_000 })
+          commit = log.exitCode === 0 ? parseCommit(log.stdout) : null
+        }
+        // A new branch or upstream has ref files the stamp did not stat: the
+        // next tick reads them.
+        const isSameRefs = before !== null && before.branch === git.branch && before.upstream === git.upstream
+        gitStamp = isSameRefs ? (stamp?.all ?? null) : null
+        refStamp = isSameRefs ? (stamp?.refs ?? null) : null
+        const cwd = await $.session.cwd().catch(() => data?.cwd ?? '')
+        if (data !== null) data = { ...data, git, commit, cwd: cwd || data.cwd }
+      }
+    } catch {
+      // git missing or slow: keep the last reading.
     }
-  } catch {
-    // git missing or slow: keep the last reading.
   }
   await paint($)
   void refreshPr($)
+}
+
+// Whether a tick runs git: never read git's files (null), they moved, a tool
+// call may have written, or the last run is older than the fallback.
+export function shouldRunGit(at: { stamp: string | null; lastStamp: string | null; isTreeDirty: boolean; sinceRun: number; fallback: number }) {
+  return at.stamp === null || at.stamp !== at.lastStamp || at.isTreeDirty || at.sinceRun >= at.fallback
+}
+
+// Whether a finished tool call may have changed the working tree: an edit,
+// or a shell command the engine did not find read-only.
+export function mayWrite(tool: string, isReadOnly: boolean | undefined) {
+  if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') return true
+  return (tool === 'Bash' || tool === 'PowerShell') && isReadOnly !== true
+}
+
+// The mtimes of git's own files for the checkout at `cwd`: HEAD, packed-refs
+// and the branch's ref (`refs`), then the index, FETCH_HEAD and the
+// upstream's ref. A file that is not there reads 0. Null when git's folder
+// cannot be found or read, which runs git every tick.
+async function readGitStamp($: EngineInterface, cwd: string, git: Git | null): Promise<{ all: string; refs: string } | null> {
+  const where = await findGitFolders($, cwd)
+  if (where === null) return null
+  const { dir, common } = where
+  const mtime = (path: string) => $.fs.stat(path).then(s => String(s.mtimeMs), () => '0')
+  const refFiles = [joinPath(dir, 'HEAD'), joinPath(common, 'packed-refs')]
+  if (git !== null && git.branch !== 'HEAD') refFiles.push(joinPath(common, `refs/heads/${git.branch}`))
+  const otherFiles = [joinPath(dir, 'index'), joinPath(common, 'FETCH_HEAD')]
+  if (git?.upstream) otherFiles.push(joinPath(common, `refs/remotes/${git.upstream}`))
+  const refs = `${dir}|${(await Promise.all(refFiles.map(mtime))).join('|')}`
+  return { refs, all: `${refs}|${(await Promise.all(otherFiles.map(mtime))).join('|')}` }
+}
+
+// Git's folder for the checkout holding `cwd` (`dir`, where HEAD and the index
+// are) and the folder its refs are in (`common`): the same for a plain
+// checkout; for a worktree, the `gitdir:` its `.git` file names and the
+// `commondir` that one names. Null when there is none or it cannot be read.
+async function findGitFolders($: EngineInterface, cwd: string): Promise<{ dir: string; common: string } | null> {
+  try {
+    for (let at = cwd, i = 0; i < 64; i++) {
+      const dot = joinPath(at, '.git')
+      const st = await $.fs.stat(dot).catch(() => null)
+      if (st?.kind === 'dir') return { dir: dot, common: dot }
+      if (st !== null) {
+        const ref = /^gitdir:\s*(.+)$/m.exec(String(await $.fs.read(dot)))?.[1]?.trim()
+        if (!ref) return null
+        const dir = resolvePath(at, ref)
+        const commonRef = await $.fs.read(joinPath(dir, 'commondir')).then(s => String(s).trim(), () => '')
+        return { dir, common: commonRef ? resolvePath(dir, commonRef) : dir }
+      }
+      const up = parentPath(at)
+      if (up === at) return null
+      at = up
+    }
+  } catch {
+    // Unreadable: git runs every tick.
+  }
+  return null
+}
+
+function joinPath(base: string, rel: string) {
+  return `${base.replace(/[\\/]+$/, '')}/${rel}`
+}
+
+// `rel` against `base` when it is relative, with `.` and `..` folded; forward slashes.
+export function resolvePath(base: string, rel: string) {
+  const isAbsolute = /^([a-zA-Z]:)?[\\/]/.test(rel)
+  const parts = (isAbsolute ? rel : `${base}/${rel}`).replace(/\\/g, '/').split('/')
+  const out: string[] = []
+  for (const part of parts) {
+    if (part === '.' || (part === '' && out.length > 0)) continue
+    if (part === '..' && out.length > 1) out.pop()
+    else out.push(part)
+  }
+  return out.join('/')
+}
+
+function parentPath(path: string) {
+  const p = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const cut = p.lastIndexOf('/')
+  if (cut < 0) return path
+  return cut === 0 ? '/' : p.slice(0, cut)
 }
 
 // Asks gh for the branch's PR when the branch changed, when `isNow`, or when
@@ -653,7 +826,8 @@ async function refreshPr($: EngineInterface, isNow = false) {
   if (data === null || gitDir === null || !branch || branch === 'HEAD' || isAskingPr) return
   const now = await $.clock.now()
   const isNewBranch = branch !== prBranch
-  const cadence = data.pr?.state === 'OPEN' && data.pr.checks.pending > 0 ? PR_PENDING_MS : PR_SETTLED_MS
+  const isPending = data.pr?.state === 'OPEN' && data.pr.checks.pending > 0
+  const cadence = now - lastActiveAt > IDLE_AFTER_MS ? (isPending ? PR_IDLE_PENDING_MS : PR_IDLE_SETTLED_MS) : isPending ? PR_PENDING_MS : PR_SETTLED_MS
   if (!isNow && !isNewBranch && now - prAskedAt < cadence) return
   if (isNewBranch && data.pr !== null) {
     data = { ...data, pr: null, isPrStale: false }
@@ -816,11 +990,15 @@ export function parseCommit(out: string): Commit | null {
 async function readWhere($: EngineInterface, root: string, repoRoot: string | null): Promise<Where> {
   const plain = { label: basename(root), path: root, worktreeOf: null }
   if (repoRoot === null) return plain
+  const key = `${root}|${repoRoot}`
+  if (whereRead?.key === key) return whereRead.where
   try {
     const run = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: root, timeoutMs: 5_000 })
     const top = run.stdout.trim()
     if (run.exitCode !== 0 || !/^([a-zA-Z]:)?[\\/]/.test(top) || top.includes('\n')) return plain
-    return whereOf(root, top, repoRoot)
+    const where = whereOf(root, top, repoRoot)
+    whereRead = { key, where }
+    return where
   } catch {
     return plain
   }
@@ -859,10 +1037,13 @@ function relativeTo(base: string, path: string) {
 // when origin names none.
 async function readBase($: EngineInterface): Promise<string> {
   if (gitDir === null) return 'main'
+  if (baseRead?.dir === gitDir) return baseRead.base
   try {
     const run = await $.process.run(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: gitDir, timeoutMs: 5_000 })
     const m = /^origin\/(\S+)\s*$/.exec(run.stdout)
-    return run.exitCode === 0 && m?.[1] ? m[1] : 'main'
+    const base = run.exitCode === 0 && m?.[1] ? m[1] : 'main'
+    baseRead = { dir: gitDir, base }
+    return base
   } catch {
     return 'main'
   }
