@@ -42,6 +42,7 @@
   "autoContinueAtUsageLimit": false,
   "inputNeededNotifEnabled": true,
   "promptSuggestionEnabled": false,
+  "idleCompaction": false,
   "autoMode": {
     "soft_deny": [
       "$defaults",
