@@ -158,11 +158,19 @@ export const register: Register = (on, options) => {
 
   // The figures the engine pushes after each turn: kept and toasted with no
   // call made; then, when refresh is per turn and the pane is shown, a read.
-  if (cfg.history > 0 || cfg.thresholdToast || cfg.refresh === 'turn') {
+  //
+  // A compaction of the main conversation starts the baseline over: the next
+  // read takes it. No hook hears session.compact (Claude Code's security
+  // plugin passes it on past the user's plugins), so a fill that drops is
+  // read as one, as growth() reads the history.
+  if (cfg.history > 0 || cfg.thresholdToast || cfg.refresh === 'turn' || cfg.since === 'compact') {
+    let lastFill: number | undefined
     on('session.measure', async ($, e, next) => {
       const measured = await next(e)
       const tokens = e.context.tokens
       if (!e.changed.includes('context') || tokens === undefined) return measured
+      if (cfg.since === 'compact' && lastFill !== undefined && tokens < lastFill) await update($, since, () => null)
+      lastFill = tokens
       if (cfg.history > 0) await update($, history, h => [...h, tokens].slice(-HISTORY_KEPT))
       if (cfg.thresholdToast && e.context.percent !== undefined) {
         const level = fillLevel(e.context.percent)
@@ -172,16 +180,6 @@ export const register: Register = (on, options) => {
       }
       if (cfg.refresh === 'turn' && (await $.ui.panes()).some(p => p.id === PANE && p.isShown)) await readAll($, cfg, false)
       return measured
-    })
-  }
-
-  // A compaction of the main conversation starts the baseline over: the next
-  // read takes it.
-  if (cfg.since === 'compact') {
-    on('session.compact', async ($, e, next) => {
-      const compacted = await next(e)
-      if (e.agentId === undefined && compacted.skip === undefined) await update($, since, () => null)
-      return compacted
     })
   }
 

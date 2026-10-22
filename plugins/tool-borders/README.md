@@ -22,7 +22,9 @@ The stroke says how the call got past the permission check:
 - **You were asked** (the dialog showed): a bold border, and `you allowed it` under the row.
 - **Refused:** red, with `✗ denied by rule`, `✗ denied by classifier` or `✗ you denied it` under the row.
 
-It reads `tool.check` (allow, ask or deny), the classic `PermissionRequest` hook, which fires just before the dialog shows, and `PermissionDenied`, which fires when the classifier refuses; the call's `tool.call` settles an ask. A call drawn before the mod loaded keeps the plain mark.
+It reads `tool.check` (allow, ask or deny); an ask is the classifier's while the footer says auto mode (the `SessionMode` draw; before the first, the settings' `permissions.defaultMode`), else yours at the dialog. The call's `tool.call` settles an ask: it ran, or it was refused, and the refusal's words say by whom (`The user doesn't want to proceed…` is you, `…auto mode classifier…` the classifier). Those words are Claude Code's own and may change in a release; an unmatched refusal is put down to the ask's decider. A call drawn before the mod loaded keeps the plain mark.
+
+It hooks no `classic.*` event: Claude Code's security plugin passes them all on past user mods (see the repository README's Developing section), so `PermissionRequest` and `PermissionDenied` never reach it.
 
 ## Connected to savvy-progress
 

@@ -338,11 +338,14 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // A compaction rewrites the conversation and a /clear starts a new one:
-  // nothing of the old prefix is read again. A precompute installs nothing.
-  on('session.compact', async ($, e, next) => {
-    const compacted = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.messages !== undefined) await markCacheCold($)
-    return compacted
+  // nothing of the old prefix is read again. No hook hears session.compact
+  // (Claude Code's security plugin passes it on past the user's plugins), so
+  // /compact is heard as the command; an auto-compaction is followed at once
+  // by a request that writes the cache anew.
+  on('command.run', { command: 'compact' }, async ($, e, next) => {
+    const ran = await next(e)
+    await markCacheCold($)
+    return ran
   }).catch(($, e, next) => next(e))
 
   on('session.end', async ($, e, next) => {
