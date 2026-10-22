@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { Verdict } from '../types'
 
@@ -365,18 +365,27 @@ export const colorOf = (tool: string, input: unknown, root: string) => {
 // --- How each call got past the permission check: the stroke of its mark.
 //
 // tool.check answers allow (a rule or the mode), deny, or ask. An ask goes to
-// the mode's decider: the auto-mode classifier, or the person at the dialog,
-// which the classic PermissionRequest hook announces just before it shows. The
-// call's tool.call settles it: it ran, or it was refused (and a classifier's
-// refusal raises PermissionDenied first).
+// the mode's decider: the auto-mode classifier while the footer says auto
+// mode, else the person at the dialog. The call's tool.call settles it: it
+// ran, or it was refused, and the refusal's text says by whom.
+//
+// No classic.* hook is used: Claude Code's security plugin (seated for Team
+// and Enterprise organizations) passes every classic event on past the user's
+// plugins, so PermissionRequest and PermissionDenied never reach this one.
 
 const verdicts = atom({ plugin: 'tool-borders', key: 'verdicts' } as const, {})
 const KEPT = 300
 const FAIL = '#ef5350'
 
-type Pending = { tool: string; input: string; isAsked: boolean; deniedBy?: Verdict['deniedBy'] }
+type Pending = { isAuto: boolean }
 // Calls whose check answered ask, by tool_use_id, until their tool.call ends.
 const pending = new Map<string, Pending>()
+
+// Whether the footer shows auto mode, from its last SessionMode draw; unset
+// until the first, when the settings' default mode stands in.
+let isAutoMode: boolean | undefined
+
+export const isAutoLabel = (modes: readonly string[]) => modes.some(m => /\bauto mode\b/i.test(m))
 
 const keep = (all: Record<string, Verdict>, id: string, v: Verdict): Record<string, Verdict> => {
   const next = { ...all, [id]: v }
@@ -384,25 +393,27 @@ const keep = (all: Record<string, Verdict>, id: string, v: Verdict): Record<stri
   return ids.length > KEPT ? Object.fromEntries(ids.slice(-KEPT).map(k => [k, next[k]!])) : next
 }
 
-const inputKey = (input: unknown): string => {
-  try {
-    return JSON.stringify(input) ?? ''
-  } catch {
-    return ''
-  }
+// Who a refusal's text names: the model-facing words Claude Code answers a
+// declined dialog and a classifier block with. They are the engine's own and
+// may change in a release: an unmatched refusal falls back to the decider.
+export const refuserOf = (text: string | undefined): 'you' | 'classifier' | undefined => {
+  if (!text) return undefined
+  if (text.includes("The user doesn't want to proceed with this tool use")) return 'you'
+  if (/auto mode classifier/i.test(text)) return 'classifier'
+  return undefined
 }
 
-// The pending ask a PermissionRequest is about: the same tool and input, the
-// latest not yet asked; or, with one ask of that tool open, that one.
-export const askedOf = (open: Map<string, Pending>, tool: string, input: unknown): string | undefined => {
-  const mine = [...open].filter(([, p]) => p.tool === tool && !p.isAsked)
-  const key = inputKey(input)
-  return mine.filter(([, p]) => p.input === key).at(-1)?.[0] ?? (mine.length === 1 ? mine[0]![0] : undefined)
-}
+type Ran = { deny?: string; isError?: true; text?: string }
 
 // The verdict once the call ends: whoever decided the ask, or who refused it.
-export const settle = (p: Pending, didRun: boolean): Verdict =>
-  didRun ? { by: p.isAsked ? 'you' : 'classifier' } : { by: 'denied', deniedBy: p.deniedBy ?? (p.isAsked ? 'you' : 'classifier') }
+// An errored call whose text names no refuser ran and failed on its own; an
+// ask dismissed some other way (Esc at the dialog) reads the same.
+export const settle = (p: Pending, ran: Ran): Verdict => {
+  const decider = p.isAuto ? 'classifier' : 'you'
+  const refuser = refuserOf(ran.deny ?? (ran.isError ? ran.text : undefined))
+  if (refuser) return { by: 'denied', deniedBy: refuser }
+  return ran.deny === undefined ? { by: decider } : { by: 'denied', deniedBy: decider }
+}
 
 // The few words under a row that the stroke cannot say: who allowed it when
 // that was you, who refused it.
@@ -416,26 +427,32 @@ export const verdictNote = (v: Verdict | undefined): string | null => {
 // classifier, bold when you were asked.
 export const borderOf = (v: Verdict | undefined): string => (v?.by === 'classifier' ? 'double' : v?.by === 'you' ? 'bold' : 'round')
 
+// Before the footer has drawn: whether the settings start sessions in auto mode.
+const defaultIsAuto = async ($: EngineInterface): Promise<boolean> => {
+  try {
+    const permissions = (await $.settings.read({ key: 'permissions' })) as { defaultMode?: unknown } | undefined
+    return permissions?.defaultMode === 'auto'
+  } catch {
+    return false
+  }
+}
+
 export const register: Register = on => {
   on('tool.check', async ($, e, next) => {
     const v = await next(e)
     const id = e.tool_use_id
     if (!id) return v
-    if (v.decision === 'ask') pending.set(id, { tool: e.tool, input: inputKey(e.input), isAsked: false })
+    if (v.decision === 'ask') {
+      isAutoMode ??= await defaultIsAuto($)
+      pending.set(id, { isAuto: isAutoMode })
+    }
     const now: Verdict = v.decision === 'allow' ? { by: 'rule' } : v.decision === 'deny' ? { by: 'denied', deniedBy: 'rule' } : { by: 'pending' }
     await update($, verdicts, all => keep(all, id, now))
     return v
   })
 
-  on('classic.PermissionRequest', async ($, e, next) => {
-    const id = askedOf(pending, e.tool_name, e.tool_input)
-    if (id) pending.set(id, { ...pending.get(id)!, isAsked: true })
-    return next(e)
-  })
-
-  on('classic.PermissionDenied', async ($, e, next) => {
-    const p = pending.get(e.tool_use_id)
-    if (p) pending.set(e.tool_use_id, { ...p, deniedBy: 'classifier' })
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    isAutoMode = isAutoLabel(e.props.modes)
     return next(e)
   })
 
@@ -444,7 +461,7 @@ export const register: Register = on => {
     const p = pending.get(e.tool_use_id)
     if (p) {
       pending.delete(e.tool_use_id)
-      const v = settle(p, ran.deny === undefined)
+      const v = settle(p, ran)
       await update($, verdicts, all => keep(all, e.tool_use_id, v))
     }
     return ran

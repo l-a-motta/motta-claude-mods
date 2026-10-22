@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { RenderPropsOf } from 'claude-code'
 
-import { askedOf, borderOf, classify, COLORS, settle, verdictNote } from '../hooks/register'
+import { borderOf, classify, COLORS, isAutoLabel, settle, verdictNote } from '../hooks/register'
 
 const ROOT = 'C:\\Users\\me\\repo'
 const k = (tool: string, input: Record<string, unknown> = {}) => {
@@ -127,23 +127,33 @@ test('the desktop draws a thin bar of its color beside the row, no border', asyn
 })
 
 describe("how a call got past the permission check", () => {
-  const ask = (tool: string, input: unknown, isAsked = false) => ({ tool, input: JSON.stringify(input), isAsked })
+  const auto = { isAuto: true }
+  const asked = { isAuto: false }
+  const ok = { result: "done" }
+  const YOU = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file)."
+  const CLASSIFIER = "Permission for this action has been denied by the Claude Code auto mode classifier. Reason: deletes files outside the project"
 
-  test("an ask that ran: you, when the dialog was shown; else the classifier", () => {
-    expect(settle(ask("Bash", { command: "npm test" }, true), true)).toEqual({ by: "you" })
-    expect(settle(ask("Bash", { command: "npm test" }), true)).toEqual({ by: "classifier" })
+  test("an ask that ran: the classifier in auto mode, else you at the dialog", () => {
+    expect(settle(asked, ok)).toEqual({ by: "you" })
+    expect(settle(auto, ok)).toEqual({ by: "classifier" })
   })
 
-  test("an ask that was refused names who refused it", () => {
-    expect(settle(ask("Bash", { command: "rm -rf /" }), false)).toEqual({ by: "denied", deniedBy: "classifier" })
-    expect(settle(ask("Bash", { command: "rm -rf /" }, true), false)).toEqual({ by: "denied", deniedBy: "you" })
+  test("a refusal names who refused it by its text, whatever the mode", () => {
+    expect(settle(auto, { isError: true, text: YOU })).toEqual({ by: "denied", deniedBy: "you" })
+    expect(settle(asked, { isError: true, text: CLASSIFIER })).toEqual({ by: "denied", deniedBy: "classifier" })
+    expect(settle(asked, { deny: YOU })).toEqual({ by: "denied", deniedBy: "you" })
+    expect(settle(auto, { isError: true, text: "Denied by auto mode classifier" })).toEqual({ by: "denied", deniedBy: "classifier" })
   })
 
-  test("a dialog is matched to its ask by tool and input, or to the one open ask of that tool", () => {
-    const open = new Map([["t1", ask("Bash", { command: "ls" })], ["t2", ask("Bash", { command: "git push" })], ["t3", ask("Edit", { file_path: "a" })]])
-    expect(askedOf(open, "Bash", { command: "git push" })).toBe("t2")
-    expect(askedOf(open, "Bash", { command: "other" })).toBeUndefined()
-    expect(askedOf(open, "Edit", { file_path: "a", old_string: "x" })).toBe("t3")
+  test("an errored call that names no refuser ran; an unnamed deny falls to the decider", () => {
+    expect(settle(asked, { isError: true, text: "Exit code 1" })).toEqual({ by: "you" })
+    expect(settle(auto, { deny: "blocked by a plugin" })).toEqual({ by: "denied", deniedBy: "classifier" })
+  })
+
+  test("the footer's labels say auto mode", () => {
+    expect(isAutoLabel(["auto mode on"])).toBe(true)
+    expect(isAutoLabel(["accept edits on"])).toBe(false)
+    expect(isAutoLabel([])).toBe(false)
   })
 
   test("the stroke: round by a rule, double by the classifier, bold when you were asked", () => {
