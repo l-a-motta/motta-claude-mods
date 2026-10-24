@@ -12,8 +12,6 @@ import type { Verdict } from '../types'
 export type Family = 'bookkeeping' | 'read' | 'change' | 'delegate' | 'run'
 export type Reach = 'project' | 'machine' | 'internet'
 
-// filetree copies the read and change colors for its shimmer
-// (plugins/filetree/hooks/colors.ts): change them together.
 export const COLORS: Record<Family, Record<Reach, string>> = {
   bookkeeping: { project: '#6f6f6f', machine: '#6f6f6f', internet: '#6f6f6f' }, // gray
   read: { project: '#3f5670', machine: '#5b8fcc', internet: '#7dd3fc' }, // blue

@@ -54,7 +54,6 @@ claude plugin install usage-drill@motta-claude-mods --scope user
 claude plugin install prompt-enhancer@motta-claude-mods --scope user
 claude plugin install emotive-spinner@motta-claude-mods --scope user
 claude plugin install tool-borders@motta-claude-mods --scope user
-claude plugin install filetree@motta-claude-mods --scope user
 claude plugin install savvy-progress@motta-claude-mods --scope user
 claude plugin install turn-receipt@motta-claude-mods --scope user
 claude plugin enable cc-plugin-you-should-know@builtin
@@ -148,7 +147,7 @@ In VS Code's `settings.json`:
 
 ## 9. The last check
 
-Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar. `/filetree` opens the file tree, `/agents-info` the agents panel, `/enhance <text>` the prompt enhancer, and `/context-drill`, `/changes-drill` and `/usage-drill` (or the status line's `ctx`, `files`, `5h` and `7d`) their panes.
+Start `claude` in any git repository. The status line shows two lines under the prompt, the first with the folder and branch, the second with the context bar. `/agents-info` opens the agents panel, `/enhance <text>` the prompt enhancer, and `/context-drill`, `/changes-drill` and `/usage-drill` (or the status line's `ctx`, `files`, `5h` and `7d`) their panes.
 
 ## Cloud sessions (claude.ai/code)
 

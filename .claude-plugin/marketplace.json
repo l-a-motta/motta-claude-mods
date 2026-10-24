@@ -53,11 +53,6 @@
       "description": "A receipt under each turn's reply, yours and the ones agents' reports start: time, agents, edits, errors and cost added, colored; agents and edits open their panes. No model calls."
     },
     {
-      "name": "filetree",
-      "source": "./plugins/filetree",
-      "description": "IDE-style file tree with git status that shimmers on files Claude reads and writes, and lists those outside its folder. Vendored from data-goblin/claude-code-filetree@bf8de32 (MIT)."
-    },
-    {
       "name": "savvy-progress",
       "source": "./plugins/savvy-progress",
       "description": "Live agents panel (/agents-info) with each subagent's model, context, cost and time, under a timeline of your turns: a session ruler in clock time with idle time folded, and one batch of lanes per turn. Vendored from JohnnyVizz/claude-kit@272a877 (MIT)."
