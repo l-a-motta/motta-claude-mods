@@ -50,6 +50,7 @@ claude plugin marketplace add "$HOME\Documents\Coding\motta-claude-mods"
 claude plugin install motta-statusline@motta-claude-mods --scope user
 claude plugin install context-drill@motta-claude-mods --scope user
 claude plugin install changes-drill@motta-claude-mods --scope user
+claude plugin install branch-drill@motta-claude-mods --scope user
 claude plugin install usage-drill@motta-claude-mods --scope user
 claude plugin install prompt-enhancer@motta-claude-mods --scope user
 claude plugin install emotive-spinner@motta-claude-mods --scope user
