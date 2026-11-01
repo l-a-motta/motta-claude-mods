@@ -1,0 +1,942 @@
+{
+  "nodes": [
+    {
+      "id": "n000001",
+      "type": "text",
+      "text": "**[[Object-Oriented Programming]]**\nOrganizing code as objects that bundle data with the actions on it.",
+      "x": 1240,
+      "y": 0,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000002",
+      "type": "text",
+      "text": "**[[Design Patterns]]**\nNamed, reusable solutions to problems that keep coming up in code.",
+      "x": 1240,
+      "y": 100,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000003",
+      "type": "text",
+      "text": "**[[Concurrency]]**\nDoing many things at once without the pieces tripping over each other.",
+      "x": 1240,
+      "y": 200,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000004",
+      "type": "text",
+      "text": "### 💻 [[Programming]]",
+      "x": 780,
+      "y": 100,
+      "width": 300,
+      "height": 64,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000008",
+      "type": "text",
+      "text": "**[[Data Structures]]**\nWays of arranging data so the right questions are fast to answer.",
+      "x": 1240,
+      "y": 330,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000009",
+      "type": "text",
+      "text": "**[[Operating Systems]]**\nThe layer that shares one computer between many programs.",
+      "x": 1240,
+      "y": 430,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n00000a",
+      "type": "text",
+      "text": "**[[Networking]]**\nHow computers find each other and exchange messages.",
+      "x": 1240,
+      "y": 530,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n00000b",
+      "type": "text",
+      "text": "**[[Databases]]**\nSystems that store data safely and let you query it later.",
+      "x": 1240,
+      "y": 630,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n00000c",
+      "type": "text",
+      "text": "### 🧠 [[Core Concepts]]",
+      "x": 780,
+      "y": 480,
+      "width": 300,
+      "height": 64,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000011",
+      "type": "text",
+      "text": "**[[Requirements]]**\nPinning down what the system must do and how well, before building.",
+      "x": 1240,
+      "y": 760,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000012",
+      "type": "text",
+      "text": "**[[Estimation]]**\nQuick math that tells you how big the problem really is.",
+      "x": 1240,
+      "y": 860,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000013",
+      "type": "text",
+      "text": "**[[Trade-offs]]**\nEvery design choice gives something up; good design picks knowingly.",
+      "x": 1240,
+      "y": 960,
+      "width": 420,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000014",
+      "type": "text",
+      "text": "### 💡 [[Design Basics]]",
+      "x": 780,
+      "y": 860,
+      "width": 300,
+      "height": 64,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n000018",
+      "type": "text",
+      "text": "## 📖 [[Foundations]]",
+      "x": 360,
+      "y": 470,
+      "width": 300,
+      "height": 84,
+      "color": "#4F86F7"
+    },
+    {
+      "id": "n00001c",
+      "type": "text",
+      "text": "**[[Monoliths]]**\nOne program that does everything, deployed as a single unit.",
+      "x": 1240,
+      "y": 1150,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00001d",
+      "type": "text",
+      "text": "**[[Microservices]]**\nMany small services, each owning one job, talking over the network.",
+      "x": 1240,
+      "y": 1250,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00001e",
+      "type": "text",
+      "text": "**[[Serverless]]**\nRunning code without managing servers; you pay per use.",
+      "x": 1240,
+      "y": 1350,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00001f",
+      "type": "text",
+      "text": "### 🧱 [[Architecture Styles]]",
+      "x": 780,
+      "y": 1250,
+      "width": 300,
+      "height": 64,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000023",
+      "type": "text",
+      "text": "**[[SQL Databases]]**\nTables with strict structure, joined and queried with SQL.",
+      "x": 1240,
+      "y": 1480,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000024",
+      "type": "text",
+      "text": "**[[NoSQL Databases]]**\nFlexible databases built for scale and specific access patterns.",
+      "x": 1240,
+      "y": 1580,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000025",
+      "type": "text",
+      "text": "**[[Object Storage]]**\nCheap, near-infinite storage for files like images, videos and backups.",
+      "x": 1240,
+      "y": 1680,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000026",
+      "type": "text",
+      "text": "### 🗄️ [[Data & Storage]]",
+      "x": 780,
+      "y": 1580,
+      "width": 300,
+      "height": 64,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00002a",
+      "type": "text",
+      "text": "**[[CAP Theorem]]**\nWhen the network breaks, a system must choose: stay correct or stay up.",
+      "x": 1240,
+      "y": 1810,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00002b",
+      "type": "text",
+      "text": "**[[Replication]]**\nKeeping copies of data on several machines so one can fail.",
+      "x": 1240,
+      "y": 1910,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00002c",
+      "type": "text",
+      "text": "**[[Sharding]]**\nSplitting data across machines so no one machine holds it all.",
+      "x": 1240,
+      "y": 2010,
+      "width": 420,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n00002d",
+      "type": "text",
+      "text": "### 🕸️ [[Distributed Systems]]",
+      "x": 780,
+      "y": 1910,
+      "width": 300,
+      "height": 64,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000031",
+      "type": "text",
+      "text": "## 🏛️ [[Architecture]]",
+      "x": 360,
+      "y": 1570,
+      "width": 300,
+      "height": 84,
+      "color": "#9B59B6"
+    },
+    {
+      "id": "n000035",
+      "type": "text",
+      "text": "**[[API Design]]**\nDesigning the contract other programs use to talk to yours.",
+      "x": 1240,
+      "y": 2200,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000036",
+      "type": "text",
+      "text": "**[[REST]]**\nThe web's most common API style: resources over plain HTTP.",
+      "x": 1240,
+      "y": 2300,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000037",
+      "type": "text",
+      "text": "**[[gRPC]]**\nFast, typed calls between services using compact binary messages.",
+      "x": 1240,
+      "y": 2400,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000038",
+      "type": "text",
+      "text": "**[[WebSockets]]**\nA connection that stays open so the server can push updates instantly.",
+      "x": 1240,
+      "y": 2500,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000039",
+      "type": "text",
+      "text": "### 💬 [[Communication]]",
+      "x": 780,
+      "y": 2350,
+      "width": 300,
+      "height": 64,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n00003e",
+      "type": "text",
+      "text": "**[[Caching]]**\nKeeping a copy of frequently used data somewhere faster.",
+      "x": 1240,
+      "y": 2630,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n00003f",
+      "type": "text",
+      "text": "**[[CDN]]**\nServers around the world that hand out content close to each user.",
+      "x": 1240,
+      "y": 2730,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000040",
+      "type": "text",
+      "text": "**[[Load Balancing]]**\nSpreading incoming work across many servers so none is overwhelmed.",
+      "x": 1240,
+      "y": 2830,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000041",
+      "type": "text",
+      "text": "### ⚡ [[Performance]]",
+      "x": 780,
+      "y": 2730,
+      "width": 300,
+      "height": 64,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000045",
+      "type": "text",
+      "text": "**[[Message Queues]]**\nBuffers that let parts of a system hand off work without waiting.",
+      "x": 1240,
+      "y": 2960,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000046",
+      "type": "text",
+      "text": "**[[Fault Tolerance]]**\nDesigning so that when something breaks, the system keeps going.",
+      "x": 1240,
+      "y": 3060,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000047",
+      "type": "text",
+      "text": "**[[Rate Limiting]]**\nCapping how often someone can call you, to stay fair and safe.",
+      "x": 1240,
+      "y": 3160,
+      "width": 420,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000048",
+      "type": "text",
+      "text": "### 🛡️ [[Reliability]]",
+      "x": 780,
+      "y": 3060,
+      "width": 300,
+      "height": 64,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n00004c",
+      "type": "text",
+      "text": "## 📈 [[Scalability]]",
+      "x": 360,
+      "y": 2670,
+      "width": 300,
+      "height": 84,
+      "color": "#27AE60"
+    },
+    {
+      "id": "n000050",
+      "type": "text",
+      "text": "**[[Authentication]]**\nProving who someone is.",
+      "x": 1240,
+      "y": 3350,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000051",
+      "type": "text",
+      "text": "**[[Authorization]]**\nDeciding what someone is allowed to do.",
+      "x": 1240,
+      "y": 3450,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000052",
+      "type": "text",
+      "text": "**[[Encryption]]**\nScrambling data so only the right people can read it.",
+      "x": 1240,
+      "y": 3550,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000053",
+      "type": "text",
+      "text": "### 🔒 [[Security]]",
+      "x": 780,
+      "y": 3450,
+      "width": 300,
+      "height": 64,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000057",
+      "type": "text",
+      "text": "**[[Logging]]**\nWriting down what happened, event by event.",
+      "x": 1240,
+      "y": 3680,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000058",
+      "type": "text",
+      "text": "**[[Metrics]]**\nNumbers over time that show a system's health at a glance.",
+      "x": 1240,
+      "y": 3780,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000059",
+      "type": "text",
+      "text": "**[[Distributed Tracing]]**\nFollowing one request as it hops across many services.",
+      "x": 1240,
+      "y": 3880,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n00005a",
+      "type": "text",
+      "text": "### 🔭 [[Observability]]",
+      "x": 780,
+      "y": 3780,
+      "width": 300,
+      "height": 64,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n00005e",
+      "type": "text",
+      "text": "**[[High-Level Design]]**\nThe big-picture blueprint: boxes, arrows and why.",
+      "x": 1240,
+      "y": 4010,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n00005f",
+      "type": "text",
+      "text": "**[[Low-Level Design]]**\nZooming into one part: its classes, data and interfaces.",
+      "x": 1240,
+      "y": 4110,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000060",
+      "type": "text",
+      "text": "**[[Case Studies]]**\nClassic systems designed step by step, applying everything above.",
+      "x": 1240,
+      "y": 4210,
+      "width": 420,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000061",
+      "type": "text",
+      "text": "### 📁 [[Projects]]",
+      "x": 780,
+      "y": 4110,
+      "width": 300,
+      "height": 64,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000065",
+      "type": "text",
+      "text": "## 🚀 [[Production]]",
+      "x": 360,
+      "y": 3770,
+      "width": 300,
+      "height": 84,
+      "color": "#E67E22"
+    },
+    {
+      "id": "n000069",
+      "type": "text",
+      "text": "# 🏗️ [[Part 1 System Design|System Design]]\nClick any box to open its note.",
+      "x": -120,
+      "y": 2110,
+      "width": 320,
+      "height": 120
+    },
+    {
+      "id": "n00006e",
+      "type": "text",
+      "text": "## 🗺️ System Design Map\nThe four pillars of system design, as in the tree. **Click a name** to open the 🌱 basics note; each one links to its 🔬 deep dive.\n\nNext: [[AI Umbrella Map.canvas|☂️ AI Umbrella Map]] · [[00 Start Here|🏠 Home]]",
+      "x": -120,
+      "y": -260,
+      "width": 520,
+      "height": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "n000005",
+      "fromNode": "n000004",
+      "fromSide": "right",
+      "toNode": "n000001",
+      "toSide": "left"
+    },
+    {
+      "id": "n000006",
+      "fromNode": "n000004",
+      "fromSide": "right",
+      "toNode": "n000002",
+      "toSide": "left"
+    },
+    {
+      "id": "n000007",
+      "fromNode": "n000004",
+      "fromSide": "right",
+      "toNode": "n000003",
+      "toSide": "left"
+    },
+    {
+      "id": "n00000d",
+      "fromNode": "n00000c",
+      "fromSide": "right",
+      "toNode": "n000008",
+      "toSide": "left"
+    },
+    {
+      "id": "n00000e",
+      "fromNode": "n00000c",
+      "fromSide": "right",
+      "toNode": "n000009",
+      "toSide": "left"
+    },
+    {
+      "id": "n00000f",
+      "fromNode": "n00000c",
+      "fromSide": "right",
+      "toNode": "n00000a",
+      "toSide": "left"
+    },
+    {
+      "id": "n000010",
+      "fromNode": "n00000c",
+      "fromSide": "right",
+      "toNode": "n00000b",
+      "toSide": "left"
+    },
+    {
+      "id": "n000015",
+      "fromNode": "n000014",
+      "fromSide": "right",
+      "toNode": "n000011",
+      "toSide": "left"
+    },
+    {
+      "id": "n000016",
+      "fromNode": "n000014",
+      "fromSide": "right",
+      "toNode": "n000012",
+      "toSide": "left"
+    },
+    {
+      "id": "n000017",
+      "fromNode": "n000014",
+      "fromSide": "right",
+      "toNode": "n000013",
+      "toSide": "left"
+    },
+    {
+      "id": "n000019",
+      "fromNode": "n000018",
+      "fromSide": "right",
+      "toNode": "n000004",
+      "toSide": "left"
+    },
+    {
+      "id": "n00001a",
+      "fromNode": "n000018",
+      "fromSide": "right",
+      "toNode": "n00000c",
+      "toSide": "left"
+    },
+    {
+      "id": "n00001b",
+      "fromNode": "n000018",
+      "fromSide": "right",
+      "toNode": "n000014",
+      "toSide": "left"
+    },
+    {
+      "id": "n000020",
+      "fromNode": "n00001f",
+      "fromSide": "right",
+      "toNode": "n00001c",
+      "toSide": "left"
+    },
+    {
+      "id": "n000021",
+      "fromNode": "n00001f",
+      "fromSide": "right",
+      "toNode": "n00001d",
+      "toSide": "left"
+    },
+    {
+      "id": "n000022",
+      "fromNode": "n00001f",
+      "fromSide": "right",
+      "toNode": "n00001e",
+      "toSide": "left"
+    },
+    {
+      "id": "n000027",
+      "fromNode": "n000026",
+      "fromSide": "right",
+      "toNode": "n000023",
+      "toSide": "left"
+    },
+    {
+      "id": "n000028",
+      "fromNode": "n000026",
+      "fromSide": "right",
+      "toNode": "n000024",
+      "toSide": "left"
+    },
+    {
+      "id": "n000029",
+      "fromNode": "n000026",
+      "fromSide": "right",
+      "toNode": "n000025",
+      "toSide": "left"
+    },
+    {
+      "id": "n00002e",
+      "fromNode": "n00002d",
+      "fromSide": "right",
+      "toNode": "n00002a",
+      "toSide": "left"
+    },
+    {
+      "id": "n00002f",
+      "fromNode": "n00002d",
+      "fromSide": "right",
+      "toNode": "n00002b",
+      "toSide": "left"
+    },
+    {
+      "id": "n000030",
+      "fromNode": "n00002d",
+      "fromSide": "right",
+      "toNode": "n00002c",
+      "toSide": "left"
+    },
+    {
+      "id": "n000032",
+      "fromNode": "n000031",
+      "fromSide": "right",
+      "toNode": "n00001f",
+      "toSide": "left"
+    },
+    {
+      "id": "n000033",
+      "fromNode": "n000031",
+      "fromSide": "right",
+      "toNode": "n000026",
+      "toSide": "left"
+    },
+    {
+      "id": "n000034",
+      "fromNode": "n000031",
+      "fromSide": "right",
+      "toNode": "n00002d",
+      "toSide": "left"
+    },
+    {
+      "id": "n00003a",
+      "fromNode": "n000039",
+      "fromSide": "right",
+      "toNode": "n000035",
+      "toSide": "left"
+    },
+    {
+      "id": "n00003b",
+      "fromNode": "n000039",
+      "fromSide": "right",
+      "toNode": "n000036",
+      "toSide": "left"
+    },
+    {
+      "id": "n00003c",
+      "fromNode": "n000039",
+      "fromSide": "right",
+      "toNode": "n000037",
+      "toSide": "left"
+    },
+    {
+      "id": "n00003d",
+      "fromNode": "n000039",
+      "fromSide": "right",
+      "toNode": "n000038",
+      "toSide": "left"
+    },
+    {
+      "id": "n000042",
+      "fromNode": "n000041",
+      "fromSide": "right",
+      "toNode": "n00003e",
+      "toSide": "left"
+    },
+    {
+      "id": "n000043",
+      "fromNode": "n000041",
+      "fromSide": "right",
+      "toNode": "n00003f",
+      "toSide": "left"
+    },
+    {
+      "id": "n000044",
+      "fromNode": "n000041",
+      "fromSide": "right",
+      "toNode": "n000040",
+      "toSide": "left"
+    },
+    {
+      "id": "n000049",
+      "fromNode": "n000048",
+      "fromSide": "right",
+      "toNode": "n000045",
+      "toSide": "left"
+    },
+    {
+      "id": "n00004a",
+      "fromNode": "n000048",
+      "fromSide": "right",
+      "toNode": "n000046",
+      "toSide": "left"
+    },
+    {
+      "id": "n00004b",
+      "fromNode": "n000048",
+      "fromSide": "right",
+      "toNode": "n000047",
+      "toSide": "left"
+    },
+    {
+      "id": "n00004d",
+      "fromNode": "n00004c",
+      "fromSide": "right",
+      "toNode": "n000039",
+      "toSide": "left"
+    },
+    {
+      "id": "n00004e",
+      "fromNode": "n00004c",
+      "fromSide": "right",
+      "toNode": "n000041",
+      "toSide": "left"
+    },
+    {
+      "id": "n00004f",
+      "fromNode": "n00004c",
+      "fromSide": "right",
+      "toNode": "n000048",
+      "toSide": "left"
+    },
+    {
+      "id": "n000054",
+      "fromNode": "n000053",
+      "fromSide": "right",
+      "toNode": "n000050",
+      "toSide": "left"
+    },
+    {
+      "id": "n000055",
+      "fromNode": "n000053",
+      "fromSide": "right",
+      "toNode": "n000051",
+      "toSide": "left"
+    },
+    {
+      "id": "n000056",
+      "fromNode": "n000053",
+      "fromSide": "right",
+      "toNode": "n000052",
+      "toSide": "left"
+    },
+    {
+      "id": "n00005b",
+      "fromNode": "n00005a",
+      "fromSide": "right",
+      "toNode": "n000057",
+      "toSide": "left"
+    },
+    {
+      "id": "n00005c",
+      "fromNode": "n00005a",
+      "fromSide": "right",
+      "toNode": "n000058",
+      "toSide": "left"
+    },
+    {
+      "id": "n00005d",
+      "fromNode": "n00005a",
+      "fromSide": "right",
+      "toNode": "n000059",
+      "toSide": "left"
+    },
+    {
+      "id": "n000062",
+      "fromNode": "n000061",
+      "fromSide": "right",
+      "toNode": "n00005e",
+      "toSide": "left"
+    },
+    {
+      "id": "n000063",
+      "fromNode": "n000061",
+      "fromSide": "right",
+      "toNode": "n00005f",
+      "toSide": "left"
+    },
+    {
+      "id": "n000064",
+      "fromNode": "n000061",
+      "fromSide": "right",
+      "toNode": "n000060",
+      "toSide": "left"
+    },
+    {
+      "id": "n000066",
+      "fromNode": "n000065",
+      "fromSide": "right",
+      "toNode": "n000053",
+      "toSide": "left"
+    },
+    {
+      "id": "n000067",
+      "fromNode": "n000065",
+      "fromSide": "right",
+      "toNode": "n00005a",
+      "toSide": "left"
+    },
+    {
+      "id": "n000068",
+      "fromNode": "n000065",
+      "fromSide": "right",
+      "toNode": "n000061",
+      "toSide": "left"
+    },
+    {
+      "id": "n00006a",
+      "fromNode": "n000069",
+      "fromSide": "right",
+      "toNode": "n000018",
+      "toSide": "left"
+    },
+    {
+      "id": "n00006b",
+      "fromNode": "n000069",
+      "fromSide": "right",
+      "toNode": "n000031",
+      "toSide": "left"
+    },
+    {
+      "id": "n00006c",
+      "fromNode": "n000069",
+      "fromSide": "right",
+      "toNode": "n00004c",
+      "toSide": "left"
+    },
+    {
+      "id": "n00006d",
+      "fromNode": "n000069",
+      "fromSide": "right",
+      "toNode": "n000065",
+      "toSide": "left"
+    }
+  ]
+}

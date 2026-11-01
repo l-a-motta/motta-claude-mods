@@ -1,0 +1,505 @@
+{
+  "nodes": [
+    {
+      "id": "n000001",
+      "type": "text",
+      "text": "# ☂️ [[Part 2 AI System Design|AI System Design]]\nThe umbrella: twelve ribs held up by the fundamentals of [[Part 1 System Design|system design]], standing on business goals. **Click any name** to open its note.",
+      "x": 1140,
+      "y": -900,
+      "width": 720,
+      "height": 150
+    },
+    {
+      "id": "n000002",
+      "type": "text",
+      "text": "**🧩 Data Sources**\n[[Data Sources]] — Where an AI system's data comes from: databases, APIs, streams, files, devices.",
+      "x": 40,
+      "y": -680,
+      "width": 670,
+      "height": 110,
+      "color": "#C0392B"
+    },
+    {
+      "id": "n000003",
+      "type": "text",
+      "text": "**🧩 AI Model Types**\n[[AI Model Types]] — The main families of models and what each is good for.",
+      "x": 790,
+      "y": -680,
+      "width": 670,
+      "height": 110,
+      "color": "#C0392B"
+    },
+    {
+      "id": "n000004",
+      "type": "text",
+      "text": "**🧩 Cloud & Infrastructure**\n[[Cloud & Infrastructure]] — The machines, chips and cloud services AI runs on.",
+      "x": 1540,
+      "y": -680,
+      "width": 670,
+      "height": 110,
+      "color": "#C0392B"
+    },
+    {
+      "id": "n000005",
+      "type": "text",
+      "text": "**👥 Users & Applications**\n[[AI System Design Overview]] — Users & applications: web, mobile, APIs and internal tools.",
+      "x": 2290,
+      "y": -680,
+      "width": 670,
+      "height": 110,
+      "color": "#C0392B"
+    },
+    {
+      "id": "n000006",
+      "type": "text",
+      "text": "## ☂️ [[The 12 Ribs]]",
+      "x": 1300,
+      "y": -480,
+      "width": 400,
+      "height": 70,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00000b",
+      "type": "text",
+      "text": "**1**\n[[Data Engineering & Pipelines]]",
+      "x": 0,
+      "y": -140.88419075520824,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00000d",
+      "type": "text",
+      "text": "**2**\n[[Model Selection & Training]]",
+      "x": 250,
+      "y": -181.22934917841437,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00000f",
+      "type": "text",
+      "text": "**3**\n[[Feature Engineering]]",
+      "x": 500,
+      "y": -217.4018286413953,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000011",
+      "type": "text",
+      "text": "**4**\n[[Evaluation & Metrics]]",
+      "x": 750,
+      "y": -246.93653444659762,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000013",
+      "type": "text",
+      "text": "**5**\n[[Deployment & Serving]]",
+      "x": 1000,
+      "y": -267.8207252018059,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000015",
+      "type": "text",
+      "text": "**6**\n[[AI Scalability & Distributed Systems]]",
+      "x": 1250,
+      "y": -278.63117781980964,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000017",
+      "type": "text",
+      "text": "**7**\n[[AI Monitoring & Observability]]",
+      "x": 1500,
+      "y": -278.63117781980964,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000019",
+      "type": "text",
+      "text": "**8**\n[[MLOps & CI-CD]]",
+      "x": 1750,
+      "y": -267.8207252018059,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00001b",
+      "type": "text",
+      "text": "**9**\n[[AI Security & Privacy]]",
+      "x": 2000,
+      "y": -246.93653444659762,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00001d",
+      "type": "text",
+      "text": "**10**\n[[Cost Optimization]]",
+      "x": 2250,
+      "y": -217.40182864139535,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n00001f",
+      "type": "text",
+      "text": "**11**\n[[AI Reliability & Fault Tolerance]]",
+      "x": 2500,
+      "y": -181.2293491784144,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000021",
+      "type": "text",
+      "text": "**12**\n[[Ethics & Governance]]",
+      "x": 2750,
+      "y": -140.88419075520832,
+      "width": 230,
+      "height": 120,
+      "color": "#2E86DE"
+    },
+    {
+      "id": "n000023",
+      "type": "text",
+      "text": "### 🦯 The handle: fundamentals\n- 📖 [[Foundations]]\n- 🏛️ [[Architecture]]\n- 📈 [[Scalability]]\n- 🚀 [[Production]]\n\nEvery AI note's **🧱 Builds on** section points back here.",
+      "x": 1330,
+      "y": 120,
+      "width": 340,
+      "height": 360
+    },
+    {
+      "id": "n000026",
+      "type": "text",
+      "text": "## 🎯 [[Business Goals & Requirements]]\nUse cases · constraints · success metrics · stakeholders",
+      "x": 1170,
+      "y": 540,
+      "width": 660,
+      "height": 110,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n000028",
+      "type": "text",
+      "text": "**[[AI Architecture Layers|Data Layer]]**\nIngestion · processing · storage · feature store",
+      "x": 780,
+      "y": 760,
+      "width": 300,
+      "height": 120,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n000029",
+      "type": "text",
+      "text": "**[[AI Architecture Layers|Model Layer]]**\nTraining · fine-tuning · registry · evaluation",
+      "x": 1140,
+      "y": 760,
+      "width": 300,
+      "height": 120,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n00002a",
+      "type": "text",
+      "text": "**[[AI Architecture Layers|Serving Layer]]**\nAPIs · inference · load balancing · autoscaling",
+      "x": 1500,
+      "y": 760,
+      "width": 300,
+      "height": 120,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n00002b",
+      "type": "text",
+      "text": "**[[AI Architecture Layers|Monitoring Layer]]**\nLogs & metrics · drift · alerts · improvement",
+      "x": 1860,
+      "y": 760,
+      "width": 300,
+      "height": 120,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n00002f",
+      "type": "text",
+      "text": "### 🏛️ [[AI Architecture Layers]]",
+      "x": 1200,
+      "y": 690,
+      "width": 600,
+      "height": 50,
+      "color": "#1F4FD8"
+    },
+    {
+      "id": "n000030",
+      "type": "text",
+      "text": "**[[Context Engineering]]**\nDeciding exactly what goes into a model's input so it answers well.",
+      "x": 3120,
+      "y": -380,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000031",
+      "type": "text",
+      "text": "**[[Embeddings & Vector Databases]]**\nTurning meaning into numbers so you can search by similarity.",
+      "x": 3120,
+      "y": -240,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000032",
+      "type": "text",
+      "text": "**[[Retrieval-Augmented Generation]]**\nLetting a model look things up before it answers.",
+      "x": 3120,
+      "y": -100,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000033",
+      "type": "text",
+      "text": "**[[LLM Inference & Optimization]]**\nMaking large models answer fast and cheaply.",
+      "x": 3120,
+      "y": 40,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000034",
+      "type": "text",
+      "text": "**[[AI Agents & Tool Use]]**\nModels that plan, call tools and take steps toward a goal.",
+      "x": 3120,
+      "y": 180,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000035",
+      "type": "text",
+      "text": "**[[Guardrails & AI Safety]]**\nChecks around a model that keep its inputs and outputs safe.",
+      "x": 3120,
+      "y": 320,
+      "width": 380,
+      "height": 120,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000036",
+      "type": "text",
+      "text": "## 🤖 [[Modern LLM Systems]]",
+      "x": 3120,
+      "y": -500,
+      "width": 380,
+      "height": 90,
+      "color": "#8E44AD"
+    },
+    {
+      "id": "n000037",
+      "type": "text",
+      "text": "## 🎓 [[Capstone - AI Support Assistant|Capstone]]\nOne AI system designed end to end, using every rib.",
+      "x": -520,
+      "y": 120,
+      "width": 400,
+      "height": 180,
+      "color": "#16A085"
+    },
+    {
+      "id": "n000038",
+      "type": "text",
+      "text": "## 📖 Start here\n- [[AI System Design Overview]]\n- [[Business Goals & Requirements]]\n- [[AI Architecture Layers]]\n\nBack: [[System Design Map.canvas|🗺️ System Design Map]] · [[00 Start Here|🏠 Home]]",
+      "x": -520,
+      "y": -680,
+      "width": 400,
+      "height": 200,
+      "color": "#1F4FD8"
+    }
+  ],
+  "edges": [
+    {
+      "id": "n000007",
+      "fromNode": "n000002",
+      "fromSide": "bottom",
+      "toNode": "n000006",
+      "toSide": "top"
+    },
+    {
+      "id": "n000008",
+      "fromNode": "n000003",
+      "fromSide": "bottom",
+      "toNode": "n000006",
+      "toSide": "top"
+    },
+    {
+      "id": "n000009",
+      "fromNode": "n000004",
+      "fromSide": "bottom",
+      "toNode": "n000006",
+      "toSide": "top"
+    },
+    {
+      "id": "n00000a",
+      "fromNode": "n000005",
+      "fromSide": "bottom",
+      "toNode": "n000006",
+      "toSide": "top"
+    },
+    {
+      "id": "n00000c",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00000b",
+      "toSide": "top"
+    },
+    {
+      "id": "n00000e",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00000d",
+      "toSide": "top"
+    },
+    {
+      "id": "n000010",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00000f",
+      "toSide": "top"
+    },
+    {
+      "id": "n000012",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000011",
+      "toSide": "top"
+    },
+    {
+      "id": "n000014",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000013",
+      "toSide": "top"
+    },
+    {
+      "id": "n000016",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000015",
+      "toSide": "top"
+    },
+    {
+      "id": "n000018",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000017",
+      "toSide": "top"
+    },
+    {
+      "id": "n00001a",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000019",
+      "toSide": "top"
+    },
+    {
+      "id": "n00001c",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00001b",
+      "toSide": "top"
+    },
+    {
+      "id": "n00001e",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00001d",
+      "toSide": "top"
+    },
+    {
+      "id": "n000020",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n00001f",
+      "toSide": "top"
+    },
+    {
+      "id": "n000022",
+      "fromNode": "n000006",
+      "fromSide": "bottom",
+      "toNode": "n000021",
+      "toSide": "top"
+    },
+    {
+      "id": "n000024",
+      "fromNode": "n000015",
+      "fromSide": "bottom",
+      "toNode": "n000023",
+      "toSide": "top"
+    },
+    {
+      "id": "n000025",
+      "fromNode": "n000017",
+      "fromSide": "bottom",
+      "toNode": "n000023",
+      "toSide": "top"
+    },
+    {
+      "id": "n000027",
+      "fromNode": "n000023",
+      "fromSide": "bottom",
+      "toNode": "n000026",
+      "toSide": "top"
+    },
+    {
+      "id": "n00002c",
+      "fromNode": "n000028",
+      "fromSide": "right",
+      "toNode": "n000029",
+      "toSide": "left"
+    },
+    {
+      "id": "n00002d",
+      "fromNode": "n000029",
+      "fromSide": "right",
+      "toNode": "n00002a",
+      "toSide": "left"
+    },
+    {
+      "id": "n00002e",
+      "fromNode": "n00002a",
+      "fromSide": "right",
+      "toNode": "n00002b",
+      "toSide": "left"
+    },
+    {
+      "id": "n000039",
+      "fromNode": "n000032",
+      "fromSide": "left",
+      "toNode": "n000021",
+      "toSide": "right"
+    }
+  ]
+}

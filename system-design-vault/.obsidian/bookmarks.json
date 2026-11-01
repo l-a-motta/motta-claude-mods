@@ -1,0 +1,103 @@
+{
+  "items": [
+    {
+      "type": "file",
+      "ctime": 1793548800000,
+      "path": "00 Start Here.md",
+      "title": "🏠 Start Here"
+    },
+    {
+      "type": "file",
+      "ctime": 1793548800000,
+      "path": "How to Use This Vault.md",
+      "title": "❓ How to Use This Vault"
+    },
+    {
+      "type": "group",
+      "ctime": 1793548800000,
+      "title": "🧭 Learning Paths",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "01 Learning Paths/Path 1 - The Big Picture.md",
+          "title": "🌱 The Big Picture"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "01 Learning Paths/Path 2 - System Design Engineer.md",
+          "title": "🏗️ System Design Engineer"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "01 Learning Paths/Path 3 - AI Systems Engineer.md",
+          "title": "🤖 AI Systems Engineer"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "01 Learning Paths/Path 4 - LLM App Builder.md",
+          "title": "⚡ LLM App Builder"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "01 Learning Paths/Path 5 - Interview Prep.md",
+          "title": "🎯 Interview Prep"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1793548800000,
+      "title": "🗺️ Maps",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "02 Maps/System Design Map.canvas",
+          "title": "🗺️ System Design Map"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "02 Maps/AI Umbrella Map.canvas",
+          "title": "☂️ AI Umbrella Map"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "ctime": 1793548800000,
+      "title": "📚 The two parts",
+      "items": [
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "Part 1 System Design/Part 1 System Design.md",
+          "title": "🏗️ Part 1 · System Design"
+        },
+        {
+          "type": "file",
+          "ctime": 1793548800000,
+          "path": "Part 2 AI System Design/Part 2 AI System Design.md",
+          "title": "☂️ Part 2 · AI System Design"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "ctime": 1793548800000,
+      "path": "Glossary.md",
+      "title": "🔤 Glossary"
+    },
+    {
+      "type": "file",
+      "ctime": 1793548800000,
+      "path": "Sources Index.md",
+      "title": "📚 Sources Index"
+    }
+  ]
+}

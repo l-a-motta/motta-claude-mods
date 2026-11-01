@@ -1,0 +1,12 @@
+{
+  "defaultViewMode": "preview",
+  "showInlineTitle": true,
+  "readableLineLength": true,
+  "alwaysUpdateLinks": true,
+  "showUnsupportedFiles": false,
+  "showFrontmatter": false,
+  "propertiesInDocument": "visible",
+  "foldHeading": true,
+  "foldIndent": true,
+  "userIgnoreFilters": []
+}

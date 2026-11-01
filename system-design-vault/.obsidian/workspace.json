@@ -1,0 +1,121 @@
+{
+  "main": {
+    "id": "main0",
+    "type": "split",
+    "direction": "vertical",
+    "children": [
+      {
+        "id": "tabs0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "leaf0",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "00 Start Here.md",
+                "mode": "preview",
+                "source": false
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "left": {
+    "id": "left0",
+    "type": "split",
+    "direction": "horizontal",
+    "width": 300,
+    "children": [
+      {
+        "id": "ltabs",
+        "type": "tabs",
+        "currentTab": 1,
+        "children": [
+          {
+            "id": "fe",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical"
+              }
+            }
+          },
+          {
+            "id": "bm",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {}
+            }
+          },
+          {
+            "id": "sr",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": true,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "right": {
+    "id": "right0",
+    "type": "split",
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true,
+    "children": [
+      {
+        "id": "rtabs",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ol",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "00 Start Here.md"
+              }
+            }
+          },
+          {
+            "id": "bl",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "00 Start Here.md",
+                "collapseAll": true,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "active": "leaf0",
+  "lastOpenFiles": [
+    "00 Start Here.md"
+  ]
+}
