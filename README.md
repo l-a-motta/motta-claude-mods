@@ -35,6 +35,10 @@ A new machine runs the first two layers once; each new project runs the third. T
 repos only: repos already set up don't sync from them, so a change worth keeping everywhere is made in the
 template and ported to each repo by its own PR.
 
+## System design vault
+
+[system-design-vault/](system-design-vault/) is not a mod: it is an Obsidian vault that teaches system design and AI system design, from a plain-English note per topic for anyone to a sourced deep dive per topic for engineers, with learning paths and clickable maps. Open the folder as a vault in Obsidian and start at `00 Start Here`. Its hubs, paths, glossary, maps and navigation are generated from `.tools/manifest.mjs` by `node .tools/build.mjs`; `node .tools/check.mjs --urls` checks links, structure and sources.
+
 ## New machine
 
 [setup/SETUP.md](setup/SETUP.md) makes a Windows machine's Claude match the others: log in, clone this repository, install the mods, merge the settings in [setup/](setup/), add the skills. Every step is a command with a check, so a Claude session pointed at that file can run it. It also lists what comes with your Claude account and what no machine can carry.

@@ -1,0 +1,93 @@
+{
+  "collapse-filter": false,
+  "search": "-file:\"Deep Dive\"",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": true,
+  "showOrphans": false,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:\"Part 1 System Design/1 Foundations\"",
+      "color": {
+        "a": 1,
+        "rgb": 5211895
+      }
+    },
+    {
+      "query": "path:\"Part 1 System Design/2 Architecture\"",
+      "color": {
+        "a": 1,
+        "rgb": 10181046
+      }
+    },
+    {
+      "query": "path:\"Part 1 System Design/3 Scalability\"",
+      "color": {
+        "a": 1,
+        "rgb": 2600544
+      }
+    },
+    {
+      "query": "path:\"Part 1 System Design/4 Production\"",
+      "color": {
+        "a": 1,
+        "rgb": 15105570
+      }
+    },
+    {
+      "query": "path:\"Part 2 AI System Design/5 AI Foundations\"",
+      "color": {
+        "a": 1,
+        "rgb": 2052056
+      }
+    },
+    {
+      "query": "path:\"Part 2 AI System Design/6 AI Building Blocks\"",
+      "color": {
+        "a": 1,
+        "rgb": 12597547
+      }
+    },
+    {
+      "query": "path:\"Part 2 AI System Design/7 The 12 Ribs\"",
+      "color": {
+        "a": 1,
+        "rgb": 3049182
+      }
+    },
+    {
+      "query": "path:\"Part 2 AI System Design/8 Modern LLM Systems\"",
+      "color": {
+        "a": 1,
+        "rgb": 9323693
+      }
+    },
+    {
+      "query": "path:\"Part 2 AI System Design/9 Capstone\"",
+      "color": {
+        "a": 1,
+        "rgb": 1482885
+      }
+    },
+    {
+      "query": "path:\"01 Learning Paths\"",
+      "color": {
+        "a": 1,
+        "rgb": 15844367
+      }
+    }
+  ],
+  "collapse-display": true,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1.2,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.5,
+  "repelStrength": 12,
+  "linkStrength": 1,
+  "linkDistance": 250,
+  "scale": 0.6,
+  "close": false
+}

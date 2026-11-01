@@ -1,0 +1,2352 @@
+[
+ {
+  "term": "Object",
+  "definition": "A bundle of code holding some data (its state) together with the actions (methods) that work on that data.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Class",
+  "definition": "A template or blueprint for creating objects of one kind. Each object built from it is called an instance.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Encapsulation",
+  "definition": "Keeping an object's inner details private so other code can only use it through its public actions.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Inheritance",
+  "definition": "Letting a new class start from an existing class, reusing its data and actions and adding its own.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Polymorphism",
+  "definition": "Different kinds of objects answering the same request, such as \"draw yourself\", each in their own way.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Method",
+  "definition": "An action an object can perform, usually reading or changing that object's own data.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "SOLID",
+  "definition": "Five rules of thumb for designing classes: single responsibility, open-closed, Liskov substitution, interface segregation and dependency inversion.",
+  "topic": "Object-Oriented Programming"
+ },
+ {
+  "term": "Design pattern",
+  "definition": "A named, proven blueprint for solving a design problem that keeps recurring in software, adapted to each program.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Gang of Four (GoF)",
+  "definition": "Nickname for the four authors of the 1994 book Design Patterns, which cataloged 23 patterns.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Singleton",
+  "definition": "A pattern that allows a class only one instance and makes it reachable from anywhere; often criticized for hurting testability.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Factory",
+  "definition": "A pattern where one piece of code decides which kind of object to create, so callers don't hard-code it.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Observer",
+  "definition": "A pattern where a publisher keeps a list of subscribers and notifies each one whenever something happens.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Strategy",
+  "definition": "A pattern that puts interchangeable ways of doing one task behind a common interface, swappable while the program runs.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Dependency injection",
+  "definition": "Handing an object the things it needs, usually through its constructor, instead of letting it create or look them up.",
+  "topic": "Design Patterns"
+ },
+ {
+  "term": "Thread",
+  "definition": "An independent line of work inside a program; several threads can run side by side and share the program's memory.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Parallelism",
+  "definition": "Actually running several tasks at the same instant, for example on different processor cores.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Async",
+  "definition": "Starting slow work, like a network call, and doing other things until its result arrives instead of waiting idle.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Race condition",
+  "definition": "A bug where the result depends on which task happens to run first, so it fails only sometimes.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Deadlock",
+  "definition": "Tasks stuck forever because each is waiting for something another one holds and won't release.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Lock (mutex)",
+  "definition": "A token only one thread can hold at a time, used so only one thread touches shared data at once.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Event loop",
+  "definition": "A single thread that runs small pieces of code one at a time as events, like finished network calls, arrive.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "GIL (Global Interpreter Lock)",
+  "definition": "A lock in standard Python that lets only one thread run Python code at a time; now optional in newer builds.",
+  "topic": "Concurrency"
+ },
+ {
+  "term": "Data structure",
+  "definition": "A way of arranging data in a computer's memory so that the questions you ask most often are fast to answer.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Array",
+  "definition": "A numbered row of items stored side by side, so you can jump straight to any position.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Hash map",
+  "definition": "A structure that turns a key into a storage slot, so looking up a value by its exact key takes about the same time at any size.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Tree",
+  "definition": "Data kept in sorted, branching order, so each step of a search skips large parts of the rest.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Graph",
+  "definition": "A set of items (nodes) joined by connections (edges), used to answer questions about what links to what.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Big O notation",
+  "definition": "Shorthand for how an algorithm's time or memory grows as its input grows, such as O(1), O(log n) or O(n).",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Bloom filter",
+  "definition": "A tiny structure that says an item is definitely absent or probably present, trading a small error rate for much less memory.",
+  "topic": "Data Structures"
+ },
+ {
+  "term": "Operating system",
+  "definition": "The software that sits between programs and hardware, sharing the processor, memory and storage among many programs safely.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Kernel",
+  "definition": "The core of an operating system, running with full control of the hardware and handling programs' requests.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Process",
+  "definition": "One running copy of a program, with its own private memory and state, managed by the operating system.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Thread",
+  "definition": "A separate line of execution inside a process; threads in one process share its memory but each has its own stack.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "System call",
+  "definition": "A program's formal request to the kernel for something it cannot do itself, such as reading a file or sending data.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Virtual memory",
+  "definition": "The technique that gives each process its own private view of memory, which the OS maps onto real memory chips.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Container",
+  "definition": "A group of ordinary processes given their own isolated view of the system, using Linux namespaces, with resource limits from cgroups.",
+  "topic": "Operating Systems"
+ },
+ {
+  "term": "Protocol",
+  "definition": "An agreed set of rules for how computers format, send and respond to messages.",
+  "topic": "Networking"
+ },
+ {
+  "term": "IP address",
+  "definition": "The numeric address that identifies a device on a network so data can be delivered to it.",
+  "topic": "Networking"
+ },
+ {
+  "term": "DNS",
+  "definition": "The Domain Name System, the Internet's address book that turns names like a website domain into IP addresses.",
+  "topic": "Networking"
+ },
+ {
+  "term": "TCP",
+  "definition": "A transport protocol that delivers data reliably and in order, re-sending anything lost, after a short setup handshake.",
+  "topic": "Networking"
+ },
+ {
+  "term": "UDP",
+  "definition": "A lightweight transport protocol that sends individual messages with no setup and no guarantee they arrive.",
+  "topic": "Networking"
+ },
+ {
+  "term": "HTTP",
+  "definition": "The request-and-response protocol browsers and servers use to exchange web pages and data.",
+  "topic": "Networking"
+ },
+ {
+  "term": "Latency",
+  "definition": "The time a message takes to travel from sender to receiver, often measured as a round trip.",
+  "topic": "Networking"
+ },
+ {
+  "term": "Bandwidth",
+  "definition": "How much data a connection can carry per second; more bandwidth does not shorten a single round trip.",
+  "topic": "Networking"
+ },
+ {
+  "term": "Database",
+  "definition": "A system that stores data so it survives crashes and lets many users query and change it safely.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Schema",
+  "definition": "The plan for a database's data: which tables exist, which columns they have and what each column may hold.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Query",
+  "definition": "A question or instruction sent to a database, usually written in SQL, to read or change data.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Index",
+  "definition": "A lookup structure, like a book's index, that lets a database find rows without scanning the whole table.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Transaction",
+  "definition": "A group of database changes that all succeed together or all fail together, with no half-finished state visible.",
+  "topic": "Databases"
+ },
+ {
+  "term": "ACID",
+  "definition": "Atomicity, consistency, isolation and durability: the four guarantees a transactional database makes about its changes.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Write-ahead log",
+  "definition": "A log where a database records each change before applying it, so it can recover committed work after a crash.",
+  "topic": "Databases"
+ },
+ {
+  "term": "Functional requirement",
+  "definition": "A statement of something a system must do, such as letting users post a photo or reset a password.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "Non-functional requirement (NFR)",
+  "definition": "A quality a system must have, such as speed, reliability or security, rather than a specific feature. Also called a quality attribute.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "Scope",
+  "definition": "The agreed boundary of what will and will not be built in a given project or design.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "SLI (service level indicator)",
+  "definition": "A measurement of how well a service is doing, such as the share of requests that succeed or finish quickly.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "SLO (service level objective)",
+  "definition": "A target value for an SLI, such as 99.9% of requests succeeding over a month.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "SLA (service level agreement)",
+  "definition": "A promise to customers about service levels that carries a consequence, such as a refund or credit, when it is broken.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "Error budget",
+  "definition": "The amount of failure an SLO allows, such as 0.1% of requests at 99.9%, which teams can spend before slowing releases.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "Percentile (p99)",
+  "definition": "The value that a given share of measurements fall under; p99 latency is the time 99% of requests beat.",
+  "topic": "Requirements"
+ },
+ {
+  "term": "Back-of-the-envelope estimate",
+  "definition": "Quick, rough math using simple assumptions and known numbers to size a system before building it.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "QPS (queries per second)",
+  "definition": "How many requests a system receives or handles each second; the standard way to express load.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Peak load",
+  "definition": "The busiest moment of traffic, which can be many times the daily average and must be planned for.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "DAU (daily active users)",
+  "definition": "The number of different people who use a product on a given day; a common starting point for estimates.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Order of magnitude",
+  "definition": "A factor of ten. Estimates aim to get this right, such as thousands versus millions, not exact digits.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Latency numbers",
+  "definition": "Memorized approximate times for common operations, such as reading memory or crossing an ocean, used to estimate performance.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Capacity planning",
+  "definition": "Deciding how many servers, how much storage and how much network capacity a system needs, including spare room.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Little's Law",
+  "definition": "A rule linking load and delay: items in a system equal arrival rate multiplied by average time each item spends inside.",
+  "topic": "Estimation"
+ },
+ {
+  "term": "Trade-off",
+  "definition": "A design decision where gaining one quality, such as speed, means giving up some of another, such as cost or freshness.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Consistency",
+  "definition": "The property that every user sees the same, most recent data, no matter which copy they read from.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Availability",
+  "definition": "The property that a system keeps answering requests, even when some of its parts have failed.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Eventual consistency",
+  "definition": "A guarantee that copies of data may briefly differ but will all match once updates stop arriving.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Throughput",
+  "definition": "How much total work a system completes per unit of time, such as requests handled per second.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "PACELC",
+  "definition": "An extension of CAP: during a network partition choose availability or consistency; otherwise choose lower latency or consistency.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "One-way / two-way door",
+  "definition": "Amazon's terms for decisions that are hard to reverse, deserving care, versus easy to reverse, deserving speed.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Architecture decision record (ADR)",
+  "definition": "A short document recording one design decision, its context and its consequences, so later teams know why it was made.",
+  "topic": "Trade-offs"
+ },
+ {
+  "term": "Monolith",
+  "definition": "An application whose features all live in one program that is built, shipped and run as a single unit.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Modular monolith",
+  "definition": "A monolith whose code is split into clearly separated sections, such as orders and billing, with enforced rules about how they interact.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Deployable unit",
+  "definition": "The package of software that gets put live in one go. A monolith has exactly one.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Codebase",
+  "definition": "The full set of source code files that make up a program.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Scale cube",
+  "definition": "A model of three ways to scale software: copy the whole app, split it by function, or split the data.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Strangler Fig pattern",
+  "definition": "Replacing an old system gradually by building new parts beside it and moving features over one at a time.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Big ball of mud",
+  "definition": "Slang for a codebase with no clear structure, where everything depends on everything else and changes break unrelated parts.",
+  "topic": "Monoliths"
+ },
+ {
+  "term": "Microservice",
+  "definition": "A small, independently deployed program that handles one business job and owns its own data.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Service-oriented architecture (SOA)",
+  "definition": "An older, company-wide style for connecting business applications as reusable services, often through a central integration hub.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Service mesh",
+  "definition": "A layer of helper proxies placed beside each service to handle encryption, retries, routing and monitoring outside the application code.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "API gateway",
+  "definition": "A single front door that receives requests from apps and routes or combines them across the right backend services.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Saga",
+  "definition": "A sequence of small, separate database updates across services, with undo steps if a later step fails.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Two-pizza team",
+  "definition": "Amazon's term for a team small enough that two pizzas could feed it, owning one service end to end.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Distributed monolith",
+  "definition": "Services that are split apart but still must be deployed together, getting the downsides of both styles.",
+  "topic": "Microservices"
+ },
+ {
+  "term": "Serverless",
+  "definition": "Running code where the cloud provider manages all servers and scaling, and you pay only for actual use.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "FaaS (functions as a service)",
+  "definition": "A serverless model where you upload small functions that the platform runs automatically when a chosen event happens.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "AWS Lambda",
+  "definition": "Amazon's serverless service that runs your functions in response to events and bills per request and run time.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "Cold start",
+  "definition": "The extra delay when the platform must set up a fresh environment before running a function for the first time.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "Warm start",
+  "definition": "When a function runs in an environment kept from an earlier request, so it starts faster.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "GB-second",
+  "definition": "The billing unit for function run time: the memory given to a function, in gigabytes, multiplied by seconds it ran.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "Provisioned concurrency",
+  "definition": "Paying to keep a set number of function environments ready in advance so requests avoid cold starts.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "Vendor lock-in",
+  "definition": "Being tied to one cloud provider because your code depends on its services and moving would be costly.",
+  "topic": "Serverless"
+ },
+ {
+  "term": "Relational database",
+  "definition": "A database that stores data in tables of rows and columns and links tables together through shared keys.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "SQL",
+  "definition": "Structured Query Language, the standard language for adding, changing, deleting and finding data in relational databases.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Primary key",
+  "definition": "A column whose value uniquely identifies each row in a table, like a customer number.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Foreign key",
+  "definition": "A column in one table that points to the primary key of another table, linking the two.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Join",
+  "definition": "Combining rows from two tables that share a matching key into one result.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Transaction",
+  "definition": "A group of database changes that either all succeed together or are all undone.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Normalization",
+  "definition": "Designing tables so each fact is stored in one place, preventing contradictory copies of the same data.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "Index",
+  "definition": "A sorted lookup structure that lets the database find matching rows without reading the whole table.",
+  "topic": "SQL Databases"
+ },
+ {
+  "term": "NoSQL",
+  "definition": "\"Not only SQL\": databases that skip the classic relational table model for flexible shapes built to spread across many machines.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Key-value store",
+  "definition": "A database that saves each value under a unique key and fetches it back by that key, very fast.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Document database",
+  "definition": "A database that stores flexible, nested, JSON-like records; records in one collection need not share the same fields.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Wide-column database",
+  "definition": "A database, like Cassandra, that groups rows under a partition key and spreads those groups across many servers.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Graph database",
+  "definition": "A database that stores items as nodes and the connections between them as relationships, suited to networks.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Partition key",
+  "definition": "The field whose hashed value decides which server stores a record, so reads can go straight there.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Eventual consistency",
+  "definition": "Copies of data may briefly disagree after a change, but they all catch up and match shortly after.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Hot partition",
+  "definition": "One key that receives so much traffic it overloads the server holding it, slowing everything nearby.",
+  "topic": "NoSQL Databases"
+ },
+ {
+  "term": "Object storage",
+  "definition": "Storage that keeps whole files as objects in buckets, each found by a unique name and fetched over the web.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Object",
+  "definition": "A stored file together with its metadata, kept and retrieved as one unit.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Bucket",
+  "definition": "A container that holds objects in an object storage service such as Amazon S3.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Object key",
+  "definition": "An object's unique name inside its bucket; slashes in it only look like folders.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Storage class",
+  "definition": "A price-and-speed tier for stored objects, from frequently accessed to cheap deep archive that takes hours to retrieve.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Durability",
+  "definition": "How unlikely a storage service is to lose your data; S3 is designed for eleven nines.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Data lake",
+  "definition": "A central store of raw data of every kind, kept as-is and structured only when analyzed.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Presigned URL",
+  "definition": "A time-limited link that lets someone download or upload one specific object without having their own cloud credentials.",
+  "topic": "Object Storage"
+ },
+ {
+  "term": "Network partition",
+  "definition": "A break in the network that splits servers into groups that cannot talk to each other.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Consistency (CAP)",
+  "definition": "Every read sees the most recent write, as if there were only one copy of the data.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Availability (CAP)",
+  "definition": "Every request that reaches a working server eventually gets an answer, even if it might be out of date.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Eventual consistency",
+  "definition": "Copies of data may disagree for a while, but all end up the same once updates stop.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "PACELC",
+  "definition": "An extension of CAP: during a partition, trade availability for consistency; otherwise, trade speed (latency) for consistency.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Linearizability",
+  "definition": "The strict meaning of consistency in CAP: every operation appears to happen at one instant, in real-time order.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Stale read",
+  "definition": "An answer based on an out-of-date copy of the data.",
+  "topic": "CAP Theorem"
+ },
+ {
+  "term": "Replica",
+  "definition": "A full copy of a database kept on another machine.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Leader-follower replication",
+  "definition": "One machine (the leader) accepts every change and passes it to copies (followers); older docs call this master-slave.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Replication lag",
+  "definition": "How far a follower copy trails behind the leader, during which it may show old data.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Synchronous replication",
+  "definition": "The leader waits for a copy to confirm each change before saying saved: safer, but slower.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Asynchronous replication",
+  "definition": "The leader confirms changes immediately and copies them in the background: faster, but recent changes can be lost.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Failover",
+  "definition": "Promoting a follower to become the new leader when the old leader stops responding.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Quorum",
+  "definition": "The minimum number of copies that must respond for a read or write to count.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Multi-leader replication",
+  "definition": "Several copies accept changes at once and later reconcile any changes that clash.",
+  "topic": "Replication"
+ },
+ {
+  "term": "Shard",
+  "definition": "One piece of a large dataset, stored on its own machine.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Shard key",
+  "definition": "The field, such as a customer ID, that decides which shard each record lives on.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Horizontal partitioning",
+  "definition": "Splitting a database's records across several machines; another name for sharding.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Vertical scaling",
+  "definition": "Handling more load by buying a bigger machine instead of adding more machines.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Hot spot",
+  "definition": "A shard that receives far more traffic than the others, slowing things down.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Consistent hashing",
+  "definition": "A way to place data on a ring of machines so adding or removing one moves only a small share of data.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Hash function",
+  "definition": "A formula that scrambles a key into a number, used to spread data evenly across shards.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "Rebalancing",
+  "definition": "Moving data between shards to even out storage and traffic as the system grows.",
+  "topic": "Sharding"
+ },
+ {
+  "term": "API",
+  "definition": "A set of agreed rules that lets one program ask another for data or actions.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Endpoint",
+  "definition": "One specific address where an API accepts a certain kind of request.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Idempotency key",
+  "definition": "A unique label a client attaches to a request so the server can spot retries and avoid doing the work twice.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Idempotent",
+  "definition": "Safe to repeat: doing it twice has the same effect as doing it once.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Pagination",
+  "definition": "Splitting a long list of results into smaller pages that are fetched one at a time.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Cursor",
+  "definition": "An opaque bookmark returned with a page of results that tells the server where the next page starts.",
+  "topic": "API Design"
+ },
+ {
+  "term": "API versioning",
+  "definition": "Labeling changes to an API so existing clients keep getting the old behavior until they choose to upgrade.",
+  "topic": "API Design"
+ },
+ {
+  "term": "Breaking change",
+  "definition": "A change to an API, such as renaming or removing a field, that makes existing client code stop working.",
+  "topic": "API Design"
+ },
+ {
+  "term": "REST",
+  "definition": "An architectural style for web APIs where each piece of data has an address and is acted on with standard HTTP verbs.",
+  "topic": "REST"
+ },
+ {
+  "term": "Resource",
+  "definition": "Any named piece of information in a REST API, such as a customer or an order.",
+  "topic": "REST"
+ },
+ {
+  "term": "URI",
+  "definition": "The unique web address that identifies a resource, like /orders/1.",
+  "topic": "REST"
+ },
+ {
+  "term": "HTTP method",
+  "definition": "The verb of a web request, such as GET to read, POST to create, or DELETE to remove.",
+  "topic": "REST"
+ },
+ {
+  "term": "CRUD",
+  "definition": "Create, read, update, delete: the four basic actions on stored data.",
+  "topic": "REST"
+ },
+ {
+  "term": "Status code",
+  "definition": "A three-digit number in every HTTP response saying how the request went, like 200 OK or 404 Not Found.",
+  "topic": "REST"
+ },
+ {
+  "term": "Stateless",
+  "definition": "The server keeps no memory of a client between requests; each request carries everything needed to answer it.",
+  "topic": "REST"
+ },
+ {
+  "term": "HATEOAS",
+  "definition": "A REST principle where responses include links telling the client what it can do next.",
+  "topic": "REST"
+ },
+ {
+  "term": "gRPC",
+  "definition": "An open-source framework from Google for fast, typed calls between services using compact binary messages over HTTP/2.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "RPC (remote procedure call)",
+  "definition": "Calling a function that runs on another machine as if it were part of your own program.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "Protocol Buffers (protobuf)",
+  "definition": "Google's compact binary format for structured data, described in a contract file; like JSON but smaller and faster.",
+  "topic": "gRPC"
+ },
+ {
+  "term": ".proto file",
+  "definition": "A plain text contract listing a service's methods and the shape of each message, used to generate code.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "Stub",
+  "definition": "Generated client code that makes a remote call look like a local function call.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "HTTP/2",
+  "definition": "A newer version of the web's protocol that can carry many requests at once over a single connection.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "Deadline",
+  "definition": "The longest time a caller will wait for a reply before giving up on the call.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "Streaming RPC",
+  "definition": "A gRPC call where the client, the server, or both send a sequence of messages instead of just one.",
+  "topic": "gRPC"
+ },
+ {
+  "term": "WebSocket",
+  "definition": "A lasting, two-way connection between a browser and a server that lets either side send messages at any time.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Polling",
+  "definition": "Asking a server over and over whether anything has changed.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Long polling",
+  "definition": "A technique where the server holds a request open until it has news, then the client immediately asks again.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Server-sent events (SSE)",
+  "definition": "A one-way stream of updates from a server to a browser over a long-lived HTTP response, with automatic reconnection.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Handshake",
+  "definition": "The opening web request in which browser and server agree to upgrade the connection to a WebSocket.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Push",
+  "definition": "A server sending data to a client without the client asking for it first.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "Heartbeat",
+  "definition": "A small periodic message, such as a ping, that keeps a connection alive and checks the other side is still there.",
+  "topic": "WebSockets"
+ },
+ {
+  "term": "CDN (content delivery network)",
+  "definition": "A network of servers around the world that keeps copies of a website's files close to users so they load faster.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Origin server",
+  "definition": "The website's own server that holds the original files; the CDN fetches from it when it lacks a copy.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Edge server (PoP)",
+  "definition": "A CDN location in a city near users that hands out cached copies of content. PoP stands for point of presence.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Cache hit / cache miss",
+  "definition": "A hit means the edge already had the file and answered at once; a miss means it had to fetch it from the origin.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Static content",
+  "definition": "Files that are the same for every user, such as images, videos, style sheets and scripts, which CDNs cache well.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Purge (cache invalidation)",
+  "definition": "Telling a CDN to throw away a stored copy before it expires, so the next request fetches a fresh one.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Anycast",
+  "definition": "A routing method where many data centers share one internet address and each user automatically reaches a nearby one.",
+  "topic": "CDN"
+ },
+ {
+  "term": "Load balancer",
+  "definition": "A traffic director that sits in front of a group of servers and spreads incoming requests across them.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Round robin",
+  "definition": "The simplest way to share work: each new request goes to the next server in turn, then back to the first.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Health check",
+  "definition": "A small test request sent on a timer to see whether a server works; failing servers stop receiving traffic.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Reverse proxy",
+  "definition": "A server that receives requests on behalf of other servers and forwards them; many load balancers work this way.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Horizontal scaling",
+  "definition": "Handling more traffic by adding more machines side by side, instead of replacing one machine with a bigger one.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Sticky session",
+  "definition": "Keeping one user's requests on the same server for a whole visit, usually by means of a cookie.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Backend (target)",
+  "definition": "One of the servers behind a load balancer that actually does the work for a request.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Layer 4 vs layer 7",
+  "definition": "Layer 4 balancers route using only network addresses and ports; layer 7 balancers read the request itself, such as its web address.",
+  "topic": "Load Balancing"
+ },
+ {
+  "term": "Message queue",
+  "definition": "A buffer that holds tasks sent by one part of a system until another part is ready to process them.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Producer",
+  "definition": "The part of a system that creates messages and puts them into a queue.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Consumer",
+  "definition": "The part of a system that takes messages from a queue and does the work they describe.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Message broker",
+  "definition": "The software that runs queues and delivers messages, such as Amazon SQS, RabbitMQ or Apache Kafka.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Pub/sub",
+  "definition": "Publish/subscribe: a messaging pattern where one published message is delivered to every subscriber that wants it.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Visibility timeout",
+  "definition": "How long a received message stays hidden from other consumers before it reappears if not deleted.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Dead-letter queue",
+  "definition": "A side queue that collects messages that failed processing too many times, so engineers can inspect them.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "At-least-once delivery",
+  "definition": "A guarantee that every message arrives, but some may arrive more than once, so consumers must handle duplicates.",
+  "topic": "Message Queues"
+ },
+ {
+  "term": "Redundancy",
+  "definition": "Keeping spare copies of servers or data ready to take over when one breaks.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Availability",
+  "definition": "The share of time or requests a system works correctly, often written as \"nines\" like 99.99%.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Timeout",
+  "definition": "The longest a program will wait for an answer from another service before giving up.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Exponential backoff",
+  "definition": "Retrying a failed request while waiting longer after each failure, for example doubling the wait each time.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Jitter",
+  "definition": "Random variation added to retry wait times so many clients don't all retry at the same moment.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Circuit breaker",
+  "definition": "A safety switch that stops calling a failing service for a while and fails fast instead.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Graceful degradation",
+  "definition": "Dropping non-essential features during a failure so the core job keeps working.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Cascading failure",
+  "definition": "A failure that spreads as overloaded parts push their work onto others, which then fail too.",
+  "topic": "Fault Tolerance"
+ },
+ {
+  "term": "Rate limit",
+  "definition": "The maximum number of requests a caller may make to a service in a given period of time.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Throttling",
+  "definition": "Slowing down or rejecting a caller's requests once they reach their limit.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Quota",
+  "definition": "A usage allowance over a longer period, such as requests per day or per month.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "HTTP 429",
+  "definition": "The standard web error \"Too Many Requests\", telling a caller to slow down and try again later.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Token bucket",
+  "definition": "A limiter where each request spends a token and tokens refill steadily, allowing short bursts but capping the average rate.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Leaky bucket",
+  "definition": "A limiter that lets requests through at a fixed, steady pace, allowing no bursts.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Sliding window",
+  "definition": "A way of counting requests over the last fixed stretch of time from right now, avoiding bursts at window edges.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Load shedding",
+  "definition": "Deliberately rejecting less important requests when a service is overloaded, to keep critical ones working.",
+  "topic": "Rate Limiting"
+ },
+ {
+  "term": "Authentication (AuthN)",
+  "definition": "Proving to a system that you are who you claim to be, for example with a password, phone or fingerprint.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "Multi-factor authentication (MFA)",
+  "definition": "Logging in with two or more different kinds of proof, such as a password plus a tap on your phone.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "Passkey",
+  "definition": "A password replacement made of two linked digital keys; the secret one stays on your device, so fake websites have nothing to steal.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "Single sign-on (SSO)",
+  "definition": "Logging in once with a trusted provider, like Google or your employer, which then vouches for you to many other apps.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "OAuth",
+  "definition": "A standard that lets an app get limited, revocable access to your data elsewhere without ever learning your password.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "OpenID Connect (OIDC)",
+  "definition": "A login standard built on OAuth that tells an app who you are, using a signed ID token from your identity provider.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "JSON Web Token (JWT)",
+  "definition": "A compact, signed text token carrying facts about a user, like their ID and expiry time, that servers can verify without a lookup.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "Session token",
+  "definition": "A long random string your browser shows after login, acting like a key card so you don't re-enter your password.",
+  "topic": "Authentication"
+ },
+ {
+  "term": "Authorization (AuthZ)",
+  "definition": "Deciding what a known user or program is allowed to do, such as reading, editing or deleting a specific item.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Role-based access control (RBAC)",
+  "definition": "Giving people roles like editor or admin, where each role comes with a fixed set of permissions.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Attribute-based access control (ABAC)",
+  "definition": "Access rules that check facts about the user, the item and the situation, such as department, owner or time of day.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Relationship-based access control (ReBAC)",
+  "definition": "Access that follows links between people and things, such as owning a document or belonging to a shared folder's group.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Least privilege",
+  "definition": "Giving each person or program only the permissions its job truly needs, so a stolen account can do little damage.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Deny by default",
+  "definition": "A safety rule: if no policy explicitly allows an action, the system refuses it.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Broken access control",
+  "definition": "A bug that lets someone see or change data they shouldn't, like viewing another user's account by changing an ID.",
+  "topic": "Authorization"
+ },
+ {
+  "term": "Encryption",
+  "definition": "Scrambling data with a secret key so only someone holding the right key can turn it back into readable form.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "AES",
+  "definition": "The Advanced Encryption Standard, the fast, widely used cipher where the same secret key locks and unlocks data.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Public-key cryptography",
+  "definition": "Encryption using a matched key pair: a public key anyone can use to lock, and a private key only its owner uses to unlock.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "TLS / HTTPS",
+  "definition": "TLS is the protocol that encrypts and verifies internet connections; HTTPS is ordinary web browsing carried over TLS.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Hashing",
+  "definition": "Turning data into a fixed one-way fingerprint that cannot be reversed; used to store passwords safely and detect changes.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Certificate",
+  "definition": "A digital document, signed by a trusted authority, proving that a public key really belongs to a particular website.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Encryption at rest / in transit",
+  "definition": "At rest protects stored data on disks and backups; in transit protects data while it travels across networks.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Envelope encryption",
+  "definition": "Encrypting data with its own key, then locking that key with a master key kept in a secure key service.",
+  "topic": "Encryption"
+ },
+ {
+  "term": "Log",
+  "definition": "A timestamped record of one event that happened inside a program, such as a failed payment.",
+  "topic": "Logging"
+ },
+ {
+  "term": "Severity level",
+  "definition": "A label saying how serious a log event is, such as DEBUG, INFO, WARN or ERROR.",
+  "topic": "Logging"
+ },
+ {
+  "term": "Structured log",
+  "definition": "A log written as labeled fields, often JSON, so tools can search, filter and count by each field.",
+  "topic": "Logging"
+ },
+ {
+  "term": "Log aggregation",
+  "definition": "Collecting logs from many machines into one central place where they can be searched together.",
+  "topic": "Logging"
+ },
+ {
+  "term": "ELK stack",
+  "definition": "Elasticsearch, Logstash and Kibana: a popular toolkit to collect, store, search and chart logs.",
+  "topic": "Logging"
+ },
+ {
+  "term": "Log injection",
+  "definition": "An attack where crafted input adds fake lines to a log, hiding or forging what really happened.",
+  "topic": "Logging"
+ },
+ {
+  "term": "Metric",
+  "definition": "A number about a system, such as requests per second, measured again and again over time.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Time series",
+  "definition": "A run of timestamped values for one measurement, which can be drawn as a line on a chart.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Dashboard",
+  "definition": "A screen of live charts built from metrics that shows a system's health at a glance.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Alert",
+  "definition": "An automatic message to an engineer that fires when a metric crosses a line someone set.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Percentile",
+  "definition": "The value below which a given share of measurements fall; p99 latency is slower than 99% of requests.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Golden signals",
+  "definition": "Google's four key service metrics: latency, traffic, errors and saturation.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Cardinality",
+  "definition": "How many distinct label combinations a metric has; each one is a separate series that costs memory.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Prometheus",
+  "definition": "A popular open-source system that pulls metrics from services, stores them and triggers alerts.",
+  "topic": "Metrics"
+ },
+ {
+  "term": "Trace",
+  "definition": "The full record of one request's path through all the services it touched.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "Span",
+  "definition": "One timed step of work inside a trace, such as a single database call.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "Trace ID",
+  "definition": "The unique label shared by every span in one trace, used to stitch them together.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "Context propagation",
+  "definition": "Passing the trace ID and related data along with each call from one service to the next.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "Sampling",
+  "definition": "Keeping only some traces, such as one in a hundred, to control storage and processing cost.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "OpenTelemetry",
+  "definition": "An open-source, vendor-neutral standard and toolkit for producing traces, metrics and logs.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "Jaeger",
+  "definition": "An open-source distributed tracing system first built at Uber and now a CNCF project.",
+  "topic": "Distributed Tracing"
+ },
+ {
+  "term": "High-level design (HLD)",
+  "definition": "The big-picture plan of a system: its main parts, how they connect, and why each choice was made.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Design doc",
+  "definition": "A short document written before coding that explains a planned system, its goals and the trade-offs behind it.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Non-goal",
+  "definition": "Something that could reasonably be a goal but that a design deliberately chooses not to do.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Architecture Decision Record (ADR)",
+  "definition": "A one-to-two page note kept with the code that records one important design decision, its context and its consequences.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "C4 model",
+  "definition": "A simple way to draw software architecture at four zoom levels: system context, containers, components and code.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Alternatives considered",
+  "definition": "The section of a design doc listing other designs that were weighed and why they were rejected.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Bottleneck",
+  "definition": "The part of a system that slows everything down first when traffic grows.",
+  "topic": "High-Level Design"
+ },
+ {
+  "term": "Low-level design (LLD)",
+  "definition": "A detailed plan for one part of a system: its classes, the data they hold and how they interact.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "Class diagram",
+  "definition": "A drawing that shows a program's classes, what each holds and does, and how they relate to each other.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "UML",
+  "definition": "Unified Modeling Language: a standard set of diagram types for describing software designs.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "SOLID",
+  "definition": "Five design principles for code that is easy to change, such as giving each class a single reason to change.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "Design pattern",
+  "definition": "A proven, general solution to a common software design problem that you adapt rather than copy.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "State machine",
+  "definition": "A fixed list of states something can be in, plus the rules for which moves between states are allowed.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "Interface",
+  "definition": "A promise of what a piece of code can do, without saying how it does it.",
+  "topic": "Low-Level Design"
+ },
+ {
+  "term": "URL shortener",
+  "definition": "A service that turns a long web address into a short code and redirects visitors from the code to the original.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Fan-out",
+  "definition": "Copying one new post into many followers' ready-made feeds at once, so reading a feed is fast.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Base62",
+  "definition": "Writing numbers using the 62 characters a-z, A-Z and 0-9, giving short codes that are safe in web addresses.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Snowflake ID",
+  "definition": "A 64-bit unique ID made from a timestamp, a machine number and a counter, so IDs sort roughly by creation time.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Hot partition",
+  "definition": "One slice of a database that gets far more traffic than the rest, slowing down the machines holding it.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Back-of-the-envelope estimate",
+  "definition": "Quick, rough math about users, requests and storage that tells you how big a design needs to be.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Read-heavy",
+  "definition": "Describes a system that answers far more lookups than it stores new data.",
+  "topic": "Case Studies"
+ },
+ {
+  "term": "Model",
+  "definition": "A program that learned its behavior from example data instead of being written rule by rule.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "Training",
+  "definition": "Showing a model many examples so it learns patterns it can use on new cases.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "Inference",
+  "definition": "Using a trained model to answer a new question or make a prediction.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "Model decay",
+  "definition": "A model slowly getting less accurate because the world has drifted away from the data it learned from.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "MLOps",
+  "definition": "The practices and tools for building, shipping, monitoring and retraining machine learning systems reliably.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "ML technical debt",
+  "definition": "Hidden long-term maintenance cost that builds up in AI systems from tangled data, glue code and missing monitoring.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "Continuous training",
+  "definition": "Automatically retraining and redeploying a model on fresh data, a need unique to machine learning systems.",
+  "topic": "AI System Design Overview"
+ },
+ {
+  "term": "Business goal",
+  "definition": "The result an organization wants from a project, stated in plain words, such as fewer fraud losses.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Stakeholder",
+  "definition": "Anyone affected by or responsible for a system: users, sponsors, support staff, or people the system decides about.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Success metric",
+  "definition": "A number that shows whether the business goal is being met, separate from the model's own accuracy scores.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Proxy metric",
+  "definition": "A measurable stand-in for something you can't measure directly, like predicting likes as a stand-in for usefulness.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "False positive / false negative",
+  "definition": "A false alarm versus a missed case; requirements should say which mistake hurts users more.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Precision and recall",
+  "definition": "Precision is how many flagged items are truly correct; recall is how many true items get found. Raising one usually lowers the other.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Baseline",
+  "definition": "The simple, often non-AI solution a model must clearly beat to be worth building and maintaining.",
+  "topic": "Business Goals & Requirements"
+ },
+ {
+  "term": "Data layer",
+  "definition": "The part of an AI system that collects, cleans and turns raw data into features a model can learn from.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Model layer",
+  "definition": "The part of an AI system that trains, tests and versions models before they are allowed into production.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Serving layer",
+  "definition": "The part of an AI system that runs the model to answer requests from apps and users.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Monitoring layer",
+  "definition": "The part of an AI system that watches data and answer quality and triggers fixes or retraining.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Feature store",
+  "definition": "A shared library of model inputs that keeps history for training and fresh values for fast answers, so both match.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Model registry",
+  "definition": "A catalog of trained model versions, how each was made, and which one is currently live.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Batch vs real-time inference",
+  "definition": "Computing predictions ahead of time and storing them, versus computing each prediction the moment it is requested.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Training-serving skew",
+  "definition": "When a feature is computed differently during training than when serving live, so the model sees unfamiliar numbers.",
+  "topic": "AI Architecture Layers"
+ },
+ {
+  "term": "Data source",
+  "definition": "Any system or place an AI system gets data from, such as databases, APIs, event streams, files or devices.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Data lake",
+  "definition": "A central store that keeps structured and unstructured data in its original form, with structure applied only when the data is read.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Event stream",
+  "definition": "A continuous flow of small records describing things that just happened, such as clicks, payments or sensor readings.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Change data capture (CDC)",
+  "definition": "Copying every insert, update and delete from a database as it happens, by reading the database's own change log.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Label",
+  "definition": "The correct answer attached to a training example, such as spam or not spam, added by people or software.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Batch ingestion",
+  "definition": "Moving data in large chunks on a schedule, such as a nightly copy of a database.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Training-serving skew",
+  "definition": "When a model sees different data values in production than it saw during training, which quietly hurts its accuracy.",
+  "topic": "Data Sources"
+ },
+ {
+  "term": "Large language model (LLM)",
+  "definition": "A model trained on huge amounts of text that reads and writes language by predicting the next word or word fragment.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Natural language processing (NLP)",
+  "definition": "The branch of AI that works with human language, such as translation, summarizing or classifying text.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Computer vision",
+  "definition": "AI that understands images and video, for example naming objects in a photo or finding where they are.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Recommender system",
+  "definition": "A model that suggests items a person is likely to want next, such as videos, songs or products.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Forecasting model",
+  "definition": "A model that predicts future numbers, like sales or website visits, from past values and patterns such as seasons.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Transformer",
+  "definition": "The model design behind modern LLMs, which uses attention to weigh how every word relates to every other word.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Hallucination",
+  "definition": "When a language model produces fluent, confident text that is false.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "Inference",
+  "definition": "Using a trained model to make a prediction or produce an answer for new input.",
+  "topic": "AI Model Types"
+ },
+ {
+  "term": "GPU",
+  "definition": "A chip with many cores that runs thousands of calculations at once, which makes it fast for AI math.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "TPU",
+  "definition": "Google's custom chip designed specifically to speed up machine learning, rented through Google Cloud.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "Cloud computing",
+  "definition": "Renting computing power, storage and networking over the internet on demand, and releasing it when finished.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "On-premise",
+  "definition": "Running machines a company owns in its own building or data center, instead of renting from a cloud provider.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "Spot instance",
+  "definition": "Spare cloud capacity rented at a discount that the provider can take back with a two-minute warning.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "Cold start",
+  "definition": "The delay when a paused service must start up its computers before it can answer a request.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "GPU cluster",
+  "definition": "Many GPU machines linked by a fast network so they can work together on one large training job.",
+  "topic": "Cloud & Infrastructure"
+ },
+ {
+  "term": "Knowledge base",
+  "definition": "A company's library of help articles and policies that a support assistant searches before answering.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Retrieval-augmented generation (RAG)",
+  "definition": "A method where the AI first looks up relevant documents, then writes its answer based on what it found.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Guardrail",
+  "definition": "An automatic check around an AI model that blocks unsafe or off-topic messages and wrong answers.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Escalation (handoff)",
+  "definition": "Passing a customer conversation from the AI assistant to a human agent, usually for hard or risky cases.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Deflection rate",
+  "definition": "The share of customer questions the assistant solves without any human help.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Tool use",
+  "definition": "Letting an AI assistant call company systems, such as an order database, to look up or change real records.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "CSAT",
+  "definition": "Customer satisfaction score, usually collected with a short survey after a support conversation.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Prompt injection",
+  "definition": "An attack where text from a user or a document tricks an AI into ignoring its instructions.",
+  "topic": "Capstone - AI Support Assistant"
+ },
+ {
+  "term": "Data pipeline",
+  "definition": "An automatic chain of steps that collects data, cleans it and delivers it where it is needed, again and again.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "ETL",
+  "definition": "Extract, transform, load: copy data out of a source, clean and reshape it, then store it in its destination.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "ELT",
+  "definition": "Extract, load, transform: store raw data in the destination first, then clean and reshape it there later.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Data ingestion",
+  "definition": "Collecting data from apps, databases and devices into your system so it can be processed.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Batch processing",
+  "definition": "Handling data in large scheduled chunks, such as once every night.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Stream processing",
+  "definition": "Handling each piece of data the moment it arrives, instead of waiting to collect a big pile.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Data validation",
+  "definition": "Automatic checks that incoming data has the expected types, ranges and patterns before a model uses it.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Watermark",
+  "definition": "A stream processor's estimate of when all events for a time window have arrived, so it can publish results.",
+  "topic": "Data Engineering & Pipelines"
+ },
+ {
+  "term": "Training",
+  "definition": "Showing a model many examples and adjusting its internal numbers until its mistakes shrink.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Hyperparameter",
+  "definition": "A setting chosen before training, such as the learning rate or how many passes over the data to make.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Overfitting",
+  "definition": "When a model memorizes its training examples and then does badly on new data it has not seen.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Transfer learning",
+  "definition": "Reusing what a model learned on one problem to solve a similar problem with less data.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Fine-tuning",
+  "definition": "A short extra round of training that adapts a pre-trained model to your specific task or style.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "LoRA",
+  "definition": "A cheap fine-tuning method that freezes the original model and trains small add-on pieces instead of every weight.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Test set",
+  "definition": "Examples kept aside and never used in training, so they can fairly measure how the model will do in reality.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Experiment tracking",
+  "definition": "Logging every training run's settings, scores and resulting model so results can be compared and reproduced.",
+  "topic": "Model Selection & Training"
+ },
+ {
+  "term": "Feature",
+  "definition": "One measurable input a model uses to make a prediction, such as rides taken in the last seven days.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Normalization",
+  "definition": "Rescaling numeric inputs onto similar ranges so no single large-valued feature dominates what the model learns.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "One-hot encoding",
+  "definition": "Turning a category, such as a city, into a list of on/off slots with exactly one slot switched on.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Feature store",
+  "definition": "A shared system that keeps feature history for training and the latest feature values for fast live predictions.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Training-serving skew",
+  "definition": "A mismatch between the data a model saw in training and the data it sees in live use, which hurts quality.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Data leakage",
+  "definition": "Building a model with information that will not exist at prediction time, which makes test scores look falsely good.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Point-in-time correctness",
+  "definition": "Using each feature's value exactly as it was at the moment of a past event, never a later value.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Feature cross",
+  "definition": "A new feature made by combining two or more features, letting simple models spot patterns that appear together.",
+  "topic": "Feature Engineering"
+ },
+ {
+  "term": "Eval",
+  "definition": "A test that gives an AI system an input and uses grading rules to score its output.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "Test set",
+  "definition": "Examples kept hidden from a model while it learns, used only to grade it at the end.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "Precision",
+  "definition": "Of all the items a model flagged as positive, the share that really were positive.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "Recall",
+  "definition": "Of all the truly positive items, the share the model managed to catch.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "F1 score",
+  "definition": "A single number that balances precision and recall, useful when one class is rare.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "A/B test",
+  "definition": "A live experiment that shows two versions to random groups of users and compares how each group behaves.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "LLM-as-a-judge",
+  "definition": "Using a strong language model to grade or compare another model's answers instead of a human reviewer.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "Data leakage",
+  "definition": "When test examples, or copies of them, slip into training data and make a model look better than it is.",
+  "topic": "Evaluation & Metrics"
+ },
+ {
+  "term": "Inference",
+  "definition": "Running a trained model on new input to get a prediction or answer.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Model serving",
+  "definition": "Running a model as a service that apps can call for predictions, quickly and reliably.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Online inference",
+  "definition": "Answering each prediction request right away, as it arrives, from an always-on service.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Batch inference",
+  "definition": "Running a model over a large pile of data at once, with no live service, such as nightly scoring.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Canary release",
+  "definition": "Giving a new version to a small share of users first, then widening it or rolling back.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Shadow deployment",
+  "definition": "Sending copies of real requests to a new model while users only see the old model's answers.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Cold start",
+  "definition": "The delay while an idle, scaled-down service starts machines and loads the model before answering.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "Dynamic batching",
+  "definition": "Grouping separate incoming requests on the server so the hardware processes them together, raising throughput.",
+  "topic": "Deployment & Serving"
+ },
+ {
+  "term": "GPU",
+  "definition": "A chip that does huge amounts of math at once, used to train and run AI models.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "GPU cluster",
+  "definition": "Many GPUs connected by very fast networks so they can work together on one job.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Data parallelism",
+  "definition": "Each GPU holds a full copy of the model and trains on a different slice of the data.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Model parallelism",
+  "definition": "Splitting one model across several GPUs because it is too big for a single chip's memory.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Pipeline parallelism",
+  "definition": "Giving each GPU a group of a model's layers, like stations on an assembly line.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "All-reduce",
+  "definition": "A step where many machines combine their numbers, such as averaging, and all receive the same result.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Autoscaling",
+  "definition": "Automatically adding or removing machines or copies of a service as demand rises and falls.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Checkpoint",
+  "definition": "A saved snapshot of training progress, so a job can restart after a failure without starting over.",
+  "topic": "AI Scalability & Distributed Systems"
+ },
+ {
+  "term": "Model monitoring",
+  "definition": "Continuously checking a live model's inputs, outputs and results so you notice when its answers quietly get worse.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "Data drift",
+  "definition": "When the data a model sees in real use gradually changes from the data it learned from.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "Concept drift",
+  "definition": "When the link between inputs and the correct answer changes, so a model's learned lessons stop being true.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "Training-serving skew",
+  "definition": "A mismatch between the data a model was trained on and the data it gets live, often caused by a bug.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "Baseline",
+  "definition": "The 'normal' data that live traffic is compared against, usually the training data or a past period of real traffic.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "Ground truth",
+  "definition": "The real outcome, often known only later, used to check whether a model's prediction was right.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "LLM observability",
+  "definition": "Recording each chatbot request, model call, tool call, cost and delay so you can explain why an answer went wrong.",
+  "topic": "AI Monitoring & Observability"
+ },
+ {
+  "term": "MLOps",
+  "definition": "Automating and monitoring every step of a model's life, from raw data and training to release and upkeep.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "CI/CD",
+  "definition": "Continuous integration and delivery: automatically testing every change, then shipping it to users safely and repeatably.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "Continuous training",
+  "definition": "Retraining a model automatically on a schedule, when new data arrives, or when its quality or input data drifts.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "ML pipeline",
+  "definition": "A scripted, repeatable series of steps, such as fetching data, checking it, training and evaluating, that produces a model.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "Model registry",
+  "definition": "A catalog of every model version, with notes on how each was made and labels marking which one is live.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "Canary release",
+  "definition": "Sending a small share of traffic to a new version first, so problems hit few users and can be rolled back.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "Rollback",
+  "definition": "Switching back to the previous model or software version quickly when a new release causes problems.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "LLMOps",
+  "definition": "MLOps practices applied to large language model apps, including versioning prompts and testing them against evaluation sets.",
+  "topic": "MLOps & CI-CD"
+ },
+ {
+  "term": "Prompt injection",
+  "definition": "Text that tricks an AI model into ignoring its intended instructions and doing something its builders did not want.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Indirect prompt injection",
+  "definition": "Prompt injection hidden inside content the AI reads, like a web page, document or email, rather than typed by the user.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Data poisoning",
+  "definition": "Slipping harmful or misleading examples into the data a model learns from, so it learns the wrong behavior.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "PII",
+  "definition": "Personally identifiable information: details like names, phone numbers and email addresses that can identify a specific person.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Adversarial example",
+  "definition": "An input changed slightly and deliberately so that a model gives a wrong answer with high confidence.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Differential privacy",
+  "definition": "A mathematical guarantee that limits how much anyone can learn about one person from a dataset or its statistics.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Least privilege",
+  "definition": "Giving a system or AI assistant only the access it truly needs, so a mistake or trick does little harm.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Red teaming",
+  "definition": "Deliberately attacking your own AI system, the way a real attacker would, to find weaknesses before they are exploited.",
+  "topic": "AI Security & Privacy"
+ },
+ {
+  "term": "Token",
+  "definition": "A small chunk of text, roughly a short word, that AI providers count and charge for.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Prompt caching",
+  "definition": "Having the provider reuse a long, repeated part of a prompt so later requests pay much less for it and answer faster.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Model routing",
+  "definition": "Sending each request to a cheaper or stronger AI model depending on how hard the request looks.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Batch processing",
+  "definition": "Sending many non-urgent AI requests together to be finished within hours, in exchange for a lower price.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Spot instance",
+  "definition": "A spare cloud computer rented at a deep discount that the provider can take back with short notice.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Model distillation",
+  "definition": "Training a small student model to imitate a large teacher model, so it keeps much of the skill but costs less to run.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Quantization",
+  "definition": "Storing a model's numbers with fewer bits so it needs less memory and fewer or cheaper chips.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "FinOps",
+  "definition": "The practice of engineering, finance and business teams sharing cloud and AI cost data to get the most value per dollar.",
+  "topic": "Cost Optimization"
+ },
+ {
+  "term": "Fallback",
+  "definition": "A backup model, provider or region that takes over a request when the main one fails.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Exponential backoff",
+  "definition": "Waiting longer after each failed attempt before trying a request again.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Jitter",
+  "definition": "A small random delay added to retries so many clients do not retry at the same instant.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Circuit breaker",
+  "definition": "A switch in software that stops calling a failing service for a while and fails fast, giving it time to recover.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Graceful degradation",
+  "definition": "Offering a simpler or reduced service when something fails, instead of breaking completely.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Overloaded error (529)",
+  "definition": "An error some AI APIs return when the service is temporarily too busy across all users to handle a request.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Incident commander",
+  "definition": "The one person who leads and coordinates a team's response during an outage.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Silent quality regression",
+  "definition": "When an AI model keeps answering normally but its answers quietly get worse, without any visible errors.",
+  "topic": "AI Reliability & Fault Tolerance"
+ },
+ {
+  "term": "Bias",
+  "definition": "An AI system systematically treating some groups of people worse than others.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Fairness metric",
+  "definition": "A measurable rule for comparing how an AI treats different groups, such as equal approval rates or equal error rates.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Explainability",
+  "definition": "Being able to show which factors drove an AI decision, so people can understand and question it.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Model card",
+  "definition": "A short document shipped with an AI model describing its intended use, how it was tested and its limits.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Human oversight",
+  "definition": "A person who can check, override or stop an AI system's decision.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "EU AI Act",
+  "definition": "The European Union's law that regulates AI systems according to their level of risk, with bans and strict rules for high-risk uses.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "High-risk AI system",
+  "definition": "Under the EU AI Act, AI used in areas like hiring or credit scoring that must meet strict safety and oversight rules.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Proxy discrimination",
+  "definition": "When a model infers a protected trait like gender from other data, such as words or schools, and treats people unfairly.",
+  "topic": "Ethics & Governance"
+ },
+ {
+  "term": "Context window",
+  "definition": "The most text, counted in tokens, that an AI model can handle in one request, including its own answer.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Token",
+  "definition": "A small chunk of text, roughly a short word or part of one, that AI models read, count and charge by.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "System prompt",
+  "definition": "Standing instructions sent with every request that set the model's role, tone and rules.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Few-shot prompting",
+  "definition": "Putting a few worked examples in the model's input so it copies their pattern, without retraining the model.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Context rot",
+  "definition": "The drop in a model's accuracy at finding and using information as its input grows longer.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Prompt caching",
+  "definition": "A provider feature that reuses the work of reading an identical start of a prompt, cutting cost and waiting time.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Compaction",
+  "definition": "Replacing older parts of a long conversation with a short summary so the work can continue within the context window.",
+  "topic": "Context Engineering"
+ },
+ {
+  "term": "Embedding",
+  "definition": "A list of numbers produced by an AI model that captures what a piece of text, image or audio means.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Vector database",
+  "definition": "A database built to store embeddings and quickly find the stored items whose vectors are closest to a query.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Semantic search",
+  "definition": "Finding results by meaning rather than by matching exact words, usually by comparing embeddings.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Approximate nearest neighbor (ANN)",
+  "definition": "Search that finds almost-certainly-closest vectors by checking only part of the data, trading a little accuracy for big speed.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "HNSW",
+  "definition": "Hierarchical Navigable Small World: a popular ANN index that links vectors in layered graphs, searched from sparse top layers downward.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Cosine similarity",
+  "definition": "A measure of how closely two vectors point in the same direction; the usual way to compare text embeddings.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "pgvector",
+  "definition": "An open-source Postgres extension that stores vectors and runs exact or approximate similarity search beside regular data.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Product quantization",
+  "definition": "A compression method that splits vectors into pieces and stores short codes, letting billions of vectors fit in memory.",
+  "topic": "Embeddings & Vector Databases"
+ },
+ {
+  "term": "Retrieval-augmented generation (RAG)",
+  "definition": "Searching your documents for relevant passages and giving them to an AI model so it answers from them.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Grounding",
+  "definition": "Basing an AI answer on specific retrieved source text rather than on what the model memorized in training.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Hallucination",
+  "definition": "A confident AI answer that is false or made up.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Chunking",
+  "definition": "Splitting long documents into short passages so each can be indexed and retrieved on its own.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Hybrid search",
+  "definition": "Combining meaning-based vector search with keyword search, then merging both result lists into one ranking.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "BM25",
+  "definition": "A classic keyword-ranking formula that scores documents by matching terms; strong at exact names and codes.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Reciprocal Rank Fusion (RRF)",
+  "definition": "A way to merge ranked lists by summing 1/(rank + k) for each item, rewarding items ranked high in several lists.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Reranking",
+  "definition": "A slower, more accurate second pass, often a cross-encoder model, that rescores top search results against the question.",
+  "topic": "Retrieval-Augmented Generation"
+ },
+ {
+  "term": "Inference",
+  "definition": "Running a trained AI model to produce an answer, as opposed to training it.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "KV cache",
+  "definition": "Working notes a language model saves for every token so far, kept in GPU memory so it never recomputes them.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "Prefill and decode",
+  "definition": "The two phases of answering: prefill reads the whole prompt at once; decode writes the answer one token at a time.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "Continuous batching",
+  "definition": "Serving many requests together where finished ones leave and new ones join at every step, so the GPU never sits idle.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "Quantization",
+  "definition": "Storing a model's numbers with fewer bits, such as 8 or 4 instead of 16, to save memory and speed it up.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "Speculative decoding",
+  "definition": "A small fast model drafts the next few tokens and the big model checks them all at once, keeping identical output.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "Time to first token",
+  "definition": "How long a user waits before the first word of an AI answer appears.",
+  "topic": "LLM Inference & Optimization"
+ },
+ {
+  "term": "AI agent",
+  "definition": "A language model that works in a loop, choosing actions, seeing their results and deciding the next step until a goal is met.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Tool use (function calling)",
+  "definition": "A model replying with a structured request to run a named action, which the application then executes and reports back.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Agent loop",
+  "definition": "The repeating cycle of decide, act, observe and decide again that an AI agent follows.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Workflow vs. agent",
+  "definition": "A workflow follows steps a developer fixed in advance; an agent lets the model choose its own steps and tools.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "MCP (Model Context Protocol)",
+  "definition": "An open standard for connecting AI applications to tools and data sources, often likened to a USB-C port for AI.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Multi-agent system",
+  "definition": "Several AI agents splitting one task, usually a lead agent handing pieces to helper agents that work in parallel.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Excessive agency",
+  "definition": "Giving an AI agent more tools, permissions or freedom than its task needs, so a mistake or attack causes real damage.",
+  "topic": "AI Agents & Tool Use"
+ },
+ {
+  "term": "Guardrail",
+  "definition": "A check outside an AI model that limits what it sees, says or does, such as an input filter or approval step.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Hallucination",
+  "definition": "A confident AI answer that is false or made up; standards bodies also call it confabulation.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Prompt injection",
+  "definition": "Hidden instructions in a message, web page or file that hijack what an AI model does.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Jailbreak",
+  "definition": "A message crafted to trick an AI model into ignoring its safety rules.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Content moderation",
+  "definition": "Automatically scoring text or images for harmful content, such as hate or violence, so it can be flagged or blocked.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Human in the loop",
+  "definition": "A person who must review or approve certain AI actions, usually costly or irreversible ones, before they happen.",
+  "topic": "Guardrails & AI Safety"
+ },
+ {
+  "term": "Grounding",
+  "definition": "Tying an AI answer to trusted sources it can quote, so unsupported claims can be caught and removed.",
+  "topic": "Guardrails & AI Safety"
+ }
+]
