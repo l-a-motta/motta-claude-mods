@@ -18,7 +18,7 @@ add_marketplace() {
 add_marketplace l-a-motta/motta-claude-mods motta-claude-mods
 add_marketplace anthropics/claude-plugins-official claude-plugins-official
 
-for plugin in agent-lane@motta-claude-mods mattpocock-skills@claude-plugins-official; do
+for plugin in agent-lane@motta-claude-mods ai-isms@motta-claude-mods mattpocock-skills@claude-plugins-official; do
   if claude plugin install "$plugin" --scope user >/dev/null 2>&1; then
     echo "cloud-setup: $plugin installed"
   else
