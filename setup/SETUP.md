@@ -9,8 +9,8 @@ Commands are PowerShell unless they say otherwise.
 | Comes with | What | You do |
 | --- | --- | --- |
 | Logging into your Claude account | claude.ai connectors (Gmail, Calendar, Drive, Slack and the rest), the plugins synced from claude.ai (pdf-viewer, desktop-commander, enterprise-search, cowork-plugin-management), synced skills, and the Code tab's account settings (branch prefix, auto-archive when a PR closes) | Log in (step 1) |
-| This repo | The mods, the agent-lane skills, `settings.json`, the preferences in `~/.claude.json`, the find-skills skill | Steps 2 to 6 |
-| A cloud environment's setup script | `agent-lane` and `mattpocock-skills` in claude.ai/code sessions | "Cloud sessions" below |
+| This repo | The mods, the agent-lane and ai-isms skills, `settings.json`, the preferences in `~/.claude.json`, the find-skills skill | Steps 2 to 6 |
+| A cloud environment's setup script | `agent-lane`, `ai-isms` and `mattpocock-skills` in claude.ai/code sessions | "Cloud sessions" below |
 | Nowhere | Logins to other tools (`gh`, Codex), session history, file history, memories, the Code tab's per-machine settings (notifications, keep-awake, worktree location, browser tools) | Log in to tools as you need them; Code tab settings in step 7 |
 
 Claude Code's `settings.json` does not sync with your account. The `remote-settings.json` file it keeps is for settings an organization pushes.
@@ -108,12 +108,13 @@ Invoke-WebRequest "https://raw.githubusercontent.com/vercel-labs/skills/0b8fb22a
 
 Check: `Select-String -Path "$HOME\.claude\skills\find-skills\SKILL.md" -Pattern '^name: find-skills'` prints one line.
 
-## 6. The work skills: agent-lane
+## 6. The work skills: agent-lane and ai-isms
 
-One plugin in this repo carries skills for work rather than drawing. `agent-lane` holds the seven `motta-*` skills of the agent lane. They work in whichever repo they run in, following that checkout's `.github/BOARD.md` and scripts, and stop in a checkout without a `BOARD.md`. Those repos keep no copies of the skills, so this plugin is where they change. `motta-setup-repo` is stage zero: run `/agent-lane:motta-setup-repo` in a new repo and it sets up the board, `BOARD.md`, issue forms, PR template, CI, ship workflow and scripts and `AGENTS.md` from its templates, then lists what only you can do (the `BOARD_TOKEN` secret, the board's Auto-add workflow).
+Two plugins in this repo carry skills for work rather than drawing. `ai-isms` steers the prose Claude writes for people (replies, PR descriptions, commits, docs, messages) away from the habits that mark text as machine-written, and revises a draft that has them. It runs only when you type `/ai-isms:ai-isms`; Claude never loads it on its own. `agent-lane` holds the seven `motta-*` skills of the agent lane. They work in whichever repo they run in, following that checkout's `.github/BOARD.md` and scripts, and stop in a checkout without a `BOARD.md`. Those repos keep no copies of the skills, so this plugin is where they change. `motta-setup-repo` is stage zero: run `/agent-lane:motta-setup-repo` in a new repo and it sets up the board, `BOARD.md`, issue forms, PR template, CI, ship workflow and scripts and `AGENTS.md` from its templates, then lists what only you can do (the `BOARD_TOKEN` secret, the board's Auto-add workflow).
 
 ```powershell
 claude plugin install agent-lane@motta-claude-mods --scope user
+claude plugin install ai-isms@motta-claude-mods --scope user
 claude plugin install mattpocock-skills@claude-plugins-official --scope user
 ```
 
@@ -121,7 +122,7 @@ claude plugin install mattpocock-skills@claude-plugins-official --scope user
 
 On a machine that still has the retired `motta-heavydev` plugin, remove it: `claude plugin uninstall motta-heavydev@motta-claude-mods --scope user`, then delete `~/.claude/motta-heavydev.json` if it exists.
 
-Check: `claude plugin list` shows `agent-lane` and `mattpocock-skills` enabled, and no `motta-heavydev`.
+Check: `claude plugin list` shows `agent-lane`, `ai-isms` and `mattpocock-skills` enabled, and no `motta-heavydev`.
 
 ## 7. The desktop app's Code tab
 
@@ -158,9 +159,9 @@ A cloud session doesn't read this machine's `~/.claude`, and it doesn't install 
 curl -fsSL https://raw.githubusercontent.com/l-a-motta/motta-claude-mods/main/setup/cloud-setup.sh | bash
 ```
 
-[cloud-setup.sh](cloud-setup.sh) installs `agent-lane` and `mattpocock-skills` at user scope. The UI mods stay out, because cloud sessions don't draw mods. It always exits 0, since a failing setup script fails the session, and it prints one line per plugin in the setup log.
+[cloud-setup.sh](cloud-setup.sh) installs `agent-lane`, `ai-isms` and `mattpocock-skills` at user scope. The UI mods stay out, because cloud sessions don't draw mods. It always exits 0, since a failing setup script fails the session, and it prints one line per plugin in the setup log.
 
-Check: in a new cloud session, `/plugin` lists both plugins; if they are installed but missing from the skill list, run `/reload-plugins`.
+Check: in a new cloud session, `/plugin` lists all three plugins; if they are installed but missing from the skill list, run `/reload-plugins`.
 
 ## Keeping this in step
 

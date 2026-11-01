@@ -61,6 +61,11 @@
       "name": "agent-lane",
       "source": "./plugins/agent-lane",
       "description": "Skills for the agent lane: /motta-setup-repo sets a repo up for it (dev -> main flow, labels, delivery board, BOARD.md, forms, PR template, CI, ship workflow and scripts, AGENTS.md) from the templates it carries, /motta-intake turns notes into spike issues, /motta-settle-spike turns the owner's decisions into agent-ready issues, /motta-dispatch starts a worktree build session per ready issue, motta-build-issue builds one unattended to a PR with CI green, /motta-review acts on and answers the comments on agent: review issues and PRs, and /motta-ship-pr merges agent: human-approved PRs through the repo's gate script. They work in whichever repo they run in, following its .github/BOARD.md, and stop in a checkout that has none."
+    },
+    {
+      "name": "ai-isms",
+      "source": "./plugins/ai-isms",
+      "description": "A skill for the prose Claude writes for people (replies, PR descriptions, commits, docs, messages): it steers away from the habits that mark text as machine-written, such as the corrective \"it's not X, it's Y\", and revises drafts that have them. A habit stays where it carries the point. Runs only when you type /ai-isms:ai-isms; Claude never loads it on its own."
     }
   ]
 }
