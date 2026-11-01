@@ -83,7 +83,7 @@ The scripts add a breadcrumb at the top and a prev/next callout before `## 📚 
 ## Writing
 
 **Basics**
-- 450–800 words (not counting frontmatter and sources). Short sentences: aim for under 20 words.
+- 450–850 words (not counting frontmatter and sources). Short sentences: aim for under 20 words.
 - Write to "you". Active voice. One idea per paragraph, paragraphs of 1–3 sentences.
 - Explain every technical word the first time it appears, in the same sentence. If a word needs more than a
   clause to explain, it belongs in the deep dive instead.
