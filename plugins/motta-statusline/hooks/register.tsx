@@ -79,7 +79,8 @@
 // `placement` picks where it draws:
 // - below (default): drawn in the hint line under the prompt (PromptHint),
 //   above the engine's own hint, and it stays while a turn runs. The desktop
-//   app never raises that line, so there it draws as the band instead.
+//   app's hint line is one row that cuts what does not fit, so there it draws
+//   as the band instead, and leaves the hint line alone.
 //   $.ui.status is not used, since it draws as a warning notice.
 // - above: a colored band above the prompt. The engine gives that space to
 //   the spinner during a turn. The band is shared: this hook asks the plugins
@@ -389,7 +390,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
     await markSeen($)
-    // The desktop app never raises PromptHint, so `below` draws in the band there.
+    // On the desktop `below` draws in the band too: its hint line is one cut row.
     const isBand = placement === 'above' || e.surface === 'desktop'
     if (!isBand || e.props.hasSurvey) return next(e)
     const below = await next(e)
@@ -420,12 +421,13 @@ export const register: Register = (on, options) => {
   })
 
   // The hint line under the prompt stays up while a turn runs. The engine's own
-  // line (mode pills, `esc to interrupt`) is kept under ours.
+  // line (mode pills, `esc to interrupt`) is kept under ours. The desktop
+  // draws the lines in its band (AbovePrompt), so its hint line is left alone.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (data === null) await refreshAll($, true)
     await markSeen($)
     const hint = await next(e)
-    if (placement !== 'below' || data === null) return hint
+    if (placement !== 'below' || e.surface === 'desktop' || data === null) return hint
     const { Box, Text, Link, Button } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">

@@ -125,7 +125,20 @@ test('draws both lines above the engine hint in the terminal hint line', async (
   await ui.unmount()
 })
 
-test('draws in the band on the desktop, which has no hint line, and leaves the terminal band free', async ($, on) => {
+test("leaves the desktop's hint line alone, where the band holds the lines", async ($, on) => {
+  answerSession(on)
+  const hint = await $.ui.mount({
+    plugin: 'motta-statusline',
+    surface: 'desktop',
+    component: 'PromptHint',
+    props: { isDraft: false, isWorking: false, hint: 'esc to interrupt' },
+  })
+  expect(await hint.find({ type: 'Text', text: 'esc to interrupt' })).toBeDefined()
+  expect(await hint.find({ key: 'folder' })).toBeUndefined()
+  await hint.unmount()
+})
+
+test('draws in the band on the desktop and leaves the terminal band free', async ($, on) => {
   answerSession(on)
   const desktop = await $.ui.mount({ plugin: 'motta-statusline', surface: 'desktop', component: 'AbovePrompt', props: BAND_PROPS })
   expect(await desktop.find({ key: 'folder' })).toBeDefined()
